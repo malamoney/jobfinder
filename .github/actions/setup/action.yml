@@ -1,0 +1,16 @@
+name: Setup
+description: Install pnpm and Node, then install dependencies.
+
+# Requires the repository to already be checked out: a local composite action
+# cannot be resolved until it exists on disk, so each job checks out first.
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v4
+    - uses: actions/setup-node@v5
+      with:
+        # One place to change the Node version for every job.
+        node-version: 22
+        cache: pnpm
+    - run: pnpm install --frozen-lockfile
+      shell: bash
