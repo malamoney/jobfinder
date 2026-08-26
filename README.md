@@ -33,6 +33,31 @@ pnpm db:generate   # generate a migration from src/db/schema.ts
 pnpm db:migrate    # apply migrations to DATABASE_URL
 ```
 
+## The curated set of Boards
+
+A sweep covers the Boards listed in `scripts/data/greenhouse-boards.ts`, maintained by hand.
+Curation rather than harvesting is a cost decision — see ADR 0003.
+
+```bash
+pnpm seed:boards   # probe every listed Board, then write it to the curated set
+pnpm discover      # harvest fresh candidates, probe them, print what is worth promoting
+```
+
+Seeding probes each Slug before writing it, so it proves the set is fetchable rather than
+asserting it, and a Board that cannot be read is added disabled rather than skipped. Both are
+safe to re-run: a Board keeps the id its Postings already reference.
+
+`pnpm discover` is run by hand and by nothing else. It writes nothing — it harvests candidate
+Slugs from Common Crawl, probes a random sample of them, and prints the live ones ranked by how
+many roles they have open. Promoting a Board means pasting its Slug into the seed file and
+re-running `pnpm seed:boards`. Roughly one in six Slugs goes dead over time, so the set needs
+re-validating periodically; `listBoards()` reports each Board's last Fetch outcome.
+
+```bash
+pnpm discover -- --limit 300      # probe 300 candidates rather than the default 200
+pnpm discover -- --records 50000  # read fewer crawl records when harvesting
+```
+
 ## Tests
 
 ```bash

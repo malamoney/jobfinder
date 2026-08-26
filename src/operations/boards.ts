@@ -1,9 +1,10 @@
+import { asc, desc, eq, isNotNull } from "drizzle-orm";
 import { getDb } from "@/db";
-import { boards } from "@/db/schema";
-import type { Board } from "./fetch-board";
+import { boards, fetchTasks, type FetchTaskStatus } from "@/db/schema";
+import type { Board, BoardAddress } from "./fetch-board";
 
 /** A Board to sweep, and whether the sweep should currently include it. */
-export type BoardEntry = Omit<Board, "id"> & { enabled?: boolean };
+export type BoardEntry = BoardAddress & { enabled?: boolean };
 
 /**
  * Puts a Board into the curated set, or updates the one already there, and
@@ -29,4 +30,82 @@ export async function addBoard(board: BoardEntry): Promise<Board> {
     .returning({ id: boards.id, source: boards.source, slug: boards.slug });
 
   return stored;
+}
+
+/**
+ * Puts a whole list of Boards into the curated set.
+ *
+ * The curated set is maintained by hand — ADR 0003 chose curation over
+ * harvesting on cost — so the seed is a file someone edits and re-runs as
+ * discovery turns up candidates worth promoting. Re-running it is therefore
+ * the normal case rather than an accident, and every Board keeps the id its
+ * Postings already reference.
+ */
+export async function seedBoards(
+  entries: readonly BoardEntry[],
+): Promise<Board[]> {
+  const seeded: Board[] = [];
+  for (const entry of entries) {
+    seeded.push(await addBoard(entry));
+  }
+  return seeded;
+}
+
+/** A Board in the curated set, with what became of it last time it was swept. */
+export type CuratedBoard = Board & {
+  enabled: boolean;
+  /** What the newest finished Fetch of this Board did, or null if never. */
+  lastFetch: {
+    status: FetchTaskStatus;
+    error: string | null;
+    finishedAt: Date;
+  } | null;
+};
+
+/**
+ * Reads the curated set, with each Board's most recent Fetch outcome.
+ *
+ * Roughly one in six harvested Slugs goes dead within a sampling window
+ * (ADR 0003), so the set decays and has to be revalidated. The outcome is read
+ * from the Board's newest finished task rather than kept as a column here —
+ * every Fetch already records it, and a copy on the Board would be a second
+ * thing to keep true.
+ */
+export async function listBoards(): Promise<CuratedBoard[]> {
+  const db = getDb();
+
+  // The newest finished task per Board. `DISTINCT ON` is Postgres picking one
+  // row per group by the same ordering it sorts by, which is cheaper here than
+  // a window function over a table that grows by one row per Board per night.
+  const lastFetches = db
+    .selectDistinctOn([fetchTasks.boardId], {
+      boardId: fetchTasks.boardId,
+      status: fetchTasks.status,
+      error: fetchTasks.error,
+      finishedAt: fetchTasks.finishedAt,
+    })
+    .from(fetchTasks)
+    .where(isNotNull(fetchTasks.finishedAt))
+    .orderBy(asc(fetchTasks.boardId), desc(fetchTasks.finishedAt))
+    .as("last_fetches");
+
+  const rows = await db
+    .select({
+      id: boards.id,
+      source: boards.source,
+      slug: boards.slug,
+      enabled: boards.enabled,
+      status: lastFetches.status,
+      error: lastFetches.error,
+      finishedAt: lastFetches.finishedAt,
+    })
+    .from(boards)
+    .leftJoin(lastFetches, eq(lastFetches.boardId, boards.id))
+    .orderBy(asc(boards.source), asc(boards.slug));
+
+  return rows.map(({ status, error, finishedAt, ...board }) => ({
+    ...board,
+    lastFetch:
+      status && finishedAt ? { status, error, finishedAt } : null,
+  }));
 }
