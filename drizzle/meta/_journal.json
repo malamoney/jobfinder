@@ -8,6 +8,13 @@
       "when": 1787707303808,
       "tag": "0000_futuristic_justin_hammer",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787710489166,
+      "tag": "0001_swift_mad_thinker",
+      "breakpoints": true
     }
   ]
 }
