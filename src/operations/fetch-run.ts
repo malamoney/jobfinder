@@ -93,6 +93,11 @@ export type FetchBatchOptions = {
    * dead and its task is offered to another.
    */
   claimTimeoutMs?: number;
+  /**
+   * The most any one Board may take. Bounded again by what is left of the time
+   * budget, so a Board late in a batch cannot overrun what the batch has left.
+   */
+  boardTimeoutMs?: number;
 };
 
 /** What one Worker got through. */
@@ -112,14 +117,26 @@ export type FetchBatchResult = {
 const DEFAULT_BATCH_SIZE = 25;
 
 /** Comfortably inside a serverless invocation's ceiling. */
-const DEFAULT_TIME_BUDGET_MS = 45_000;
+export const DEFAULT_TIME_BUDGET_MS = 45_000;
 
 /**
  * Longer than any invocation is allowed to live, so a claim only ever goes
  * stale because the invocation holding it is genuinely gone. Reclaiming work
  * from a Worker that is merely slow would have two Workers fetching one Board.
  */
-const DEFAULT_CLAIM_TIMEOUT_MS = 120_000;
+export const DEFAULT_CLAIM_TIMEOUT_MS = 120_000;
+
+/**
+ * The most one Board may take of a Worker's budget.
+ *
+ * These three only work as a set, and the ordering between them is what makes
+ * the claim timeout's promise true: a Board is bounded by less than the batch
+ * that started it, and a batch by less than the Claim it holds. So a Worker
+ * that is merely slow can never outlive its own Claim, and cannot be reclaimed
+ * from while still alive. Nothing enforced that before this ceiling existed —
+ * one silent Source could spend the whole invocation.
+ */
+export const DEFAULT_BOARD_TIMEOUT_MS = 20_000;
 
 /**
  * Works whatever the queue offers, within a bounded number of Boards and a
@@ -142,6 +159,7 @@ export async function runFetchBatch(
     batchSize = DEFAULT_BATCH_SIZE,
     timeBudgetMs = DEFAULT_TIME_BUDGET_MS,
     claimTimeoutMs = DEFAULT_CLAIM_TIMEOUT_MS,
+    boardTimeoutMs = DEFAULT_BOARD_TIMEOUT_MS,
   } = options;
 
   // This invocation's identity, so an outcome is only ever written for a task
@@ -161,7 +179,18 @@ export async function runFetchBatch(
     runsWorked.add(task.runId);
 
     try {
-      const fetched = await readBoard(task.board);
+      // The first Board of a batch gets the whole ceiling: the loop lets one
+      // through even on a spent budget, so that a Worker arriving late cannot
+      // stall the queue, and handing it nothing to work with would fail that
+      // Board rather than fetch it. Every later Board is bounded again by what
+      // the batch has left, which the loop above has just confirmed is more
+      // than nothing.
+      const fetched = await readBoard(task.board, {
+        timeoutMs:
+          worked === 0
+            ? boardTimeoutMs
+            : Math.min(boardTimeoutMs, deadline - Date.now()),
+      });
       if (await commitFetch(task, workerId, fetched)) {
         succeeded++;
       }

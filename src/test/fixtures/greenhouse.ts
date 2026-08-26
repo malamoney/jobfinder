@@ -1,4 +1,4 @@
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { server } from "@/test/msw";
 
 /**
@@ -57,6 +57,21 @@ export function boardReturns(
  */
 export function boardIsUnreachable(slug: string): void {
   server.use(http.get(greenhouseBoardUrl(slug), () => HttpResponse.error()));
+}
+
+/**
+ * Declares that a Board accepts the request and then never answers.
+ *
+ * The case a ceiling exists for: nothing is refused and nothing is malformed,
+ * so without one the Fetch waits on a Source that is never going to reply.
+ */
+export function boardNeverAnswers(slug: string): void {
+  server.use(
+    http.get(greenhouseBoardUrl(slug), async () => {
+      await delay("infinite");
+      return HttpResponse.json(greenhouseBoard([]));
+    }),
+  );
 }
 
 /** Declares that a Board answers, but refuses to serve it. */

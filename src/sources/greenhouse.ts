@@ -42,11 +42,20 @@ const greenhouseBoard = z.object({
   jobs: z.array(greenhouseJob),
 });
 
-/** Fetches one Greenhouse Board and returns its Postings. */
+/**
+ * Fetches one Greenhouse Board and returns its Postings.
+ *
+ * The `signal` is the ceiling on how long this may take, and it belongs to the
+ * caller rather than to this adapter: the Worker is the one whose budget is
+ * being spent, and only it knows how much of that is left (#25). It covers the
+ * body as well as the headers, so a Source that starts answering and then
+ * stalls is bounded too.
+ */
 export async function fetchGreenhouseBoard(
   slug: string,
+  signal: AbortSignal,
 ): Promise<SourcePosting[]> {
-  const response = await fetch(boardUrl(slug));
+  const response = await fetch(boardUrl(slug), { signal });
   if (!response.ok) {
     throw new Error(
       `Greenhouse Board "${slug}" returned ${response.status} ${response.statusText}`,

@@ -28,10 +28,29 @@ export type Board = {
 };
 
 /** The adapter each Source is reached through. */
-const ADAPTERS: Record<SourceName, (slug: string) => Promise<SourcePosting[]>> =
-  {
-    greenhouse: fetchGreenhouseBoard,
-  };
+const ADAPTERS: Record<
+  SourceName,
+  (slug: string, signal: AbortSignal) => Promise<SourcePosting[]>
+> = {
+  greenhouse: fetchGreenhouseBoard,
+};
+
+/** How patient a Fetch of one Board is willing to be. */
+export type BoardFetchOptions = {
+  /** The most this Board's Fetch may take before it is given up on. */
+  timeoutMs?: number;
+};
+
+/**
+ * The ceiling for a Fetch nobody set one for.
+ *
+ * Generous enough for a large Board answering slowly, and far below the
+ * minutes an unguarded `fetch` would wait. A Worker overrides it with what is
+ * left of its own budget, which is the number that actually matters (#25);
+ * this is for callers with no queue behind them, such as #18's discovery
+ * probe, where the only requirement is that the wait ends.
+ */
+const DEFAULT_TIMEOUT_MS = 20_000;
 
 /**
  * Fetches one Board and reconciles the Corpus with what it returned.
@@ -47,8 +66,11 @@ const ADAPTERS: Record<SourceName, (slug: string) => Promise<SourcePosting[]>> =
  * outcome; this is the whole Fetch for a caller that has no queue, which is
  * how tests and #18's discovery probe reach a Board.
  */
-export async function fetchBoard(board: Board): Promise<void> {
-  const fetched = await readBoard(board);
+export async function fetchBoard(
+  board: Board,
+  options: BoardFetchOptions = {},
+): Promise<void> {
+  const fetched = await readBoard(board, options);
   await getDb().transaction((tx) => reconcileBoard(tx, board, fetched));
 }
 
@@ -59,9 +81,37 @@ export async function fetchBoard(board: Board): Promise<void> {
  * Separate from the writing half because the answer has to be in hand before a
  * Worker commits to it: what the Board said and whether the Worker still holds
  * the Claim on it are decided together (see `runFetchBatch`).
+ *
+ * Always bounded. A Source that accepts the request and then goes quiet is not
+ * a case any adapter can detect for itself, and an unguarded `fetch` waits on
+ * it for minutes — so the ceiling lives here, where every Source gets it,
+ * rather than in each adapter where a new one could forget it.
  */
-export async function readBoard(board: Board): Promise<SourcePosting[]> {
-  return ADAPTERS[board.source](board.slug);
+export async function readBoard(
+  board: Board,
+  { timeoutMs = DEFAULT_TIMEOUT_MS }: BoardFetchOptions = {},
+): Promise<SourcePosting[]> {
+  try {
+    return await ADAPTERS[board.source](
+      board.slug,
+      AbortSignal.timeout(timeoutMs),
+    );
+  } catch (error) {
+    // Said in the adapters' own register, so #17 can tell a Board that never
+    // spoke from one that refused — they call for different things, and the
+    // raw abort says only "the operation was aborted".
+    if (isTimeout(error)) {
+      throw new Error(
+        `${board.source} Board "${board.slug}" did not answer within ${timeoutMs}ms`,
+      );
+    }
+    throw error;
+  }
+}
+
+/** `AbortSignal.timeout` aborts with a `DOMException` named `TimeoutError`. */
+function isTimeout(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "TimeoutError";
 }
 
 /**
