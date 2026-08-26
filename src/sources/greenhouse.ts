@@ -65,7 +65,6 @@ export async function fetchGreenhouseBoard(
   return parsed.data.jobs.map((job) => ({
     source: "greenhouse" as const,
     sourceId: String(job.id),
-    boardSlug: slug,
     company: job.company_name,
     title: job.title,
     description: decodeHtmlEntities(job.content),

@@ -36,11 +36,15 @@ export const postings = pgTable(
     source: text("source").$type<SourceName>().notNull(),
     sourceId: text("source_id").notNull(),
 
-    // Where this Posting came from. Not part of the Source Key — a Source's
-    // identifiers are unique across the whole Source, not per Board — but a
-    // Posting whose Board is unknown could not be traced back to what
-    // published it.
-    boardSlug: text("board_slug").notNull(),
+    // Which Board published this Posting. Not part of the Source Key — a
+    // Source's identifiers are unique across the whole Source, not per Board —
+    // but #7 expires Postings a Board stopped returning, and a Posting whose
+    // Board is unknown could not be expired, or traced back to what published
+    // it. A reference rather than a copy of the Slug, so a Posting cannot come
+    // to name a Board that does not exist.
+    boardId: uuid("board_id")
+      .notNull()
+      .references(() => boards.id),
 
     company: text("company").notNull(),
     title: text("title").notNull(),
@@ -63,6 +67,10 @@ export const postings = pgTable(
   },
   (table) => [
     uniqueIndex("postings_source_key").on(table.source, table.sourceId),
+    // Postgres indexes the target of a foreign key, never the column holding
+    // it. #7 reads the Corpus a Board at a time, so this is the index that
+    // query needs.
+    index("postings_board").on(table.boardId),
   ],
 );
 
