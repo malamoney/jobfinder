@@ -12,5 +12,16 @@
  * pure normalizers, which get tested directly.
  */
 
+export { addBoard, type BoardEntry } from "./boards";
 export { fetchBoard, type Board } from "./fetch-board";
+export {
+  readFetchRun,
+  runFetchBatch,
+  startFetchRun,
+  type FetchBatchOptions,
+  type FetchBatchResult,
+  type FetchRunId,
+  type FetchRunReport,
+  type FetchTaskReport,
+} from "./fetch-run";
 export { listPostings } from "./postings";

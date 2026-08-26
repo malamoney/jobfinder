@@ -51,6 +51,29 @@ A Posting that a Source stopped returning across consecutive successful Fetches.
 than deleted, so Review State outlives the listing.
 _Avoid_: Dead, stale, closed, removed
 
+### Fetch orchestration
+
+**Fetch Run**:
+One Fetch as a record: when it started, when the last of its Boards stopped being workable, and what
+each Board did. It outlives any single function invocation. A Run is what a *sweep* of the Boards
+means concretely; the two words describe the same thing, one as a record and one as an activity.
+_Avoid_: Job, batch
+
+**Fetch Task**:
+One Board's place in a Fetch Run's queue, carrying its outcome — succeeded, or failed with a reason.
+Only a succeeded Task is evidence that a Posting the Board did not return is gone (ADR 0004).
+_Avoid_: Job, item, unit of work
+
+**Worker**:
+One invocation that takes Fetch Tasks from the queue and works them until its batch or its time
+budget is spent. Never assumes it is alone, or that it will live long enough to finish the Run.
+_Avoid_: Runner, processor, consumer
+
+**Claim**:
+A Worker's hold on a Fetch Task while it fetches that Board. A Claim older than the longest an
+invocation may live is presumed dead, and the Task is offered to another Worker.
+_Avoid_: Lock, lease, reservation
+
 ### Matching
 
 **Criteria**:
