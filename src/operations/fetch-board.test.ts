@@ -1,6 +1,11 @@
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
-import { fetchBoard, listPostings } from "@/operations";
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+  addBoard,
+  fetchBoard,
+  listPostings,
+  type Board,
+} from "@/operations";
 import {
   greenhouseBoardHandler,
   greenhouseBoardUrl,
@@ -8,7 +13,17 @@ import {
 } from "@/test/fixtures/greenhouse";
 import { server } from "@/test/msw";
 
-const ACME = { source: "greenhouse", slug: "acme" } as const;
+/**
+ * The Board under test, in the curated set before each test.
+ *
+ * A Posting records which Board published it by reference, so a Fetch happens
+ * against a Board the application knows about rather than a bare Slug.
+ */
+let acme: Board;
+
+beforeEach(async () => {
+  acme = await addBoard({ source: "greenhouse", slug: "acme" });
+});
 
 /** Declares what the Greenhouse Board returns for the next Fetch of it. */
 function boardReturns(
@@ -39,14 +54,14 @@ describe("fetching a Greenhouse Board", () => {
       }),
     ]);
 
-    await fetchBoard(ACME);
+    await fetchBoard(acme);
 
     const postings = await listPostings();
     expect(postings).toHaveLength(1);
     expect(postings[0]).toMatchObject({
       source: "greenhouse",
       sourceId: "100",
-      boardSlug: "acme",
+      boardId: acme.id,
       company: "Acme",
       title: "Staff Engineer, Infrastructure",
       location: "Hybrid - London",
@@ -62,7 +77,7 @@ describe("fetching a Greenhouse Board", () => {
       greenhouseJob({ id: 300, title: "Account Executive" }),
     ]);
 
-    await fetchBoard(ACME);
+    await fetchBoard(acme);
 
     const titles = (await listPostings()).map((posting) => posting.title);
     expect(titles.sort()).toEqual([
@@ -82,7 +97,7 @@ describe("fetching a Greenhouse Board", () => {
       }),
     ]);
 
-    await fetchBoard(ACME);
+    await fetchBoard(acme);
 
     // Decoded exactly once: Greenhouse escaped the `&` of an `&amp;` that was
     // already in the company's HTML, and decoding twice would corrupt it.
@@ -99,7 +114,7 @@ describe("fetching a Greenhouse Board", () => {
       }),
     ]);
 
-    await fetchBoard(ACME);
+    await fetchBoard(acme);
 
     const [posting] = await listPostings();
     expect(posting.description).toBe("<p>A ❤ &notanentity; &#1114113;</p>");
@@ -115,7 +130,7 @@ describe("fetching a Greenhouse Board", () => {
       }),
     ]);
 
-    await fetchBoard(ACME);
+    await fetchBoard(acme);
 
     const [posting] = await listPostings();
     expect(posting.postedAt).toBeNull();
@@ -123,13 +138,13 @@ describe("fetching a Greenhouse Board", () => {
 
   it("updates a Posting it has seen before rather than duplicating it", async () => {
     boardReturns("acme", [greenhouseJob({ id: 100, title: "Staff Engineer" })]);
-    await fetchBoard(ACME);
+    await fetchBoard(acme);
     const [first] = await listPostings();
 
     boardReturns("acme", [
       greenhouseJob({ id: 100, title: "Staff Engineer, Platform" }),
     ]);
-    await fetchBoard(ACME);
+    await fetchBoard(acme);
 
     const postings = await listPostings();
     expect(postings).toHaveLength(1);
@@ -141,11 +156,11 @@ describe("fetching a Greenhouse Board", () => {
   // the date it last saw it moves. #7 reads the second as presence.
   it("keeps when it first saw a Posting and records when it last saw it", async () => {
     boardReturns("acme", [greenhouseJob({ id: 100 })]);
-    await fetchBoard(ACME);
+    await fetchBoard(acme);
     const [first] = await listPostings();
 
     boardReturns("acme", [greenhouseJob({ id: 100 })]);
-    await fetchBoard(ACME);
+    await fetchBoard(acme);
 
     const [refetched] = await listPostings();
     expect(refetched.firstSeenAt).toEqual(first.firstSeenAt);
@@ -158,7 +173,7 @@ describe("fetching a Greenhouse Board", () => {
     boardReturns("acme", [
       greenhouseJob({ id: 100, content: "&lt;p&gt;Build the thing.&lt;/p&gt;" }),
     ]);
-    await fetchBoard(ACME);
+    await fetchBoard(acme);
 
     boardReturns("acme", [
       greenhouseJob({
@@ -166,12 +181,26 @@ describe("fetching a Greenhouse Board", () => {
         content: "&lt;p&gt;Build the thing. Now with on-call.&lt;/p&gt;",
       }),
     ]);
-    await fetchBoard(ACME);
+    await fetchBoard(acme);
 
     const [posting] = await listPostings();
     expect(posting.description).toBe(
       "<p>Build the thing. Now with on-call.</p>",
     );
+  });
+
+  // #18 re-runs its seed by hand, and a Board arriving twice must stay the
+  // same Board: a new row would leave every Posting already fetched pointing
+  // at a Board nothing sweeps any more, and #7 would never expire them.
+  it("keeps a Board's identity when the same Board is added again", async () => {
+    boardReturns("acme", [greenhouseJob({ id: 100 })]);
+    await fetchBoard(acme);
+
+    const readded = await addBoard({ source: "greenhouse", slug: "acme" });
+
+    expect(readded.id).toBe(acme.id);
+    const [posting] = await listPostings();
+    expect(posting.boardId).toBe(readded.id);
   });
 
   // Fetching one Board is not allowed to disturb another's Postings; #6 runs
@@ -182,8 +211,8 @@ describe("fetching a Greenhouse Board", () => {
       greenhouseJob({ id: 200, company_name: "Globex" }),
     ]);
 
-    await fetchBoard(ACME);
-    await fetchBoard({ source: "greenhouse", slug: "globex" });
+    await fetchBoard(acme);
+    await fetchBoard(await addBoard({ source: "greenhouse", slug: "globex" }));
 
     const companies = (await listPostings()).map((posting) => posting.company);
     expect(companies.sort()).toEqual(["Acme", "Globex"]);
@@ -211,7 +240,7 @@ describe("fetching a Greenhouse Board", () => {
         ),
       );
 
-      await fetchBoard(ACME);
+      await fetchBoard(acme);
 
       const postings = await listPostings();
       expect(postings).toHaveLength(1);
@@ -227,7 +256,7 @@ describe("fetching a Greenhouse Board", () => {
         { id: 100, content: "&lt;p&gt;No title here.&lt;/p&gt;" },
       ]);
 
-      await expect(fetchBoard(ACME)).rejects.toThrow(/acme/);
+      await expect(fetchBoard(acme)).rejects.toThrow(/acme/);
       expect(await listPostings()).toEqual([]);
     });
 
@@ -238,7 +267,7 @@ describe("fetching a Greenhouse Board", () => {
         ),
       );
 
-      await expect(fetchBoard(ACME)).rejects.toThrow(/404/);
+      await expect(fetchBoard(acme)).rejects.toThrow(/404/);
       expect(await listPostings()).toEqual([]);
     });
 
@@ -263,11 +292,11 @@ describe("fetching a Greenhouse Board", () => {
       ],
     ])("leaves known Postings untouched after %s", async (_case, breakBoard) => {
       boardReturns("acme", [greenhouseJob({ id: 100, title: "Staff Engineer" })]);
-      await fetchBoard(ACME);
+      await fetchBoard(acme);
       const before = await listPostings();
 
       breakBoard();
-      await expect(fetchBoard(ACME)).rejects.toThrow();
+      await expect(fetchBoard(acme)).rejects.toThrow();
 
       expect(await listPostings()).toEqual(before);
     });

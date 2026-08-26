@@ -4,8 +4,17 @@ import { postings, type SourceName } from "@/db/schema";
 import { fetchGreenhouseBoard } from "@/sources/greenhouse";
 import type { SourcePosting } from "@/sources/types";
 
-/** One company's listings within a Source, addressed by its Slug. */
+/**
+ * One company's listings within a Source, addressed by its Slug.
+ *
+ * Carries the curated set's own id as well as the address, because a Posting
+ * records which Board published it by reference. Fetching therefore only
+ * happens against a Board the application knows about — a Slug being probed
+ * for the first time (#18) is a candidate, and its jobs do not belong in the
+ * shared Corpus until someone promotes it.
+ */
 export type Board = {
+  id: string;
   source: SourceName;
   slug: string;
 };
@@ -26,14 +35,19 @@ const ADAPTERS: Record<SourceName, (slug: string) => Promise<SourcePosting[]>> =
  */
 export async function fetchBoard(board: Board): Promise<void> {
   const fetched = await ADAPTERS[board.source](board.slug);
-  await storePostings(fetched);
+  await storePostings(board, fetched);
 }
 
 /**
  * The columns a re-Fetch must not touch: the Posting's identity, and the date
  * the Corpus first met it.
  */
-const PRESERVED_ON_REFETCH = new Set(["id", "source", "sourceId", "firstSeenAt"]);
+const PRESERVED_ON_REFETCH = new Set([
+  "id",
+  "source",
+  "sourceId",
+  "firstSeenAt",
+]);
 
 /**
  * What a re-Fetch overwrites, derived from the table rather than listed by
@@ -62,12 +76,15 @@ const REFRESHED_ON_REFETCH: Record<string, SQL> = Object.fromEntries(
  * description means the old one is wrong — and `last_seen_at` records that
  * this Fetch saw it.
  */
-async function storePostings(fetched: SourcePosting[]): Promise<void> {
+async function storePostings(
+  board: Board,
+  fetched: SourcePosting[],
+): Promise<void> {
   if (fetched.length === 0) return;
 
   await getDb()
     .insert(postings)
-    .values(fetched)
+    .values(fetched.map((posting) => ({ ...posting, boardId: board.id })))
     .onConflictDoUpdate({
       target: [postings.source, postings.sourceId],
       set: REFRESHED_ON_REFETCH,

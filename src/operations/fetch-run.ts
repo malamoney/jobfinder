@@ -19,7 +19,7 @@ import {
   type FetchTaskStatus,
   type SourceName,
 } from "@/db/schema";
-import { fetchBoard } from "./fetch-board";
+import { fetchBoard, type Board } from "./fetch-board";
 
 /** A Fetch run's identity, as `startFetchRun` hands it out. */
 export type FetchRunId = string;
@@ -160,7 +160,7 @@ export async function runFetchBatch(
     runsWorked.add(task.runId);
 
     try {
-      await fetchBoard({ source: task.source, slug: task.slug });
+      await fetchBoard(task.board);
       if (await recordOutcome(task.id, workerId, "succeeded", null)) {
         succeeded++;
       }
@@ -201,8 +201,7 @@ function workable(status: Column): SQL {
 type ClaimedTask = {
   id: string;
   runId: FetchRunId;
-  source: SourceName;
-  slug: string;
+  board: Board;
 };
 
 /**
@@ -225,6 +224,7 @@ async function claimNextTask(
   const claimed = await getDb().execute<{
     id: string;
     run_id: string;
+    board_id: string;
     source: SourceName;
     slug: string;
   }>(sql`
@@ -244,14 +244,18 @@ async function claimNextTask(
       WHERE ${fetchTasks.id} IN (SELECT id FROM workable)
       RETURNING ${fetchTasks.id}, ${fetchTasks.runId}, ${fetchTasks.boardId}
     )
-    SELECT claimed.id, claimed.run_id, ${boards.source}, ${boards.slug}
+    SELECT claimed.id, claimed.run_id, claimed.board_id, ${boards.source}, ${boards.slug}
     FROM claimed JOIN ${boards} ON ${boards.id} = claimed.board_id
   `);
 
   const [row] = claimed.rows;
   if (!row) return undefined;
 
-  return { id: row.id, runId: row.run_id, source: row.source, slug: row.slug };
+  return {
+    id: row.id,
+    runId: row.run_id,
+    board: { id: row.board_id, source: row.source, slug: row.slug },
+  };
 }
 
 /**
