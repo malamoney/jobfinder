@@ -25,7 +25,8 @@ export default async function setup(): Promise<void> {
   try {
     const db = drizzle(pool);
 
-    // Absent until #4 adds the first application table.
+    // Guarded rather than assumed, so a checkout that has not generated
+    // migrations yet still gets a usable test database.
     if (existsSync(`${APP_MIGRATIONS_FOLDER}/meta/_journal.json`)) {
       await migrate(db, { migrationsFolder: APP_MIGRATIONS_FOLDER });
     }
