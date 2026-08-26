@@ -6,6 +6,7 @@ import {
   type Board,
 } from "@/operations";
 import {
+  boardNeverAnswers,
   boardRefuses,
   boardReturns,
   greenhouseBoardHandler,
@@ -256,6 +257,18 @@ describe("fetching a Greenhouse Board", () => {
       boardRefuses("acme");
 
       await expect(fetchBoard(acme)).rejects.toThrow(/404/);
+      expect(await listPostings()).toEqual([]);
+    });
+
+    // A Source that accepts the request and then goes quiet is the case a
+    // ceiling exists for: nothing is refused and nothing is malformed, so
+    // without one the Fetch waits on a reply that is never coming.
+    it("fails the Fetch when the Board never answers", async () => {
+      boardNeverAnswers("acme");
+
+      await expect(fetchBoard(acme, { timeoutMs: 50 })).rejects.toThrow(
+        /Board "acme" did not answer/,
+      );
       expect(await listPostings()).toEqual([]);
     });
 

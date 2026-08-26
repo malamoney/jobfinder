@@ -13,6 +13,7 @@ import {
 import {
   boardAnswersWithTheWrongShape,
   boardIsUnreachable,
+  boardNeverAnswers,
   boardRefuses,
   boardReturns,
   greenhouseBoard,
@@ -168,18 +169,23 @@ describe("expiring Postings a Board stopped returning", () => {
  */
 describe("when a Board's Fetch fails", () => {
   // Each of the failure modes ADR 0004 names, because they reach the Corpus
-  // through different code and only the last one looks like success.
+  // through different code and only the last one looks like success. A Fetch
+  // that gave up waiting is a failure like any other, so it belongs here
+  // rather than in a case of its own.
   it.each([
     ["the Board could not be reached at all", boardIsUnreachable],
     ["the Board refused to serve it", boardRefuses],
+    ["the Board never answered", boardNeverAnswers],
     ["the response failed validation", boardAnswersWithTheWrongShape],
   ])("expires nothing across two Fetches where %s", async (_case, breakBoard) => {
     await boardStartsWithTwoPostings();
     const before = await listPostings();
 
+    // A ceiling short enough that the silent Board is waited on for
+    // milliseconds; the other cases fail before it is ever reached.
     breakBoard("acme");
-    await expect(fetchBoard(acme)).rejects.toThrow();
-    await expect(fetchBoard(acme)).rejects.toThrow();
+    await expect(fetchBoard(acme, { timeoutMs: 50 })).rejects.toThrow();
+    await expect(fetchBoard(acme, { timeoutMs: 50 })).rejects.toThrow();
 
     // Every column, so a failed Fetch is shown to have moved neither the
     // absence count nor `last_seen_at` — either would be a step towards expiry.

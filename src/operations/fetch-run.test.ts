@@ -10,6 +10,7 @@ import {
   type FetchTaskReport,
 } from "@/operations";
 import {
+  boardNeverAnswers,
   boardRefuses,
   boardReturns,
   greenhouseBoardUrl,
@@ -17,6 +18,11 @@ import {
 } from "@/test/fixtures/greenhouse";
 import { deferred } from "@/test/deferred";
 import { server } from "@/test/msw";
+import {
+  DEFAULT_BOARD_TIMEOUT_MS,
+  DEFAULT_CLAIM_TIMEOUT_MS,
+  DEFAULT_TIME_BUDGET_MS,
+} from "./fetch-run";
 
 /** Adds an enabled Greenhouse Board that returns one Posting when fetched. */
 async function workingBoard(slug: string, id: number): Promise<void> {
@@ -119,6 +125,34 @@ describe("working the queue", () => {
     });
   });
 
+  /**
+   * The budget only means anything if one Board cannot spend all of it. A
+   * Source that accepts the request and goes quiet would otherwise hold the
+   * invocation until the platform killed it, and the Boards queued behind it
+   * would wait for a run nobody was left to finish.
+   */
+  it("does not let silent Boards spend more than the batch's budget", async () => {
+    for (const slug of ["acme", "globex", "initech"]) {
+      await addBoard({ source: "greenhouse", slug });
+      boardNeverAnswers(slug);
+    }
+    await startFetchRun();
+
+    const started = Date.now();
+    const result = await runFetchBatch({
+      timeBudgetMs: 150,
+      boardTimeoutMs: 100,
+    });
+
+    // The point is not the exact figure — it is that the batch returned on
+    // something like its own budget rather than on three silent Boards.
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(result.succeeded).toBe(0);
+    expect(result.failed).toBeGreaterThan(0);
+    // Work left for the next invocation, rather than a budget burnt through.
+    expect(result.remaining).toBeGreaterThan(0);
+  });
+
   // The budget is what a serverless invocation actually has, so it is checked
   // between Boards rather than trusted to be enough for the whole batch. One
   // Board is always fetched, or a spent budget would stall the queue forever.
@@ -145,6 +179,20 @@ describe("working the queue", () => {
     expect(run.finishedAt!.getTime()).toBeGreaterThanOrEqual(
       run.startedAt.getTime(),
     );
+  });
+});
+
+/**
+ * The three ceilings only work as a set, and each is plausible on its own, so
+ * the ordering between them is asserted rather than left to whoever edits one
+ * next. A Board bounded by more than the batch that started it, or a batch
+ * bounded by more than the Claim it holds, would put back exactly the overrun
+ * these were introduced to stop.
+ */
+describe("the ceilings a sweep is bounded by", () => {
+  it("keeps a Board inside its batch, and a batch inside its Claim", () => {
+    expect(DEFAULT_BOARD_TIMEOUT_MS).toBeLessThanOrEqual(DEFAULT_TIME_BUDGET_MS);
+    expect(DEFAULT_TIME_BUDGET_MS).toBeLessThan(DEFAULT_CLAIM_TIMEOUT_MS);
   });
 });
 
@@ -193,6 +241,21 @@ describe("when a Board fails", () => {
     expect(failure.status).toBe("failed");
     expect(failure.error).toMatch(/title/);
     expect(await listPostings()).toEqual([]);
+  });
+
+  // Whoever has to fix a dead Board (#17) needs to know whether it refused or
+  // simply never spoke; those call for different things.
+  it("records a Board that never answered as having timed out", async () => {
+    await addBoard({ source: "greenhouse", slug: "globex" });
+    boardNeverAnswers("globex");
+    const runId = await startFetchRun();
+
+    await runFetchBatch({ boardTimeoutMs: 50 });
+
+    const failure = taskFor(await readFetchRun(runId), "globex");
+    expect(failure.status).toBe("failed");
+    expect(failure.error).toMatch(/globex/);
+    expect(failure.error).toMatch(/did not answer/);
   });
 
   it("closes a run whose Boards all failed", async () => {
