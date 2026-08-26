@@ -8,11 +8,9 @@
  *
  * Source adapters are deliberately tested *through* this seam rather than
  * given their own, so a single assertion exercises the adapter, the Source Key
- * upsert, and persistence together.
- *
- * Deliberately empty until #5 adds the first real operation. The worked
- * example of the shape lives in `src/test/harness-operations.ts`; the only
- * lower seam the spec allows is pure normalizers, which get tested directly.
+ * upsert, and persistence together. The only lower seam the spec allows is
+ * pure normalizers, which get tested directly.
  */
 
-export {};
+export { fetchBoard, type Board } from "./fetch-board";
+export { listPostings } from "./postings";
