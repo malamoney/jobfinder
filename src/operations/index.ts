@@ -24,4 +24,4 @@ export {
   type FetchRunReport,
   type FetchTaskReport,
 } from "./fetch-run";
-export { listPostings } from "./postings";
+export { isExpired, listPostings } from "./postings";
