@@ -29,6 +29,13 @@
       "when": 1787712745647,
       "tag": "0003_overrated_black_cat",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787714220207,
+      "tag": "0004_mean_serpent_society",
+      "breakpoints": true
     }
   ]
 }

@@ -64,6 +64,14 @@ export const postings = pgTable(
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    // How many successful Fetches of this Posting's Board in a row did not
+    // return it — expiry, counted rather than decided, so what "Expired" means
+    // lives in one place (`isExpired`) instead of in the schema.
+    //
+    // Only a *successful* Fetch may touch this (ADR 0004). A Board that could
+    // not be read, or answered with a shape the adapter does not understand,
+    // is not evidence about any Posting and must leave this column alone.
+    absentFetches: integer("absent_fetches").notNull().default(0),
   },
   (table) => [
     uniqueIndex("postings_source_key").on(table.source, table.sourceId),

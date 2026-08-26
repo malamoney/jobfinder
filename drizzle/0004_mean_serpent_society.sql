@@ -1,0 +1,1 @@
+ALTER TABLE "postings" ADD COLUMN "absent_fetches" integer DEFAULT 0 NOT NULL;

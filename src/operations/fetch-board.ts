@@ -1,5 +1,13 @@
-import { getTableColumns, sql, type SQL } from "drizzle-orm";
-import { getDb } from "@/db";
+import {
+  and,
+  eq,
+  getTableColumns,
+  notInArray,
+  sql,
+  type Column,
+  type SQL,
+} from "drizzle-orm";
+import { getDb, type Transaction } from "@/db";
 import { postings, type SourceName } from "@/db/schema";
 import { fetchGreenhouseBoard } from "@/sources/greenhouse";
 import type { SourcePosting } from "@/sources/types";
@@ -26,16 +34,53 @@ const ADAPTERS: Record<SourceName, (slug: string) => Promise<SourcePosting[]>> =
   };
 
 /**
- * Fetches one Board and writes its Postings into the Corpus.
+ * Fetches one Board and reconciles the Corpus with what it returned.
  *
  * Throws if the Board could not be fetched or its response could not be
- * understood, and writes nothing in that case. The distinction between a Board
- * that failed and a Board that returned nothing is what expiry rests on
- * (#7): only a Fetch that returned is evidence a Posting is gone.
+ * understood, and writes nothing in that case. That is ADR 0004's invariant,
+ * and it is structural rather than remembered: `readBoard` throws before there
+ * is anything to reconcile against, so a Board that failed cannot reach the
+ * code that reads absence as evidence.
+ *
+ * A Fetch that belongs to a queued run goes through those two halves
+ * separately, so the Corpus write can be made one transaction with the task's
+ * outcome; this is the whole Fetch for a caller that has no queue, which is
+ * how tests and #18's discovery probe reach a Board.
  */
 export async function fetchBoard(board: Board): Promise<void> {
-  const fetched = await ADAPTERS[board.source](board.slug);
-  await storePostings(board, fetched);
+  const fetched = await readBoard(board);
+  await getDb().transaction((tx) => reconcileBoard(tx, board, fetched));
+}
+
+/**
+ * Asks a Source what a Board lists now, and returns it without writing
+ * anything.
+ *
+ * Separate from the writing half because the answer has to be in hand before a
+ * Worker commits to it: what the Board said and whether the Worker still holds
+ * the Claim on it are decided together (see `runFetchBatch`).
+ */
+export async function readBoard(board: Board): Promise<SourcePosting[]> {
+  return ADAPTERS[board.source](board.slug);
+}
+
+/**
+ * Makes the Corpus agree with what a Board returned: the Postings it listed
+ * are stored, and the ones it no longer lists are counted as absent, which is
+ * how they eventually expire (#7).
+ *
+ * Takes a transaction rather than opening one, because both writes are one
+ * statement about the Board and the caller may have more to say in the same
+ * breath. A Fetch half-applied would have moved some Postings towards expiry
+ * without recording that the others were seen.
+ */
+export async function reconcileBoard(
+  tx: Transaction,
+  board: Board,
+  fetched: SourcePosting[],
+): Promise<void> {
+  await storePostings(tx, board, fetched);
+  await countAbsences(tx, board, fetched);
 }
 
 /**
@@ -60,13 +105,22 @@ const PRESERVED_ON_REFETCH = new Set([
 const REFRESHED_ON_REFETCH: Record<string, SQL> = Object.fromEntries(
   Object.entries(getTableColumns(postings))
     .filter(([property]) => !PRESERVED_ON_REFETCH.has(property))
-    .map(([property, column]) => [
-      property,
-      property === "lastSeenAt"
-        ? sql`now()`
-        : sql.raw(`excluded.${column.name}`),
-    ]),
+    .map(([property, column]) => [property, refreshed(property, column)]),
 );
+
+/**
+ * What a re-Fetch writes into one column.
+ *
+ * Two columns are facts about the Fetch rather than about the Posting, so they
+ * are written from what just happened instead of from the row being inserted:
+ * this Fetch saw the Posting, so it was last seen now, and it has not been
+ * absent from any Fetch since — which un-expires a role a company re-listed.
+ */
+function refreshed(property: string, column: Column): SQL {
+  if (property === "lastSeenAt") return sql`now()`;
+  if (property === "absentFetches") return sql`0`;
+  return sql.raw(`excluded.${column.name}`);
+}
 
 /**
  * Upserts Postings on their Source Key, so a Posting already in the Corpus is
@@ -77,16 +131,51 @@ const REFRESHED_ON_REFETCH: Record<string, SQL> = Object.fromEntries(
  * this Fetch saw it.
  */
 async function storePostings(
+  tx: Transaction,
   board: Board,
   fetched: SourcePosting[],
 ): Promise<void> {
   if (fetched.length === 0) return;
 
-  await getDb()
+  await tx
     .insert(postings)
     .values(fetched.map((posting) => ({ ...posting, boardId: board.id })))
     .onConflictDoUpdate({
       target: [postings.source, postings.sourceId],
       set: REFRESHED_ON_REFETCH,
     });
+}
+
+/**
+ * Counts this Fetch against every Posting of the Board it did not return.
+ *
+ * Absence is all any Source offers — none of them publish a "this job is
+ * closed" signal — so a Posting the Board has stopped listing is counted
+ * rather than judged, and `isExpired` decides how many misses in a row make a
+ * Posting Expired. Nothing here deletes: a Posting a User marked `applied`
+ * outlives the listing.
+ *
+ * Only this Board's Postings are in range. A sweep fetches hundreds of Boards
+ * and every Posting is absent from all but one of them.
+ */
+async function countAbsences(
+  tx: Transaction,
+  board: Board,
+  fetched: SourcePosting[],
+): Promise<void> {
+  const returned = fetched.map((posting) => posting.sourceId);
+  const onThisBoard = eq(postings.boardId, board.id);
+
+  await tx
+    .update(postings)
+    .set({ absentFetches: sql`${postings.absentFetches} + 1` })
+    .where(
+      // A Board whose last role was filled returns an empty list, and every
+      // Posting on it is absent. Spelling that out rather than leaving it to
+      // `notInArray` of nothing keeps the Board this ADR is written about —
+      // the one that suddenly returns nothing — from turning on a subtlety.
+      returned.length === 0
+        ? onThisBoard
+        : and(onThisBoard, notInArray(postings.sourceId, returned)),
+    );
 }

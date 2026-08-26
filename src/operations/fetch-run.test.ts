@@ -10,16 +10,13 @@ import {
   type FetchTaskReport,
 } from "@/operations";
 import {
-  greenhouseBoardHandler,
+  boardRefuses,
+  boardReturns,
   greenhouseBoardUrl,
   greenhouseJob,
 } from "@/test/fixtures/greenhouse";
+import { deferred } from "@/test/deferred";
 import { server } from "@/test/msw";
-
-/** Declares what a Greenhouse Board returns for the next Fetch of it. */
-function boardReturns(slug: string, jobs: Array<Record<string, unknown>>): void {
-  server.use(greenhouseBoardHandler(slug, jobs));
-}
 
 /** Adds an enabled Greenhouse Board that returns one Posting when fetched. */
 async function workingBoard(slug: string, id: number): Promise<void> {
@@ -30,11 +27,7 @@ async function workingBoard(slug: string, id: number): Promise<void> {
 /** Adds an enabled Greenhouse Board that cannot be read at all. */
 async function unreachableBoard(slug: string): Promise<void> {
   await addBoard({ source: "greenhouse", slug });
-  server.use(
-    http.get(greenhouseBoardUrl(slug), () =>
-      HttpResponse.json({ error: "Not found" }, { status: 404 }),
-    ),
-  );
+  boardRefuses(slug);
 }
 
 /** The task a run recorded for one Board. */
@@ -211,15 +204,6 @@ describe("when a Board fails", () => {
     expect((await readFetchRun(runId)).finishedAt).toBeInstanceOf(Date);
   });
 });
-
-/** A promise the test resolves by hand, for holding a Board's fetch open. */
-function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((settle) => {
-    resolve = settle;
-  });
-  return { promise, resolve };
-}
 
 /**
  * A worker killed mid-fetch — the platform stopping an invocation that ran out
