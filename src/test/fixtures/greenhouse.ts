@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import { server } from "@/test/msw";
 
 /**
  * A Greenhouse Board response, shaped like the real one.
@@ -40,6 +41,42 @@ export function greenhouseBoardHandler(
     }
     return HttpResponse.json({ ...greenhouseBoard(jobs), ...envelopeExtras });
   });
+}
+
+/** Declares what a Greenhouse Board returns for the next Fetch of it. */
+export function boardReturns(
+  slug: string,
+  jobs: Array<Record<string, unknown>>,
+): void {
+  server.use(greenhouseBoardHandler(slug, jobs));
+}
+
+/**
+ * Declares that a Board cannot be reached at all, the way a Source that is
+ * down or a connection that dropped presents itself.
+ */
+export function boardIsUnreachable(slug: string): void {
+  server.use(http.get(greenhouseBoardUrl(slug), () => HttpResponse.error()));
+}
+
+/** Declares that a Board answers, but refuses to serve it. */
+export function boardRefuses(slug: string, status = 404): void {
+  server.use(
+    http.get(greenhouseBoardUrl(slug), () =>
+      HttpResponse.json({ error: "Board unavailable" }, { status }),
+    ),
+  );
+}
+
+/**
+ * Declares that a Board answers with a shape the adapter cannot understand.
+ *
+ * A 200 carrying valid JSON, because that is the case ADR 0004 is about:
+ * nothing below the adapter can tell it apart from a Board that simply has
+ * fewer roles today.
+ */
+export function boardAnswersWithTheWrongShape(slug: string): void {
+  boardReturns(slug, [{ id: 100, content: "the title field was renamed" }]);
 }
 
 type GreenhouseJobOverrides = Record<string, unknown>;

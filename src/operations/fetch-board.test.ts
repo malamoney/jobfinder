@@ -1,4 +1,3 @@
-import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   addBoard,
@@ -7,8 +6,9 @@ import {
   type Board,
 } from "@/operations";
 import {
+  boardRefuses,
+  boardReturns,
   greenhouseBoardHandler,
-  greenhouseBoardUrl,
   greenhouseJob,
 } from "@/test/fixtures/greenhouse";
 import { server } from "@/test/msw";
@@ -24,14 +24,6 @@ let acme: Board;
 beforeEach(async () => {
   acme = await addBoard({ source: "greenhouse", slug: "acme" });
 });
-
-/** Declares what the Greenhouse Board returns for the next Fetch of it. */
-function boardReturns(
-  slug: string,
-  jobs: Array<Record<string, unknown>>,
-): void {
-  server.use(greenhouseBoardHandler(slug, jobs));
-}
 
 /**
  * The first pass through ingestion: one Greenhouse Board into the Corpus.
@@ -261,11 +253,7 @@ describe("fetching a Greenhouse Board", () => {
     });
 
     it("fails the Fetch when the Board could not be read at all", async () => {
-      server.use(
-        http.get(greenhouseBoardUrl("acme"), () =>
-          HttpResponse.json({ error: "Not found" }, { status: 404 }),
-        ),
-      );
+      boardRefuses("acme");
 
       await expect(fetchBoard(acme)).rejects.toThrow(/404/);
       expect(await listPostings()).toEqual([]);
@@ -281,15 +269,7 @@ describe("fetching a Greenhouse Board", () => {
         "a response it cannot understand",
         () => boardReturns("acme", [{ id: 100, content: "no title" }]),
       ],
-      [
-        "a Board that could not be read",
-        () =>
-          server.use(
-            http.get(greenhouseBoardUrl("acme"), () =>
-              HttpResponse.json({ error: "Not found" }, { status: 404 }),
-            ),
-          ),
-      ],
+      ["a Board that could not be read", () => boardRefuses("acme")],
     ])("leaves known Postings untouched after %s", async (_case, breakBoard) => {
       boardReturns("acme", [greenhouseJob({ id: 100, title: "Staff Engineer" })]);
       await fetchBoard(acme);

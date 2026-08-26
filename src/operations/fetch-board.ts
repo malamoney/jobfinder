@@ -34,27 +34,53 @@ const ADAPTERS: Record<SourceName, (slug: string) => Promise<SourcePosting[]>> =
   };
 
 /**
- * Fetches one Board and reconciles the Corpus with what it returned: the
- * Postings it listed are stored, and the ones it no longer lists are counted
- * as absent, which is how they eventually expire (#7).
+ * Fetches one Board and reconciles the Corpus with what it returned.
  *
  * Throws if the Board could not be fetched or its response could not be
  * understood, and writes nothing in that case. That is ADR 0004's invariant,
- * and it is structural here rather than remembered: the adapter throws before
- * there is anything to reconcile against, so a Board that failed cannot reach
- * the code that reads absence as evidence.
+ * and it is structural rather than remembered: `readBoard` throws before there
+ * is anything to reconcile against, so a Board that failed cannot reach the
+ * code that reads absence as evidence.
  *
- * The two writes are one transaction because they are one statement about the
- * Board: a Fetch half-applied would have moved some Postings towards expiry
- * without recording that the others were seen.
+ * A Fetch that belongs to a queued run goes through those two halves
+ * separately, so the Corpus write can be made one transaction with the task's
+ * outcome; this is the whole Fetch for a caller that has no queue, which is
+ * how tests and #18's discovery probe reach a Board.
  */
 export async function fetchBoard(board: Board): Promise<void> {
-  const fetched = await ADAPTERS[board.source](board.slug);
+  const fetched = await readBoard(board);
+  await getDb().transaction((tx) => reconcileBoard(tx, board, fetched));
+}
 
-  await getDb().transaction(async (tx) => {
-    await storePostings(tx, board, fetched);
-    await countAbsences(tx, board, fetched);
-  });
+/**
+ * Asks a Source what a Board lists now, and returns it without writing
+ * anything.
+ *
+ * Separate from the writing half because the answer has to be in hand before a
+ * Worker commits to it: what the Board said and whether the Worker still holds
+ * the Claim on it are decided together (see `runFetchBatch`).
+ */
+export async function readBoard(board: Board): Promise<SourcePosting[]> {
+  return ADAPTERS[board.source](board.slug);
+}
+
+/**
+ * Makes the Corpus agree with what a Board returned: the Postings it listed
+ * are stored, and the ones it no longer lists are counted as absent, which is
+ * how they eventually expire (#7).
+ *
+ * Takes a transaction rather than opening one, because both writes are one
+ * statement about the Board and the caller may have more to say in the same
+ * breath. A Fetch half-applied would have moved some Postings towards expiry
+ * without recording that the others were seen.
+ */
+export async function reconcileBoard(
+  tx: Transaction,
+  board: Board,
+  fetched: SourcePosting[],
+): Promise<void> {
+  await storePostings(tx, board, fetched);
+  await countAbsences(tx, board, fetched);
 }
 
 /**
@@ -85,10 +111,10 @@ const REFRESHED_ON_REFETCH: Record<string, SQL> = Object.fromEntries(
 /**
  * What a re-Fetch writes into one column.
  *
- * Two columns are facts about the Fetch rather than about the job, so they are
- * written from what just happened instead of from the row being inserted: this
- * Fetch saw the Posting, so it was last seen now, and it has not been absent
- * from any Fetch since — which is what un-expires a role a company re-listed.
+ * Two columns are facts about the Fetch rather than about the Posting, so they
+ * are written from what just happened instead of from the row being inserted:
+ * this Fetch saw the Posting, so it was last seen now, and it has not been
+ * absent from any Fetch since — which un-expires a role a company re-listed.
  */
 function refreshed(property: string, column: Column): SQL {
   if (property === "lastSeenAt") return sql`now()`;

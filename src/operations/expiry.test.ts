@@ -11,10 +11,15 @@ import {
   type Board,
 } from "@/operations";
 import {
-  greenhouseBoardHandler,
+  boardAnswersWithTheWrongShape,
+  boardIsUnreachable,
+  boardRefuses,
+  boardReturns,
+  greenhouseBoard,
   greenhouseBoardUrl,
   greenhouseJob,
 } from "@/test/fixtures/greenhouse";
+import { deferred } from "@/test/deferred";
 import { server } from "@/test/msw";
 import type { Posting } from "@/db/schema";
 
@@ -24,31 +29,6 @@ let acme: Board;
 beforeEach(async () => {
   acme = await addBoard({ source: "greenhouse", slug: "acme" });
 });
-
-/** Declares what a Greenhouse Board returns for the next Fetch of it. */
-function boardReturns(slug: string, jobs: Array<Record<string, unknown>>): void {
-  server.use(greenhouseBoardHandler(slug, jobs));
-}
-
-/** Declares that a Board cannot be read at all for the next Fetch of it. */
-function boardIsUnreachable(slug: string): void {
-  server.use(
-    http.get(greenhouseBoardUrl(slug), () =>
-      HttpResponse.json({ error: "Service unavailable" }, { status: 503 }),
-    ),
-  );
-}
-
-/**
- * Declares that a Board answers with a shape the adapter cannot understand.
- *
- * The response is a 200 carrying valid JSON, because that is the case ADR 0004
- * is about: nothing below the adapter can tell it apart from a Board that
- * simply has fewer jobs today.
- */
-function boardAnswersWithTheWrongShape(slug: string): void {
-  boardReturns(slug, [{ id: 100, content: "the title field was renamed" }]);
-}
 
 /** The Posting a Board published under `sourceId`, as the Corpus holds it. */
 async function posting(sourceId: string): Promise<Posting> {
@@ -187,8 +167,11 @@ describe("expiring Postings a Board stopped returning", () => {
  * evidence that a Posting the Board did not return is gone (ADR 0004).
  */
 describe("when a Board's Fetch fails", () => {
+  // Each of the failure modes ADR 0004 names, because they reach the Corpus
+  // through different code and only the last one looks like success.
   it.each([
-    ["the Board could not be read", boardIsUnreachable],
+    ["the Board could not be reached at all", boardIsUnreachable],
+    ["the Board refused to serve it", boardRefuses],
     ["the response failed validation", boardAnswersWithTheWrongShape],
   ])("expires nothing across two Fetches where %s", async (_case, breakBoard) => {
     await boardStartsWithTwoPostings();
@@ -242,5 +225,50 @@ describe("when a Board's Fetch fails", () => {
     await boardDropsTheSecondPosting();
 
     expect(isExpired(await posting("200"))).toBe(true);
+  });
+});
+
+/**
+ * A Worker still alive when its Claim went stale, which is the case that makes
+ * counting absences unlike storing Postings: storing the same Board twice is
+ * harmless, because the upsert is idempotent, but counting the same night's
+ * absence twice expires a live role a night early.
+ */
+describe("when a stale Claim is reclaimed", () => {
+  it("counts one night's absence once, however many Workers fetched the Board", async () => {
+    await boardStartsWithTwoPostings();
+    await startFetchRun();
+
+    // The slow Worker, its Fetch held open past the life of its Claim.
+    const reached = deferred<void>();
+    const held = deferred<Response>();
+    server.use(
+      http.get(greenhouseBoardUrl("acme"), () => {
+        reached.resolve();
+        return held.promise;
+      }),
+    );
+    const slow = runFetchBatch().catch(() => undefined);
+    await reached.promise;
+
+    // A second Worker takes the task over and finishes it. The Board has
+    // stopped listing Posting 200, and this is the first Fetch to say so.
+    boardReturns("acme", [greenhouseJob({ id: 100, title: "Staff Engineer" })]);
+    expect(await runFetchBatch({ claimTimeoutMs: 0 })).toMatchObject({
+      succeeded: 1,
+    });
+    expect(isExpired(await posting("200"))).toBe(false);
+
+    // The slow Worker's Board finally answers, saying exactly the same thing.
+    // It no longer holds the Claim, so what it fetched is not a second night's
+    // evidence and must not be counted as one.
+    held.resolve(
+      HttpResponse.json(
+        greenhouseBoard([greenhouseJob({ id: 100, title: "Staff Engineer" })]),
+      ),
+    );
+    await slow;
+
+    expect(isExpired(await posting("200"))).toBe(false);
   });
 });

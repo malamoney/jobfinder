@@ -29,7 +29,7 @@ export async function listPostings(): Promise<Posting[]> {
  * is taken to have stopped returning it.
  *
  * Two rather than one, because one Fetch missing a Posting is as easily a
- * Source hiccup — a paginated response cut short, a job briefly unpublished
+ * Source hiccup — a paginated response cut short, a role briefly unpublished
  * while it was edited — as a role that was filled, and expiring a live role
  * costs the User an opening they would have applied for.
  */

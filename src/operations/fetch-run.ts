@@ -11,7 +11,7 @@ import {
   type Column,
   type SQL,
 } from "drizzle-orm";
-import { getDb } from "@/db";
+import { getDb, type Writer } from "@/db";
 import {
   boards,
   fetchRuns,
@@ -19,7 +19,8 @@ import {
   type FetchTaskStatus,
   type SourceName,
 } from "@/db/schema";
-import { fetchBoard, type Board } from "./fetch-board";
+import type { SourcePosting } from "@/sources/types";
+import { readBoard, reconcileBoard, type Board } from "./fetch-board";
 
 /** A Fetch run's identity, as `startFetchRun` hands it out. */
 export type FetchRunId = string;
@@ -160,8 +161,8 @@ export async function runFetchBatch(
     runsWorked.add(task.runId);
 
     try {
-      await fetchBoard(task.board);
-      if (await recordOutcome(task.id, workerId, "succeeded", null)) {
+      const fetched = await readBoard(task.board);
+      if (await commitFetch(task, workerId, fetched)) {
         succeeded++;
       }
     } catch (error) {
@@ -170,7 +171,9 @@ export async function runFetchBatch(
       // them are recorded as failure rather than as "this Board returned
       // nothing". Expiry (#7) reads that distinction, and getting it wrong
       // would quietly empty the Corpus.
-      if (await recordOutcome(task.id, workerId, "failed", reasonFor(error))) {
+      if (
+        await recordOutcome(getDb(), task.id, workerId, "failed", reasonFor(error))
+      ) {
         failed++;
       }
     }
@@ -259,6 +262,32 @@ async function claimNextTask(
 }
 
 /**
+ * Writes what a Board returned into the Corpus, and reports whether the Fetch
+ * was this Worker's to record.
+ *
+ * The outcome is claimed *before* the Corpus is touched, and in the same
+ * transaction, so the two either both happen or neither does. That is what
+ * makes a reclaimed task safe now that a Fetch counts absences (#7): a Worker
+ * whose Claim went stale while it was still alive would otherwise commit a
+ * second Fetch of the same Board on the same night, and a Posting absent from
+ * one of them would be counted twice and expire a night early.
+ */
+async function commitFetch(
+  task: ClaimedTask,
+  workerId: string,
+  fetched: SourcePosting[],
+): Promise<boolean> {
+  return getDb().transaction(async (tx) => {
+    if (!(await recordOutcome(tx, task.id, workerId, "succeeded", null))) {
+      return false;
+    }
+
+    await reconcileBoard(tx, task.board, fetched);
+    return true;
+  });
+}
+
+/**
  * Records what a Board's fetch did, and reports whether the record was ours to
  * write.
  *
@@ -267,12 +296,13 @@ async function claimNextTask(
  * would otherwise overwrite the outcome of whoever actually finished it.
  */
 async function recordOutcome(
+  writer: Writer,
   taskId: string,
   workerId: string,
   status: Extract<FetchTaskStatus, "succeeded" | "failed">,
   error: string | null,
 ): Promise<boolean> {
-  const written = await getDb()
+  const written = await writer
     .update(fetchTasks)
     .set({ status, error, finishedAt: sql`now()` })
     .where(

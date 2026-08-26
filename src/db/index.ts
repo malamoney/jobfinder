@@ -14,6 +14,15 @@ export type Transaction = Parameters<
   Parameters<Database["transaction"]>[0]
 >[0];
 
+/**
+ * What an operation writes through: the database itself, or a transaction
+ * already open on it.
+ *
+ * Lets one statement serve a caller that has something else to commit
+ * alongside it and a caller that has not.
+ */
+export type Writer = Database | Transaction;
+
 let connection: { pool: Pool; db: Database; url: string } | undefined;
 
 /**
