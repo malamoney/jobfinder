@@ -101,8 +101,12 @@ describe("probing a harvest of candidates", () => {
   it("leaves the Corpus alone", async () => {
     boardWith("acme", 4);
 
-    await probeCandidates(candidates("acme"));
+    const [probe] = await probeCandidates(candidates("acme"));
 
+    // The probe succeeding is what rules out a write that was attempted and
+    // then swallowed: a candidate has no `boards` row, so an insert would fail
+    // its foreign key and surface here as an error.
+    expect(probe).toMatchObject({ postings: 4, error: null });
     expect(await listPostings()).toEqual([]);
   });
 });

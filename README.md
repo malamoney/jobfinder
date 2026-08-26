@@ -39,24 +39,35 @@ A sweep covers the Boards listed in `scripts/data/greenhouse-boards.ts`, maintai
 Curation rather than harvesting is a cost decision — see ADR 0003.
 
 ```bash
-pnpm seed:boards   # probe every listed Board, then write it to the curated set
-pnpm discover      # harvest fresh candidates, probe them, print what is worth promoting
+pnpm seed:boards    # probe every listed Board, then write it to the curated set
+pnpm discover       # harvest fresh candidates and print what is worth promoting
+pnpm boards:status  # what the set looks like now, and what has died
 ```
 
 Seeding probes each Slug before writing it, so it proves the set is fetchable rather than
-asserting it, and a Board that cannot be read is added disabled rather than skipped. Both are
-safe to re-run: a Board keeps the id its Postings already reference.
+asserting it, and a Board that cannot be read is added *disabled* rather than skipped. It is safe
+to re-run, which is the normal case as the list grows: a Board keeps the id its Postings already
+reference, and keeps whether it is currently swept. Seeding says which Boards exist, not which are
+enabled — so a Board you turned off stays off, and one transient timeout will not knock a good
+Board out of the sweep.
 
-`pnpm discover` is run by hand and by nothing else. It writes nothing — it harvests candidate
-Slugs from Common Crawl, probes a random sample of them, and prints the live ones ranked by how
-many roles they have open. Promoting a Board means pasting its Slug into the seed file and
-re-running `pnpm seed:boards`. Roughly one in six Slugs goes dead over time, so the set needs
-re-validating periodically; `listBoards()` reports each Board's last Fetch outcome.
+`pnpm discover` is run by hand and by nothing else, and writes nothing. It harvests candidate Slugs
+from Common Crawl, probes a random sample, and prints the live ones ranked by how much they are
+advertising, each with a few of its titles — a count alone cannot tell a robotics company from a
+staffing agency, and the set is meant to lean toward the roles being searched for. Promoting a
+Board means pasting its Slug into the seed file and re-running `pnpm seed:boards`.
 
 ```bash
-pnpm discover -- --limit 300      # probe 300 candidates rather than the default 200
-pnpm discover -- --records 50000  # read fewer crawl records when harvesting
+pnpm discover -- --limit 300   # probe 300 candidates rather than the default 200
+pnpm discover -- --pages 2     # read part of the index for a quick look, not a real sample
 ```
+
+Beware `--pages`: the index is sorted, so each page is a stretch of the alphabet. Reading two of
+seven pages does not give you two-sevenths of the Boards, it gives you every Board starting with
+"a". A run that could not read a page says so loudly for the same reason.
+
+Roughly one in six Slugs goes dead over time, so the set decays. `pnpm boards:status` lists every
+Board with what its last Fetch did, worst first, so the ones worth disabling are at the top.
 
 ## Tests
 

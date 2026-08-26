@@ -24,9 +24,10 @@ const DEFAULT_CONCURRENCY = 8;
  *
  * Ranking is the point of the exercise: discovery hands back thousands of
  * Slugs and a human has to decide which are worth sweeping, so the ones with
- * the most open roles come first and the dead ones sink. ADR 0003 measured a
- * median of thirteen roles per Board against a mean of fifty-four, so the
- * order matters far more than the raw list does.
+ * the most open roles come first and the dead ones sink. The sampling in
+ * `docs/research/job-sources.md` found a median of thirteen roles per Board
+ * against a mean of fifty-four, so the order matters far more than the raw
+ * list does.
  */
 export async function probeCandidates(
   candidates: readonly BoardAddress[],
@@ -44,8 +45,9 @@ export async function probeCandidates(
 
   // A fixed pool drawing from a shared cursor, rather than chunks worked in
   // lockstep: one slow Board would otherwise hold up everything queued beside
-  // it while the rest of the pool sat idle.
-  const workers = Array.from(
+  // it while the rest of the pool sat idle. Not Workers in the glossary's
+  // sense — there is no Run, no Fetch Task and no Claim here, just probes.
+  const probers = Array.from(
     { length: Math.max(1, Math.min(concurrency, candidates.length)) },
     async () => {
       while (next < candidates.length) {
@@ -57,7 +59,7 @@ export async function probeCandidates(
     },
   );
 
-  await Promise.all(workers);
+  await Promise.all(probers);
 
   return probes.sort(byMostWorthPromoting);
 }

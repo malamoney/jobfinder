@@ -19,7 +19,8 @@
     "db:migrate": "drizzle-kit migrate --config drizzle.config.ts",
     "db:generate:test": "drizzle-kit generate --config drizzle.test.config.ts",
     "discover": "tsx --env-file-if-exists=.env.local scripts/discover-boards.ts",
-    "seed:boards": "tsx --env-file-if-exists=.env.local scripts/seed-boards.ts"
+    "seed:boards": "tsx --env-file-if-exists=.env.local scripts/seed-boards.ts",
+    "boards:status": "tsx --env-file-if-exists=.env.local scripts/board-health.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",

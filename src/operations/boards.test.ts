@@ -105,6 +105,39 @@ describe("revalidating the curated set", () => {
     expect(acme.lastFetch).toBeNull();
   });
 
+  // Seeding says which Boards exist; it does not get to say which are swept.
+  // The seed file is re-run every time the list grows, and a Board someone
+  // turned off was turned off for a reason the file knows nothing about — so
+  // disabling has to be a thing that stays done.
+  it("leaves a Board someone disabled disabled when the seed is re-run", async () => {
+    await seedBoards(CANDIDATES);
+    await addBoard({ source: "greenhouse", slug: "globex", enabled: false });
+
+    await seedBoards(CANDIDATES);
+
+    const globex = (await listBoards()).find(
+      (board) => board.slug === "globex",
+    );
+    expect(globex?.enabled).toBe(false);
+    const run = await readFetchRun(await startFetchRun());
+    expect(run.tasks.map((task) => task.slug).sort()).toEqual([
+      "acme",
+      "initech",
+    ]);
+  });
+
+  // A hand-edited list is exactly where a Slug ends up written twice, and one
+  // statement cannot update the same row twice.
+  it("copes with the same Board listed twice in the seed", async () => {
+    const seeded = await seedBoards([
+      { source: "greenhouse", slug: "acme" },
+      { source: "greenhouse", slug: "acme" },
+    ]);
+
+    expect(seeded).toHaveLength(1);
+    expect(await listBoards()).toHaveLength(1);
+  });
+
   // Disabled rather than deleted: deleting a dead Board would orphan every
   // Posting it ever published, and let the next discovery run rediscover the
   // Slug and add it straight back.

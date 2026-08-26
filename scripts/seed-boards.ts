@@ -5,18 +5,20 @@
  *
  * Every Slug is probed before it is written, so seeding proves the set is
  * fetchable rather than asserting it. A Slug that cannot be read is still
- * added — disabled. Deleting it, or leaving it out, would only let the next
- * discovery run rediscover it and offer it up again as though it were new;
- * disabled, it is a decision that stays made and can be revisited when the
- * set is revalidated.
+ * added — disabled. Leaving it out would only let the next discovery run
+ * rediscover it and offer it up again as though it were new; disabled, it is a
+ * decision that stays made and can be revisited when the set is revalidated.
  *
  * Safe to re-run, which is the normal case: the seed file grows as discovery
- * turns up Boards worth promoting, and every Board keeps the id its Postings
- * already reference.
+ * turns up Boards worth promoting. A Board already in the set keeps both the
+ * id its Postings reference and whether it is currently swept — seeding says
+ * which Boards exist, not which are enabled, so a Board someone turned off
+ * stays off.
  */
-import { addBoard, type BoardAddress } from "@/operations";
+import { seedBoards, type BoardAddress } from "@/operations";
 import { closeDb } from "@/db";
 import { probeCandidates } from "./discovery/probe-many";
+import { describe, everyFew, summarise } from "./discovery/report";
 import { GREENHOUSE_BOARDS } from "./data/greenhouse-boards";
 
 async function main(): Promise<void> {
@@ -26,33 +28,26 @@ async function main(): Promise<void> {
   }));
 
   console.log(`Probing ${candidates.length} Boards before seeding…`);
-  const probed = await probeCandidates(candidates, {
-    onProbed: (_probe, done, total) => {
-      if (done % 25 === 0 || done === total) {
-        console.log(`  probed ${done}/${total}`);
-      }
-    },
-  });
+  const probed = await probeCandidates(candidates, { onProbed: everyFew() });
 
-  for (const probe of probed) {
-    await addBoard({
+  await seedBoards(
+    probed.map((probe) => ({
       source: probe.source,
       slug: probe.slug,
       enabled: probe.error === null,
-    });
-  }
-
-  const live = probed.filter((probe) => probe.error === null);
-  const roles = live.reduce((total, probe) => total + probe.postings, 0);
-
-  console.log(
-    `\nSeeded ${probed.length} Boards: ${live.length} enabled, ` +
-      `${probed.length - live.length} disabled as unreachable.`,
+    })),
   );
-  console.log(`${roles} open roles are waiting for the first sweep.`);
 
-  for (const probe of probed.filter((entry) => entry.error !== null)) {
-    console.log(`  disabled  ${probe.slug}  ${probe.error?.slice(0, 80)}`);
+  const { live, dead, postings } = summarise(probed);
+  console.log(
+    `\nSeeded ${probed.length} Boards: ${live.length} answered, ` +
+      `${dead.length} could not be read.`,
+  );
+  console.log(`${postings} Postings are waiting for the first sweep.`);
+
+  if (dead.length > 0) {
+    console.log("\nAdded disabled, or left as they were:\n");
+    for (const probe of dead) console.log(describe(probe));
   }
 }
 

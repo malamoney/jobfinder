@@ -12,9 +12,22 @@ export type BoardProbe = BoardAddress & {
    * dead Slug.
    */
   postings: number;
+  /**
+   * A few of the titles the Board is advertising.
+   *
+   * What a Board publishes matters more than how much of it there is: the
+   * curated set is meant to lean towards the roles being searched for, and
+   * until Criteria exist (#8) the only thing that can weigh that is a person
+   * reading a sample. A count alone cannot tell a robotics company from a
+   * staffing agency.
+   */
+  titles: string[];
   /** Why the candidate could not be read, and null if it could. */
   error: string | null;
 };
+
+/** Enough titles to tell what a company does, few enough to scan in a list. */
+const TITLES_SHOWN = 5;
 
 /**
  * Asks what a candidate Slug is, without letting its Postings into the Corpus.
@@ -37,12 +50,19 @@ export async function probeBoard(
 
   try {
     const fetched = await readBoard(candidate, options);
-    return { source, slug, postings: fetched.length, error: null };
+    return {
+      source,
+      slug,
+      postings: fetched.length,
+      titles: fetched.slice(0, TITLES_SHOWN).map((posting) => posting.title),
+      error: null,
+    };
   } catch (error) {
     return {
       source,
       slug,
       postings: 0,
+      titles: [],
       error: error instanceof Error ? error.message : String(error),
     };
   }

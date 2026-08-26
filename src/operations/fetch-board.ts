@@ -29,8 +29,8 @@ export type BoardAddress = {
  * Carries the curated set's own id as well as the address, because a Posting
  * records which Board published it by reference. *Writing* to the Corpus
  * therefore only happens against a Board the application knows about — a Slug
- * being probed for the first time is a candidate, and its jobs do not belong
- * in the shared Corpus until someone promotes it.
+ * being probed for the first time is a candidate, and what it publishes does
+ * not belong in the shared Corpus until someone promotes it.
  */
 export type Board = BoardAddress & {
   id: string;

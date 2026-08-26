@@ -52,7 +52,7 @@ describe("reading a Slug out of a crawled URL", () => {
 
 /**
  * Common Crawl answers in newline-delimited JSON, one record per crawled URL.
- * A Board contributes one line per job it has ever posted, so the same Slug
+ * A Board contributes one line per Posting it has ever published, so the same Slug
  * arrives hundreds of times.
  */
 describe("reading Slugs out of a Common Crawl response", () => {
