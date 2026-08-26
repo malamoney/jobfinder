@@ -2,7 +2,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { fetchBoard, listPostings } from "@/operations";
 import {
-  greenhouseBoard,
+  greenhouseBoardHandler,
   greenhouseBoardUrl,
   greenhouseJob,
 } from "@/test/fixtures/greenhouse";
@@ -15,11 +15,7 @@ function boardReturns(
   slug: string,
   jobs: Array<Record<string, unknown>>,
 ): void {
-  server.use(
-    http.get(greenhouseBoardUrl(slug), () =>
-      HttpResponse.json(greenhouseBoard(jobs)),
-    ),
-  );
+  server.use(greenhouseBoardHandler(slug, jobs));
 }
 
 /**
@@ -96,6 +92,35 @@ describe("fetching a Greenhouse Board", () => {
     );
   });
 
+  it("leaves character references it does not recognise as they came", async () => {
+    boardReturns("acme", [
+      greenhouseJob({
+        content: "&lt;p&gt;A &#x2764; &notanentity; &#1114113;&lt;/p&gt;",
+      }),
+    ]);
+
+    await fetchBoard(ACME);
+
+    const [posting] = await listPostings();
+    expect(posting.description).toBe("<p>A ❤ &notanentity; &#1114113;</p>");
+  });
+
+  // A date the Source did not publish is unknown, not the epoch — and not the
+  // date the company last edited the job, which `updated_at` holds.
+  it("stores no posted date where the Board published none", async () => {
+    boardReturns("acme", [
+      greenhouseJob({
+        first_published: null,
+        updated_at: "2026-08-18T18:06:19-04:00",
+      }),
+    ]);
+
+    await fetchBoard(ACME);
+
+    const [posting] = await listPostings();
+    expect(posting.postedAt).toBeNull();
+  });
+
   it("updates a Posting it has seen before rather than duplicating it", async () => {
     boardReturns("acme", [greenhouseJob({ id: 100, title: "Staff Engineer" })]);
     await fetchBoard(ACME);
@@ -110,6 +135,23 @@ describe("fetching a Greenhouse Board", () => {
     expect(postings).toHaveLength(1);
     expect(postings[0].id).toBe(first.id);
     expect(postings[0].title).toBe("Staff Engineer, Platform");
+  });
+
+  // The date the Corpus first met a Posting survives every later Fetch, while
+  // the date it last saw it moves. #7 reads the second as presence.
+  it("keeps when it first saw a Posting and records when it last saw it", async () => {
+    boardReturns("acme", [greenhouseJob({ id: 100 })]);
+    await fetchBoard(ACME);
+    const [first] = await listPostings();
+
+    boardReturns("acme", [greenhouseJob({ id: 100 })]);
+    await fetchBoard(ACME);
+
+    const [refetched] = await listPostings();
+    expect(refetched.firstSeenAt).toEqual(first.firstSeenAt);
+    expect(refetched.lastSeenAt.getTime()).toBeGreaterThan(
+      first.lastSeenAt.getTime(),
+    );
   });
 
   it("reflects a description the company edited upstream", async () => {
@@ -152,14 +194,22 @@ describe("fetching a Greenhouse Board", () => {
     // rejected response would take a whole Board down over a field nobody
     // wanted.
     it("ignores a field the Source added since the adapter was written", async () => {
-      boardReturns("acme", [
-        greenhouseJob({
-          id: 100,
-          title: "Staff Engineer",
-          pay_transparency_disclosure: { min: 180000, max: 220000 },
-          data_compliance: [{ type: "gdpr", requires_consent: false }],
-        }),
-      ]);
+      server.use(
+        greenhouseBoardHandler(
+          "acme",
+          [
+            greenhouseJob({
+              id: 100,
+              title: "Staff Engineer",
+              pay_transparency_disclosure: { min: 180000, max: 220000 },
+              data_compliance: [{ type: "gdpr", requires_consent: false }],
+            }),
+          ],
+          // Unknown fields on the envelope are stripped too, not just on the
+          // jobs inside it.
+          { meta: { total: 1, next_cursor: "abc" }, warnings: ["deprecated"] },
+        ),
+      );
 
       await fetchBoard(ACME);
 
@@ -181,7 +231,7 @@ describe("fetching a Greenhouse Board", () => {
       expect(await listPostings()).toEqual([]);
     });
 
-    it("fails the Fetch when the response is not a Board at all", async () => {
+    it("fails the Fetch when the Board could not be read at all", async () => {
       server.use(
         http.get(greenhouseBoardUrl("acme"), () =>
           HttpResponse.json({ error: "Not found" }, { status: 404 }),
@@ -190,6 +240,36 @@ describe("fetching a Greenhouse Board", () => {
 
       await expect(fetchBoard(ACME)).rejects.toThrow(/404/);
       expect(await listPostings()).toEqual([]);
+    });
+
+    // ADR 0004's invariant seen from this end: a Fetch that failed is not
+    // evidence about any Posting, so it must leave the Corpus exactly as it
+    // found it — `last_seen_at` included, since #7 reads that as presence.
+    // Asserting on an empty Corpus alone would not catch a write that ran
+    // before the failure.
+    it.each([
+      [
+        "a response it cannot understand",
+        () => boardReturns("acme", [{ id: 100, content: "no title" }]),
+      ],
+      [
+        "a Board that could not be read",
+        () =>
+          server.use(
+            http.get(greenhouseBoardUrl("acme"), () =>
+              HttpResponse.json({ error: "Not found" }, { status: 404 }),
+            ),
+          ),
+      ],
+    ])("leaves known Postings untouched after %s", async (_case, breakBoard) => {
+      boardReturns("acme", [greenhouseJob({ id: 100, title: "Staff Engineer" })]);
+      await fetchBoard(ACME);
+      const before = await listPostings();
+
+      breakBoard();
+      await expect(fetchBoard(ACME)).rejects.toThrow();
+
+      expect(await listPostings()).toEqual(before);
     });
   });
 });

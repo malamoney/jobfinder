@@ -1,3 +1,5 @@
+import { http, HttpResponse } from "msw";
+
 /**
  * A Greenhouse Board response, shaped like the real one.
  *
@@ -6,14 +8,38 @@
  * most: `content` arrives HTML-entity-escaped, so a fixture that supplied bare
  * HTML would let a broken adapter pass.
  *
- * The URL is written out here rather than imported from the adapter, so a test
- * fails loudly (MSW refuses the request) if the adapter stops calling the
- * endpoint the source research recorded.
+ * The endpoint is written out here rather than imported from the adapter, so
+ * the adapter calling anything but the endpoint the source research recorded
+ * fails every test — MSW refuses a request no handler declared.
  */
 
-/** The endpoint the Greenhouse adapter is expected to call. */
+/** The path the Greenhouse adapter is expected to call. */
 export function greenhouseBoardUrl(slug: string): string {
   return `https://boards-api.greenhouse.io/v1/boards/${slug}/jobs`;
+}
+
+/**
+ * Declares what a Greenhouse Board returns.
+ *
+ * MSW matches on path alone, so the query string is checked here instead:
+ * Greenhouse omits descriptions unless asked for them, and an adapter that
+ * dropped `content=true` would quietly fill the Corpus with Postings that have
+ * no description rather than fail.
+ */
+export function greenhouseBoardHandler(
+  slug: string,
+  jobs: Array<Record<string, unknown>>,
+  envelopeExtras: Record<string, unknown> = {},
+) {
+  return http.get(greenhouseBoardUrl(slug), ({ request }) => {
+    const requested = new URL(request.url).searchParams.get("content");
+    if (requested !== "true") {
+      throw new Error(
+        `Greenhouse Board "${slug}" was fetched without content=true, so it would return no descriptions`,
+      );
+    }
+    return HttpResponse.json({ ...greenhouseBoard(jobs), ...envelopeExtras });
+  });
 }
 
 type GreenhouseJobOverrides = Record<string, unknown>;

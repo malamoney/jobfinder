@@ -27,9 +27,10 @@ export const postings = pgTable(
     source: text("source").$type<SourceName>().notNull(),
     sourceId: text("source_id").notNull(),
 
-    // The Board this Posting was fetched from. Not part of the Source Key —
-    // Source identifiers are unique within a Source, not within a Board — but
-    // recorded because expiry (#7) reasons about a Board at a time.
+    // Where this Posting came from. Not part of the Source Key — a Source's
+    // identifiers are unique across the whole Source, not per Board — but a
+    // Posting whose Board is unknown could not be traced back to what
+    // published it.
     boardSlug: text("board_slug").notNull(),
 
     company: text("company").notNull(),

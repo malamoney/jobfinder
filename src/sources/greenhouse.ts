@@ -36,7 +36,6 @@ const greenhouseJob = z.object({
   content: z.string(),
   location: z.object({ name: z.string() }).nullish(),
   first_published: z.string().nullish(),
-  updated_at: z.string().nullish(),
 });
 
 const greenhouseBoard = z.object({
@@ -57,7 +56,7 @@ export async function fetchGreenhouseBoard(
   const parsed = greenhouseBoard.safeParse(await response.json());
   if (!parsed.success) {
     throw new Error(
-      `Greenhouse Board "${slug}" returned a response this adapter does not understand: ${describe(
+      `Greenhouse Board "${slug}" returned a response this adapter does not understand: ${explainIssues(
         parsed.error,
       )}`,
     );
@@ -71,12 +70,16 @@ export async function fetchGreenhouseBoard(
     title: job.title,
     description: decodeHtmlEntities(job.content),
     location: job.location?.name ?? null,
-    postedAt: toDate(job.first_published ?? job.updated_at),
+    // `updated_at` is deliberately not a fallback: it is when the company last
+    // edited the job, and showing that as the posted date would age a Posting
+    // wrongly on the Dashboard. No published date is null, not a guess.
+    postedAt: toDate(job.first_published),
     applyUrl: job.absolute_url,
   }));
 }
 
-function describe(error: z.ZodError): string {
+/** Names the fields that were wrong, so a broken Board is diagnosable. */
+function explainIssues(error: z.ZodError): string {
   return error.issues
     .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
     .join("; ");

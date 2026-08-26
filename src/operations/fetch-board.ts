@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { getTableColumns, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/db";
 import { postings, type SourceName } from "@/db/schema";
 import { fetchGreenhouseBoard } from "@/sources/greenhouse";
@@ -30,12 +30,37 @@ export async function fetchBoard(board: Board): Promise<void> {
 }
 
 /**
+ * The columns a re-Fetch must not touch: the Posting's identity, and the date
+ * the Corpus first met it.
+ */
+const PRESERVED_ON_REFETCH = new Set(["id", "source", "sourceId", "firstSeenAt"]);
+
+/**
+ * What a re-Fetch overwrites, derived from the table rather than listed by
+ * hand.
+ *
+ * A hand-written list is one column-addition away from silently going stale —
+ * the new field would be written on insert and then never refreshed, so an
+ * edited Posting would keep its first value forever with nothing failing.
+ */
+const REFRESHED_ON_REFETCH: Record<string, SQL> = Object.fromEntries(
+  Object.entries(getTableColumns(postings))
+    .filter(([property]) => !PRESERVED_ON_REFETCH.has(property))
+    .map(([property, column]) => [
+      property,
+      property === "lastSeenAt"
+        ? sql`now()`
+        : sql.raw(`excluded.${column.name}`),
+    ]),
+);
+
+/**
  * Upserts Postings on their Source Key, so a Posting already in the Corpus is
  * updated rather than duplicated.
  *
  * Every field the Source publishes is overwritten — a company that edited a
- * description means the old one is wrong — while `first_seen_at` keeps the
- * date the Corpus first met the Posting.
+ * description means the old one is wrong — and `last_seen_at` records that
+ * this Fetch saw it.
  */
 async function storePostings(fetched: SourcePosting[]): Promise<void> {
   if (fetched.length === 0) return;
@@ -45,15 +70,6 @@ async function storePostings(fetched: SourcePosting[]): Promise<void> {
     .values(fetched)
     .onConflictDoUpdate({
       target: [postings.source, postings.sourceId],
-      set: {
-        boardSlug: sql`excluded.board_slug`,
-        company: sql`excluded.company`,
-        title: sql`excluded.title`,
-        description: sql`excluded.description`,
-        location: sql`excluded.location`,
-        applyUrl: sql`excluded.apply_url`,
-        postedAt: sql`excluded.posted_at`,
-        lastSeenAt: sql`now()`,
-      },
+      set: REFRESHED_ON_REFETCH,
     });
 }
