@@ -17,7 +17,10 @@
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "db:migrate": "drizzle-kit migrate --config drizzle.config.ts",
-    "db:generate:test": "drizzle-kit generate --config drizzle.test.config.ts"
+    "db:generate:test": "drizzle-kit generate --config drizzle.test.config.ts",
+    "discover": "tsx --env-file-if-exists=.env.local scripts/discover-boards.ts",
+    "seed:boards": "tsx --env-file-if-exists=.env.local scripts/seed-boards.ts",
+    "boards:status": "tsx --env-file-if-exists=.env.local scripts/board-health.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
@@ -39,6 +42,7 @@
     "eslint-config-next": "^16.3.3",
     "msw": "^2.15.0",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.12",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"
   }

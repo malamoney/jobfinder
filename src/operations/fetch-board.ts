@@ -13,18 +13,27 @@ import { fetchGreenhouseBoard } from "@/sources/greenhouse";
 import type { SourcePosting } from "@/sources/types";
 
 /**
- * One company's listings within a Source, addressed by its Slug.
+ * Where a Board lives: the Source, and that Source's own name for it.
  *
- * Carries the curated set's own id as well as the address, because a Posting
- * records which Board published it by reference. Fetching therefore only
- * happens against a Board the application knows about — a Slug being probed
- * for the first time (#18) is a candidate, and its jobs do not belong in the
- * shared Corpus until someone promotes it.
+ * All it takes to *ask* a Source about a Board, which is why discovery can
+ * probe a Slug nobody has promoted yet (#18).
  */
-export type Board = {
-  id: string;
+export type BoardAddress = {
   source: SourceName;
   slug: string;
+};
+
+/**
+ * One company's listings within a Source, as the curated set holds it.
+ *
+ * Carries the curated set's own id as well as the address, because a Posting
+ * records which Board published it by reference. *Writing* to the Corpus
+ * therefore only happens against a Board the application knows about — a Slug
+ * being probed for the first time is a candidate, and what it publishes does
+ * not belong in the shared Corpus until someone promotes it.
+ */
+export type Board = BoardAddress & {
+  id: string;
 };
 
 /** The adapter each Source is reached through. */
@@ -88,7 +97,7 @@ export async function fetchBoard(
  * rather than in each adapter where a new one could forget it.
  */
 export async function readBoard(
-  board: Board,
+  board: BoardAddress,
   { timeoutMs = DEFAULT_TIMEOUT_MS }: BoardFetchOptions = {},
 ): Promise<SourcePosting[]> {
   try {

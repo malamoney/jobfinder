@@ -13,7 +13,14 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    // `scripts/` is covered too: discovery (#18) is deliberately not part of
+    // the application, but reading a Slug out of a crawled URL is a decision
+    // worth pinning wherever it lives.
+    include: [
+      "src/**/*.test.ts",
+      "src/**/*.test.tsx",
+      "scripts/**/*.test.ts",
+    ],
     globalSetup: ["./src/test/global-setup.ts"],
     setupFiles: ["./src/test/setup.ts"],
     // Test files share one database and each one truncates it, so running them

@@ -12,8 +12,20 @@
  * pure normalizers, which get tested directly.
  */
 
-export { addBoard, type BoardEntry } from "./boards";
-export { fetchBoard, type Board } from "./fetch-board";
+export {
+  addBoard,
+  listBoards,
+  seedBoards,
+  type BoardEntry,
+  type CuratedBoard,
+} from "./boards";
+export {
+  fetchBoard,
+  type Board,
+  type BoardAddress,
+  type BoardFetchOptions,
+} from "./fetch-board";
+export { probeBoard, type BoardProbe } from "./probe";
 export {
   readFetchRun,
   runFetchBatch,

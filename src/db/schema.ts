@@ -88,8 +88,10 @@ export type Posting = typeof postings.$inferSelect;
 /**
  * The curated set of Boards a Fetch sweeps.
  *
- * Curation rather than harvesting is a cost decision recorded in ADR 0003;
- * seeding this table and the discovery script that feeds it are #18's. A Board
+ * Curation rather than harvesting is a cost decision: ADR 0003 records that
+ * no Source publishes a directory of Boards, and `docs/research/job-sources.md`
+ * measures what harvesting the long tail would cost to sweep. Seeding this
+ * table and the discovery script that feeds it are #18's. A Board
  * is disabled rather than deleted when it dies, so its Slug is not rediscovered
  * and re-added by the next discovery run.
  *
