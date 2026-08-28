@@ -8,6 +8,8 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { Arrangement } from "@/criteria/schema";
+import { user } from "./auth-schema";
 
 /**
  * better-auth's tables (#4) are part of the same schema, so drizzle-kit
@@ -209,3 +211,50 @@ export const fetchTasks = pgTable(
 
 /** A queued Board fetch as stored. */
 export type FetchTask = typeof fetchTasks.$inferSelect;
+
+/**
+ * A User's stated Criteria: the one definition of the work they want.
+ *
+ * The User's id is the whole primary key, so the table holds exactly one row
+ * per User. #2 records why: multiple named searches later become a `name`
+ * column and a synthetic key — a UI feature over this table rather than a
+ * migration of it.
+ *
+ * Titles and keywords are Postgres arrays rather than child tables. A User
+ * edits each as a set and Matching (#9) reads each as a set; per-item rows
+ * would buy a join that every Match pays for and nothing else queries.
+ *
+ * `home_location` and `radius_miles` are null unless the User accepts an
+ * onsite or hybrid Arrangement. `@/criteria/schema` is what enforces that
+ * pairing, on the client and the server both — the columns only store what it
+ * passed. `min_salary` null means no floor, which is not a floor of zero.
+ *
+ * Deleted with its User: Criteria with no one to own them are nothing.
+ */
+export const criteria = pgTable("criteria", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+
+  titles: text("titles").array().notNull().default([]),
+  keywords: text("keywords").array().notNull().default([]),
+  arrangements: text("arrangements")
+    .array()
+    .$type<Arrangement[]>()
+    .notNull()
+    .default([]),
+
+  homeLocation: text("home_location"),
+  radiusMiles: integer("radius_miles"),
+  minSalary: integer("min_salary"),
+
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+/** A User's Criteria as stored. */
+export type CriteriaRow = typeof criteria.$inferSelect;

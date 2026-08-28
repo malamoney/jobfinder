@@ -19,6 +19,7 @@ export {
   type BoardEntry,
   type CuratedBoard,
 } from "./boards";
+export { readCriteria, saveCriteria } from "./criteria";
 export {
   fetchBoard,
   type Board,
