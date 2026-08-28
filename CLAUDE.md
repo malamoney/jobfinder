@@ -12,6 +12,11 @@ Default label vocabulary (needs-triage, needs-info, ready-for-agent, ready-for-h
 
 Single-context layout: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
 
+### Pull requests
+
+Every PR body opens with a `## TLDR;` section saying, in plain terms, what the change solves. See
+`docs/agents/pull-requests.md`.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
