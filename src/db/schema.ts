@@ -10,6 +10,13 @@ import {
 } from "drizzle-orm/pg-core";
 
 /**
+ * better-auth's tables (#4) are part of the same schema, so drizzle-kit
+ * migrates them and the query builder can join against them. They live in
+ * their own file because their shape is the library's, not ours.
+ */
+export * from "./auth-schema";
+
+/**
  * The Sources Postings can be fetched from.
  *
  * A TypeScript union over a `text` column rather than a Postgres enum: adding

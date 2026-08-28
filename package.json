@@ -23,6 +23,7 @@
     "boards:status": "tsx --env-file-if-exists=.env.local scripts/board-health.ts"
   },
   "dependencies": {
+    "better-auth": "^1.7.2",
     "drizzle-orm": "^0.45.2",
     "next": "^16.3.3",
     "pg": "^8.23.0",
