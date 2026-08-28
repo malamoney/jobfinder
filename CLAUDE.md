@@ -11,3 +11,8 @@ Default label vocabulary (needs-triage, needs-info, ready-for-agent, ready-for-h
 ### Domain docs
 
 Single-context layout: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
+
+### Pull requests
+
+Every PR body opens with a `## TLDR;` section saying, in plain terms, what the change solves. See
+`docs/agents/pull-requests.md`.
