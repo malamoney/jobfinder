@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { getAuth } from "@/auth";
+import { currentUser } from "@/auth";
 import { logOutAction } from "../actions";
 
 export const metadata: Metadata = { title: "Dashboard · Jobfinder" };
@@ -14,8 +14,8 @@ export const metadata: Metadata = { title: "Dashboard · Jobfinder" };
  * and hoping the client notices.
  */
 export default async function DashboardPage() {
-  const current = await getAuth().api.getSession({ headers: await headers() });
-  if (!current) redirect("/login");
+  const signedIn = await currentUser(await headers());
+  if (!signedIn) redirect("/login");
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-6 px-6">
@@ -24,7 +24,7 @@ export default async function DashboardPage() {
           You are logged in
         </h1>
         <p className="text-sm text-gray-600">
-          Signed in as {current.user.email}. Stating what you are looking for
+          Signed in as {signedIn.email}. Stating what you are looking for
           comes next, and the matches after that.
         </p>
       </div>

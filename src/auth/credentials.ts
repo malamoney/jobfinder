@@ -16,7 +16,7 @@ import { z } from "zod";
  * The shortest password accepted.
  *
  * Longer than better-auth's default of eight, and stated here rather than
- * configured in two places: `auth.ts` reads this same constant, so the rule
+ * configured in two places: `instance.ts` reads this same constant, so the rule
  * the form enforces is the rule the server enforces.
  */
 export const MIN_PASSWORD_LENGTH = 12;
@@ -26,7 +26,10 @@ const EMAIL_MESSAGE = "Enter an email address, like you@example.com.";
 const PASSWORD_MESSAGE = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
 
 export const credentials = z.strictObject({
-  email: z.email(EMAIL_MESSAGE).trim(),
+  // Trimmed *before* validating. `z.email().trim()` reads as though it does
+  // this and does not: the trim is a transform that runs after the check, so
+  // a pasted address with a trailing space would simply be rejected.
+  email: z.string().trim().pipe(z.email(EMAIL_MESSAGE)),
   password: z.string().min(MIN_PASSWORD_LENGTH, PASSWORD_MESSAGE),
 });
 

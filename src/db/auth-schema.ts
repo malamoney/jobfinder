@@ -1,4 +1,12 @@
-import { boolean, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  boolean,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 
 /**
  * The tables better-auth owns.
@@ -59,7 +67,11 @@ export const session = pgTable("session", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
-});
+}, (table) => [
+  // Postgres indexes the target of a foreign key and never the column holding
+  // it, and every request looks a session up by its User.
+  index("session_user").on(table.userId),
+]);
 
 /** A session as stored. */
 export type Session = typeof session.$inferSelect;
@@ -97,7 +109,12 @@ export const account = pgTable("account", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-});
+}, (table) => [
+  // better-auth declares this one itself, and it is the constraint that stops
+  // one provider account being claimed by two Users.
+  uniqueIndex("account_issuer_account_id").on(table.issuer, table.accountId),
+  index("account_user").on(table.userId),
+]);
 
 /** Short-lived tokens better-auth issues, for flows nothing uses yet. */
 export const verification = pgTable("verification", {
@@ -111,4 +128,21 @@ export const verification = pgTable("verification", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
+});
+
+/**
+ * How many times a caller has hit a rate-limited endpoint lately.
+ *
+ * A table rather than better-auth's default of memory, because the deployment
+ * target is serverless (#20): an in-memory counter is per-invocation, so three
+ * password guesses per ten seconds becomes three *per lambda instance*, which
+ * is not a limit at all.
+ */
+export const rateLimit = pgTable("rate_limit", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  count: bigint("count", { mode: "number" }).notNull(),
+  // A millisecond epoch, which an `integer` overflows: better-auth declares
+  // the field as a number and the number it puts there is `Date.now()`.
+  lastRequest: bigint("last_request", { mode: "number" }).notNull(),
 });

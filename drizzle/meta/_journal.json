@@ -43,6 +43,13 @@
       "when": 1787944719120,
       "tag": "0005_magenta_boom_boom",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787945745530,
+      "tag": "0006_workable_monster_badoon",
+      "breakpoints": true
     }
   ]
 }

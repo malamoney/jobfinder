@@ -1,9 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { startTransition, useActionState, useState } from "react";
 // Not "@/auth": that barrel reaches Postgres, and this runs in the browser.
-import { MIN_PASSWORD_LENGTH, type AuthOutcome } from "@/auth/credentials";
+// This module is the half with nothing behind it, which is what lets the same
+// rules run here and on the server.
+import {
+  credentialsProblem,
+  MIN_PASSWORD_LENGTH,
+  type AuthOutcome,
+} from "@/auth/credentials";
 
 /**
  * The email-and-password form, which signing up and logging in share.
@@ -36,7 +42,24 @@ export function CredentialsForm({
     action,
     null,
   );
-  const problem = outcome && !outcome.ok ? outcome.message : null;
+  const [refused, setRefused] = useState<string | null>(null);
+
+  /**
+   * Checks what was typed against the same schema the server checks it with,
+   * and only then posts. Not a substitute for the server's check — anyone can
+   * post past this — but it is why a typo is answered instantly instead of
+   * after a round trip.
+   */
+  function check(form: FormData): void {
+    const problem = credentialsProblem(Object.fromEntries(form));
+    setRefused(problem);
+    if (problem) return;
+
+    startTransition(() => submit(form));
+  }
+
+  const serverProblem = outcome && !outcome.ok ? outcome.message : null;
+  const problem = refused ?? serverProblem;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 px-6">
@@ -45,7 +68,9 @@ export function CredentialsForm({
         <p className="text-sm text-gray-600">{blurb}</p>
       </div>
 
-      <form action={submit} className="flex flex-col gap-4" noValidate>
+      {/* `noValidate` because the messages below are ours, in our wording,
+          rather than whatever the browser would say in its own. */}
+      <form action={check} className="flex flex-col gap-4" noValidate>
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium">Email</span>
           <input

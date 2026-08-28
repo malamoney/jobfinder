@@ -62,6 +62,22 @@ function createAuth() {
       updateAge: SESSION_REFRESH_HOURS * 60 * 60,
     },
 
+    rateLimit: {
+      // On everywhere, not just in production as better-auth defaults to.
+      // A limit that only exists where it cannot be exercised is a limit
+      // nobody finds out is broken.
+      enabled: true,
+      // In the database rather than in memory: the deployment target is
+      // serverless, where an in-memory counter is per-invocation, so three
+      // guesses per ten seconds would mean three per lambda instance.
+      storage: "database",
+    },
+
+    // Pinned in production by #20. Unset, better-auth derives its origin from
+    // the request's own Host header, which is fine locally and is not
+    // something to rely on once deployed.
+    baseURL: process.env.BETTER_AUTH_URL,
+
     // Writes the session cookie from a server action or route handler. Next
     // forbids setting cookies from a render, so without this a sign-in would
     // succeed and then appear not to have happened.
@@ -72,8 +88,3 @@ function createAuth() {
 type Auth = ReturnType<typeof createAuth>;
 
 let instance: Auth | undefined;
-
-/** Drops the cached handle. Tests call this when they repoint the database. */
-export function resetAuth(): void {
-  instance = undefined;
-}

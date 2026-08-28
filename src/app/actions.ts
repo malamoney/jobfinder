@@ -2,7 +2,7 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { getAuth, logIn, signUp, type AuthOutcome } from "@/auth";
+import { logIn, logOut, signUp, type AuthOutcome } from "@/auth";
 
 /**
  * What the credential forms post to.
@@ -16,27 +16,27 @@ import { getAuth, logIn, signUp, type AuthOutcome } from "@/auth";
  */
 
 /** Where a User lands once they are logged in. */
-const AFTER_AUTH = "/dashboard";
+const AFTER_AUTH_PATH = "/dashboard";
 
 export async function signUpAction(
   _previous: AuthOutcome | null,
   form: FormData,
 ): Promise<AuthOutcome> {
-  const outcome = await signUp(Object.fromEntries(form));
+  const outcome = await signUp(Object.fromEntries(form), await headers());
   if (!outcome.ok) return outcome;
-  redirect(AFTER_AUTH);
+  redirect(AFTER_AUTH_PATH);
 }
 
 export async function logInAction(
   _previous: AuthOutcome | null,
   form: FormData,
 ): Promise<AuthOutcome> {
-  const outcome = await logIn(Object.fromEntries(form));
+  const outcome = await logIn(Object.fromEntries(form), await headers());
   if (!outcome.ok) return outcome;
-  redirect(AFTER_AUTH);
+  redirect(AFTER_AUTH_PATH);
 }
 
 export async function logOutAction(): Promise<void> {
-  await getAuth().api.signOut({ headers: await headers() });
+  await logOut(await headers());
   redirect("/");
 }

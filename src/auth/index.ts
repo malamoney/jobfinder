@@ -8,12 +8,10 @@
  * is the same schema and the same outcome type with nothing behind them.
  */
 
-export { getAuth, resetAuth } from "./instance";
+export { getAuth } from "./instance";
 export {
-  credentials,
   credentialsProblem,
   MIN_PASSWORD_LENGTH,
   type AuthOutcome,
-  type Credentials,
 } from "./credentials";
-export { logIn, signUp } from "./flows";
+export { currentUser, logIn, logOut, signUp } from "./flows";

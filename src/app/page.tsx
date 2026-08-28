@@ -18,10 +18,10 @@ export default function Home() {
           anything that matches.
         </p>
         <p className="text-base text-gray-600">
-          It reads the boards directly rather than scraping aggregators, so
-          every match links straight to the company&rsquo;s own application
-          page. Roles that get filled are marked as gone rather than deleted,
-          so the ones you applied for stay in your records.
+          It reads company job boards directly rather than going through a
+          middleman, so every match links straight to that company&rsquo;s own
+          application page. Roles that get filled are marked expired rather
+          than deleted, so the ones you applied for stay in your records.
         </p>
       </div>
 
