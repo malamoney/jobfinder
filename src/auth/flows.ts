@@ -1,3 +1,5 @@
+import { cookies } from "next/headers";
+import { parseSetCookieHeader, toCookieOptions } from "better-auth/cookies";
 import { getAuth } from "./instance";
 import {
   credentials,
@@ -132,6 +134,7 @@ async function post(
   });
 
   const response = await getAuth().handler(request);
+  await forwardSetCookies(response);
   if (response.ok) return { ok: true };
   if (response.status === 429) return { ok: false, message: TOO_MANY };
 
@@ -148,6 +151,36 @@ function withJson(requestHeaders: Headers): Headers {
   const forwarded = new Headers(requestHeaders);
   forwarded.set("content-type", "application/json");
   return forwarded;
+}
+
+/**
+ * Copies the session cookie off better-auth's response onto the one Next is
+ * building for this server action.
+ *
+ * The `nextCookies` plugin would normally do this, but it stands down when a
+ * request comes through `auth.handler()` (it checks `_flag === "router"`),
+ * which is exactly how `post` calls better-auth — for the rate limiter. So a
+ * sign-in succeeded, its `Set-Cookie` sat unread on a `Response` we threw
+ * away, and the browser was redirected to `/dashboard` with no session,
+ * landing straight back on `/login`.
+ *
+ * Wrapped in a try because `cookies()` throws outside a request scope, which
+ * is where the flow tests call `signUp` and `logIn` from.
+ */
+async function forwardSetCookies(response: Response): Promise<void> {
+  const setCookie = response.headers.get("set-cookie");
+  if (!setCookie) return;
+
+  let store: Awaited<ReturnType<typeof cookies>>;
+  try {
+    store = await cookies();
+  } catch {
+    return;
+  }
+
+  for (const [name, attributes] of parseSetCookieHeader(setCookie)) {
+    if (name) store.set(name, attributes.value, toCookieOptions(attributes));
+  }
 }
 
 /**
