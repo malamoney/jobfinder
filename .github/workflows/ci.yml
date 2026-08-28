@@ -62,6 +62,14 @@ jobs:
   build:
     name: build
     runs-on: ubuntu-latest
+
+    env:
+      # A placeholder, not a credential: better-auth refuses to start without a
+      # secret, and a build that fell back to its default would log an error
+      # here and hide a real misconfiguration in production. The real one is
+      # set in Vercel (#20) and never lives in this repository.
+      BETTER_AUTH_SECRET: build-time-placeholder-not-used-to-sign-anything
+
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
