@@ -57,6 +57,13 @@
       "when": 1787957403829,
       "tag": "0007_flowery_captain_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787968350219,
+      "tag": "0008_long_meteorite",
+      "breakpoints": true
     }
   ]
 }

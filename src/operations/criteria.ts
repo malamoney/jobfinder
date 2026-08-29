@@ -7,6 +7,7 @@ import {
   type Criteria,
   type CriteriaOutcome,
 } from "@/criteria/schema";
+import { matchCriteria } from "./matching";
 
 /**
  * Reading and writing a User's Criteria.
@@ -48,6 +49,11 @@ export async function readCriteria(userId: string): Promise<Criteria | null> {
  * holds one row per User, so revising Criteria is overwriting that row. The
  * earlier statement is not kept — Matching only ever wants the current one,
  * and #2 defers "named searches" to a later UI.
+ *
+ * Re-matches the whole Corpus before returning, so a User who saves a Criteria
+ * change sees its effect on the next Dashboard load rather than waiting for the
+ * nightly Fetch (#2, user story 19). Every matching stage is free, so this is
+ * unconditional.
  */
 export async function saveCriteria(
   userId: string,
@@ -70,6 +76,8 @@ export async function saveCriteria(
       set: { ...values, updatedAt: new Date() },
     })
     .returning();
+
+  await matchCriteria(userId);
 
   return { ok: true, criteria: fromRow(row) };
 }

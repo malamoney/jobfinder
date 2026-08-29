@@ -3,6 +3,7 @@ import {
   index,
   integer,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -258,3 +259,46 @@ export const criteria = pgTable("criteria", {
 
 /** A User's Criteria as stored. */
 export type CriteriaRow = typeof criteria.$inferSelect;
+
+/**
+ * A User's Matches: the Postings their Criteria currently select.
+ *
+ * Derived data, not a record of anything a User did (ADR 0001). Every row here
+ * is recomputed from the Corpus and the User's Criteria — Matching discards a
+ * User's Matches and rebuilds them on every Criteria save — so nothing a User
+ * wrote is ever stored on this table. Their opinion of a Posting lives in
+ * Review State (#10), which is keyed the same way and outlives any Match.
+ *
+ * `matched_keywords` is the subset of the User's keywords that occur in the
+ * Posting's title or description, kept so the Dashboard can show why a Posting
+ * was surfaced (#35). Empty when a Posting matched on title alone.
+ *
+ * Keyed by User and Posting together: one verdict per Posting per User. Deleted
+ * with either side — a Match with no User to see it, or no Posting to point at,
+ * is nothing. There is no timestamp: a Match is rebuilt wholesale on every
+ * Criteria save, so "when was this matched" is only ever "at the last save".
+ */
+export const matches = pgTable(
+  "matches",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    postingId: uuid("posting_id")
+      .notNull()
+      .references(() => postings.id, { onDelete: "cascade" }),
+
+    matchedKeywords: text("matched_keywords")
+      .array()
+      .notNull()
+      .default([]),
+  },
+  (table) => [
+    // The Dashboard reads every Match for one User, and #10 joins Review State
+    // onto these same rows; the primary key's leading column serves that read.
+    primaryKey({ columns: [table.userId, table.postingId] }),
+  ],
+);
+
+/** A User's Match as stored. */
+export type MatchRow = typeof matches.$inferSelect;
