@@ -17,6 +17,7 @@ import { fetchLeverBoard } from "@/sources/lever";
 import { fetchRecruiteeBoard } from "@/sources/recruitee";
 import { fetchUsajobsBoard } from "@/sources/usajobs";
 import { fetchWorkableBoard } from "@/sources/workable";
+import { fetchWorkdayBoard } from "@/sources/workday";
 import type { SourcePosting } from "@/sources/types";
 
 /**
@@ -88,6 +89,10 @@ const ADAPTERS: Record<SourceName, SourceAdapter> = {
     expiry: "published-expiry",
     timeoutMs: 35_000,
   },
+  // A Board — one company, absence expiry — but a detail request per job over
+  // a paged list, so it needs far longer than a single-request Board (#16).
+  // The Worker still caps this against what is left of its batch budget.
+  workday: { fetch: fetchWorkdayBoard, expiry: "absence", timeoutMs: 120_000 },
 };
 
 /**
