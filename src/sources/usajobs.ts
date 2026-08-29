@@ -2,6 +2,8 @@ import { z } from "zod";
 import { readSourceDocument } from "./adapter";
 import {
   everyPlace,
+  feedCloseDate,
+  oneSourcePostingPerId,
   placeWithArrangement,
   salaryPeriodFromWords,
   statedSalary,
@@ -48,7 +50,14 @@ const RESULTS_PER_PAGE = 500;
  */
 const MAX_PAGES = 10;
 
-/** How USAJOBS spells the pay periods, in its `RateIntervalCode`. */
+/**
+ * The two-letter pay-period codes, for the feeds that use them.
+ *
+ * The Search API writes `RateIntervalCode` as a phrase — `Per Year`, `Per
+ * Hour` — which `salaryPeriodFromWords` already reads. This map is the
+ * fallback for the codelist spelling (`PA`, `PH`) in case a response carries
+ * that instead.
+ */
 const RATE_INTERVAL: Record<string, "year" | "month" | "hour"> = {
   PA: "year",
   PM: "month",
@@ -146,7 +155,9 @@ export async function fetchUsajobsBoard(
     });
 
     for (const item of SearchResult.SearchResultItems) {
-      collected.push(toPosting(item.MatchedObjectId, item.MatchedObjectDescriptor));
+      collected.push(
+        toPosting(item.MatchedObjectId, item.MatchedObjectDescriptor),
+      );
     }
 
     // `NumberOfPages` is the count USAJOBS itself reports for the query; an
@@ -162,7 +173,10 @@ export async function fetchUsajobsBoard(
       break;
     }
   }
-  return collected;
+  // `Page` paging re-lists an announcement that shifted across a page boundary
+  // while this loop was walking it; the Corpus upsert would fail the whole
+  // Fetch on the repeated Source Key.
+  return oneSourcePostingPerId(collected);
 }
 
 function toPosting(
@@ -183,23 +197,21 @@ function toPosting(
       .join("\n\n"),
     location: placeWithArrangement(
       job.RemoteIndicator ? "Remote" : null,
-      everyPlace(
-        job.PositionLocation?.map((place) => place.LocationName) ?? [
-          job.PositionLocationDisplay,
-        ],
-      ),
+      everyPlace(locationsOf(job)),
     ),
     // `PositionURI` is the announcement page, matching what the ATS adapters
     // give: a reader wants to see the role before applying to it.
     applyUrl: job.PositionURI,
     postedAt: toDate(job.PublicationStartDate),
     // Federal announcements close on a stated date, which is the expiry signal
-    // for a Source whose feed a Fetch never sees the whole of.
-    expiresAt: toDate(job.ApplicationCloseDate),
+    // for a Source whose feed a Fetch never sees the whole of; the fallback
+    // covers the rare announcement that omits it.
+    expiresAt: feedCloseDate(toDate(job.ApplicationCloseDate)),
     salary: statedSalary({
       // Federal pay is always in dollars.
       currency: "USD",
       period:
+        salaryPeriodFromWords(pay?.RateIntervalCode) ??
         salaryPeriodFromWords(pay?.Description) ??
         RATE_INTERVAL[pay?.RateIntervalCode ?? ""] ??
         null,
@@ -207,4 +219,21 @@ function toPosting(
       max: pay?.MaximumRange ?? undefined,
     }),
   };
+}
+
+/**
+ * Every place an announcement names.
+ *
+ * `PositionLocation` is the structured list; `PositionLocationDisplay` is the
+ * fallback only when that list names nowhere — an empty array, or entries whose
+ * `LocationName` is absent — so a commutable announcement is not stored with a
+ * null location and surfaced as unresolved for nothing.
+ */
+function locationsOf(
+  job: z.infer<typeof descriptor>,
+): Array<string | null | undefined> {
+  const named = (job.PositionLocation ?? [])
+    .map((place) => place.LocationName)
+    .filter((name): name is string => Boolean(name));
+  return named.length > 0 ? named : [job.PositionLocationDisplay];
 }

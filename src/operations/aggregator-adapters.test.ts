@@ -122,6 +122,65 @@ describe("fetching from USAJOBS", () => {
     ]);
   });
 
+  // `Page` paging re-lists an announcement that shifted down while the loop was
+  // walking pages. The Corpus upserts one statement on the Source Key, and
+  // Postgres refuses to touch a row twice, so an undeduped repeat would fail
+  // the whole night's Fetch.
+  it("keeps one Posting when an announcement appears on two pages", async () => {
+    usajobsReturns([
+      [usajobsItem({}, "1"), usajobsItem({}, "shared")],
+      [usajobsItem({}, "shared"), usajobsItem({}, "3")],
+    ]);
+
+    await fetchBoard(board);
+
+    expect((await listPostings()).map((p) => p.sourceId).sort()).toEqual([
+      "1",
+      "3",
+      "shared",
+    ]);
+  });
+
+  it("stores the display location when the structured list names nowhere", async () => {
+    usajobsReturns([
+      [
+        usajobsItem({
+          PositionLocation: [],
+          PositionLocationDisplay: "Washington, DC",
+        }),
+      ],
+    ]);
+
+    await fetchBoard(board);
+
+    expect((await listPostings())[0].location).toBe("Washington, DC");
+  });
+
+  it("reads the period from RateIntervalCode when the description is a sentence", async () => {
+    usajobsReturns([
+      [
+        usajobsItem({
+          PositionRemuneration: [
+            {
+              MinimumRange: "90000",
+              MaximumRange: "110000",
+              RateIntervalCode: "Per Year",
+              Description: "$90,000 to $110,000 per year - Full Time",
+            },
+          ],
+        }),
+      ],
+    ]);
+
+    await fetchBoard(board);
+
+    expect((await listPostings())[0]).toMatchObject({
+      salaryMin: 90_000,
+      salaryMax: 110_000,
+      salaryPeriod: "year",
+    });
+  });
+
   it("ignores a field USAJOBS added since the adapter was written", async () => {
     usajobsReturns([[usajobsItem(FIELDS_NOBODY_ASKED_FOR)]]);
 
@@ -310,6 +369,22 @@ describe("how an aggregator Posting expires", () => {
     await fetchBoard(board);
 
     expect(isExpired((await listPostings())[0])).toBe(false);
+  });
+
+  // A feed that publishes no close date for a job would otherwise leave it live
+  // forever — an aggregator Posting never expires by absence (ADR 0007). The
+  // fallback close date is set from the Fetch, so it slides forward on every
+  // re-Fetch and the role only expires once it stops appearing in the feed.
+  it("gives a Posting with no published close date a future fallback", async () => {
+    const board = await addBoard({ source: "himalayas", slug: "remote" });
+    himalayasReturns([[himalayasJob({ expiryDate: null })]]);
+
+    await fetchBoard(board);
+
+    const [posting] = await listPostings();
+    expect(posting.expiresAt).not.toBeNull();
+    expect(posting.expiresAt!.getTime()).toBeGreaterThan(Date.now());
+    expect(isExpired(posting)).toBe(false);
   });
 
   it("refreshes the close date a re-Fetch brings back", async () => {

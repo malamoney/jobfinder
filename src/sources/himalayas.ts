@@ -2,6 +2,8 @@ import { z } from "zod";
 import { readSourceDocument } from "./adapter";
 import {
   everyPlace,
+  feedCloseDate,
+  oneSourcePostingPerId,
   placeWithArrangement,
   salaryPeriodFromWords,
   statedSalary,
@@ -95,7 +97,10 @@ export async function fetchHimalayasBoard(
     if (!result.nextCursor || result.jobs.length === 0) break;
     cursor = result.nextCursor;
   }
-  return collected;
+  // Cursor paging is meant to dedupe across pages, but a job promoted to the
+  // top of the feed mid-walk can still arrive twice; the Corpus upsert would
+  // fail the whole Fetch on the repeated Source Key.
+  return oneSourcePostingPerId(collected);
 }
 
 function toPosting(job: z.infer<typeof himalayasJob>): SourcePosting {
@@ -114,7 +119,12 @@ function toPosting(job: z.infer<typeof himalayasJob>): SourcePosting {
     ),
     applyUrl: job.applicationLink,
     postedAt: job.pubDate == null ? null : toDate(job.pubDate * 1000),
-    expiresAt: job.expiryDate == null ? null : toDate(job.expiryDate * 1000),
+    // The feed publishes each job's own close date; the fallback covers a job
+    // that arrives without one, so a role never sits live in the Corpus forever
+    // (an aggregator Posting never expires by absence — ADR 0007).
+    expiresAt: feedCloseDate(
+      job.expiryDate == null ? null : toDate(job.expiryDate * 1000),
+    ),
     salary: statedSalary({
       currency: job.currency,
       period: salaryPeriodFromWords(job.salaryPeriod),

@@ -35,8 +35,9 @@ export function usajobsDescriptor(
       {
         MinimumRange: "112015.0",
         MaximumRange: "145617.0",
-        RateIntervalCode: "PA",
-        Description: "Per Year",
+        // The Search API spells the period as a phrase here, not a code.
+        RateIntervalCode: "Per Year",
+        Description: "$112,015 to $145,617 per year",
       },
     ],
     PublicationStartDate: "2026-08-06",

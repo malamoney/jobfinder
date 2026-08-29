@@ -1,4 +1,5 @@
 import type { ExtractedSalary, SalaryPeriod } from "@/postings/salary";
+import type { SourcePosting } from "./types";
 
 /**
  * What a Source published, turned into the fields a Posting holds.
@@ -235,4 +236,44 @@ function amount(value: number | string | null | undefined): number | null {
   if (value === null || value === undefined || value === "") return null;
   const parsed = typeof value === "string" ? Number(value) : value;
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+/**
+ * One `SourcePosting` per Source Key, keeping the last.
+ *
+ * An aggregator pages through a feed (#15), and a feed that shifts a result
+ * across a page boundary while the Fetch is walking it — a new posting arrives
+ * at the top of a newest-first feed between two requests — hands the adapter
+ * the same job twice. The Corpus upserts on `(source, source_id)` in one
+ * statement, and Postgres refuses an insert that would touch one row twice, so
+ * an undeduped repeat fails the whole Fetch. This is the aggregator's version
+ * of what `collapseByShortcode` does for Workable; there is nothing to merge
+ * across the copies, so the later one simply wins.
+ */
+export function oneSourcePostingPerId(
+  postings: SourcePosting[],
+): SourcePosting[] {
+  return [
+    ...new Map(postings.map((posting) => [posting.sourceId, posting])).values(),
+  ];
+}
+
+/** Days after a Fetch last saw it that an aggregator Posting with no published
+ * close date is taken to have expired. */
+const UNDATED_EXPIRY_DAYS = 60;
+
+/**
+ * The close date to store for an aggregator Posting: the one the feed
+ * published, or a sliding fallback when it published none.
+ *
+ * An aggregator Posting never expires by absence (`reconcileBoard` skips
+ * `countAbsences` for it, ADR 0007), so a null close date would leave it live
+ * in the Corpus forever — a filled role no path ever retires. The fallback is
+ * measured from now, so every Fetch that still returns the Posting slides it
+ * forward: it stays live while it keeps appearing in the feed's newest pages,
+ * and expires `UNDATED_EXPIRY_DAYS` after it drops out of them.
+ */
+export function feedCloseDate(published: Date | null): Date {
+  if (published) return published;
+  return new Date(Date.now() + UNDATED_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 }
