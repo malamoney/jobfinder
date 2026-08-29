@@ -21,8 +21,16 @@ One company's job listings within an applicant tracking Source, addressed by its
 _Avoid_: Careers page, company feed
 
 **Slug**:
-The identifier naming a Board within a Source, as it appears in that Source's URLs.
+The identifier naming a Board within a Source, as it appears in that Source's URLs. For an
+Aggregator, where there is no company to name, it names a slice of the feed instead — a USAJOBS
+keyword, or just the feed itself.
 _Avoid_: Handle, key, company ID
+
+**Aggregator**:
+A Source that is one feed spanning many employers rather than one company's Board — USAJOBS,
+Himalayas (ADR 0007). Too large to fetch whole in one Fetch, so its Postings expire by the close
+date the feed publishes rather than by absence (ADR 0004 vs. 0007).
+_Avoid_: Job board, index
 
 **Corpus**:
 The full set of Postings held in the database, fetched once and shared by all Users rather than

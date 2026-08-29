@@ -37,15 +37,26 @@ export async function listPostings(): Promise<Posting[]> {
 const ABSENT_FETCHES_UNTIL_EXPIRED = 2;
 
 /**
- * Whether a Board has stopped returning a Posting.
+ * Whether a Posting has stopped being live.
  *
- * Expiry is derived from the absence count rather than stored, so there is one
- * answer to "is this Expired" and it cannot fall out of step with the counting.
- * An Expired Posting is still in the Corpus — expiry hides a filled role from
- * the Dashboard (#9); it never takes one out of a User's records.
+ * Two ways in, one per kind of Source (#15):
+ *
+ * - An ATS Board's Fetch is its Board's whole state, so a Posting missing from
+ *   `ABSENT_FETCHES_UNTIL_EXPIRED` successful Fetches in a row is gone.
+ * - An aggregator's Fetch is a bounded slice of a feed spanning thousands of
+ *   employers, so absence proves nothing; `expiresAt` carries the close date
+ *   the feed published, and a Posting past it is done.
+ *
+ * Derived rather than stored either way, so there is one answer to "is this
+ * Expired" and it cannot fall out of step. An Expired Posting is still in the
+ * Corpus — expiry hides a filled role from the Dashboard (#9); it never takes
+ * one out of a User's records.
  */
-export function isExpired(posting: Pick<Posting, "absentFetches">): boolean {
-  return posting.absentFetches >= ABSENT_FETCHES_UNTIL_EXPIRED;
+export function isExpired(
+  posting: Pick<Posting, "absentFetches" | "expiresAt">,
+): boolean {
+  if (posting.absentFetches >= ABSENT_FETCHES_UNTIL_EXPIRED) return true;
+  return posting.expiresAt != null && posting.expiresAt.getTime() <= Date.now();
 }
 
 /**

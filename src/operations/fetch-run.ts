@@ -20,7 +20,12 @@ import {
   type SourceName,
 } from "@/db/schema";
 import type { SourcePosting } from "@/sources/types";
-import { readBoard, reconcileBoard, type Board } from "./fetch-board";
+import {
+  boardTimeoutFor,
+  readBoard,
+  reconcileBoard,
+  type Board,
+} from "./fetch-board";
 
 /** A Fetch run's identity, as `startFetchRun` hands it out. */
 export type FetchRunId = string;
@@ -192,11 +197,16 @@ export async function runFetchBatch(
       // Board rather than fetch it. Every later Board is bounded again by what
       // the batch has left, which the loop above has just confirmed is more
       // than nothing.
+      //
+      // `boardTimeoutFor` raises the ceiling to an aggregator's longer floor
+      // (#15) before either bound is applied, so a feed that pages still cannot
+      // outlive the invocation working it.
+      const ceiling = boardTimeoutFor(task.board.source, boardTimeoutMs);
       const fetched = await readBoard(task.board, {
         timeoutMs:
           worked === 0
-            ? boardTimeoutMs
-            : Math.min(boardTimeoutMs, deadline - Date.now()),
+            ? ceiling
+            : Math.min(ceiling, deadline - Date.now()),
       });
       if (await commitFetch(task, workerId, fetched)) {
         succeeded++;

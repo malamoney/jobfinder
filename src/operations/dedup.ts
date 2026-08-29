@@ -15,7 +15,12 @@ import { isExpired } from "./postings";
 /** What `chooseRepresentative` weighs — a stored `Posting` supplies all of it. */
 type Presentable = Pick<
   Posting,
-  "description" | "applyUrl" | "absentFetches" | "source" | "sourceId"
+  | "description"
+  | "applyUrl"
+  | "absentFetches"
+  | "expiresAt"
+  | "source"
+  | "sourceId"
 >;
 
 /**
