@@ -172,6 +172,14 @@ function PostingCard({ posting }: { posting: DashboardPosting }) {
               Expired
             </span>
           )}
+          {posting.unresolvedLocation && (
+            // The radius could not be applied to this Posting — its location did
+            // not geocode. Shown, not dropped, and marked so it is clear why
+            // (#12).
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+              Location unresolved
+            </span>
+          )}
         </div>
       </div>
 

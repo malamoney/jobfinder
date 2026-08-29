@@ -1,5 +1,6 @@
 import {
   boolean,
+  doublePrecision,
   index,
   integer,
   pgTable,
@@ -61,8 +62,15 @@ export const postings = pgTable(
     company: text("company").notNull(),
     title: text("title").notNull(),
     description: text("description").notNull(),
-    // Free text as the Source wrote it; geocoding it is #12's problem.
+    // Free text as the Source wrote it — `Greater Boston Area`,
+    // `San Francisco, CA / Remote`, `Multiple locations`.
     location: text("location"),
+    // Extraction (#12) derives this from `location`: the normalized key the
+    // geocode cache (`geocodes`) is looked up by, or null when the text names no
+    // geocodable place. Cleared and recomputed on a re-Fetch with the other
+    // derived fields, so a place a company corrected does not keep its old
+    // coordinates. The distance funnel stage joins `geocodes` on this.
+    normalizedLocation: text("normalized_location"),
     applyUrl: text("apply_url").notNull(),
     // Null where the Source published no date, which is not the same as the
     // epoch and must not be sorted as though it were.
@@ -117,11 +125,39 @@ export const postings = pgTable(
     // it. #7 reads the Corpus a Board at a time, so this is the index that
     // query needs.
     index("postings_board").on(table.boardId),
+    // The distance funnel stage (#12) joins `geocodes` onto this column, and
+    // the Dashboard joins it again to flag an unresolved location.
+    index("postings_normalized_location").on(table.normalizedLocation),
   ],
 );
 
 /** A Posting as stored in the Corpus. */
 export type Posting = typeof postings.$inferSelect;
+
+/**
+ * The geocode cache: a normalized location string paired with the coordinate it
+ * resolves to (#12).
+ *
+ * Keyed by the normalized string rather than by Posting, because the same
+ * handful of strings recur across thousands of Postings — `Greater Boston Area`
+ * alone covers many — and geocoding each Posting would be thousands of external
+ * calls where geocoding each distinct string is a few dozen. After a short
+ * warm-up almost every lookup is a cache hit.
+ *
+ * A row means the geocoder was asked. `latitude` and `longitude` null means it
+ * was asked and answered with no place — a negative result, cached so the same
+ * unresolvable string is not retried on every Fetch. They are only ever both
+ * set or both null. A geocoder *outage* is not cached: the adapter throws
+ * rather than returning null, so no row is written and the string is retried.
+ */
+export const geocodes = pgTable("geocodes", {
+  location: text("location").primaryKey(),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+});
+
+/** A cached geocode as stored. */
+export type Geocode = typeof geocodes.$inferSelect;
 
 /**
  * The curated set of Boards a Fetch sweeps.

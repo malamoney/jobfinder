@@ -51,6 +51,18 @@ A Posting that a Source stopped returning across consecutive successful Fetches.
 than deleted, so Review State outlives the listing.
 _Avoid_: Dead, stale, closed, removed
 
+**Geocode Cache**:
+Normalized location strings paired with the coordinate each resolves to, keyed by the string rather
+than the Posting — the same handful of strings recur across thousands of Postings. A negative result
+is cached too; a geocoder outage is not (ADR 0005).
+_Avoid_: Geo table, location index
+
+**Unresolved location**:
+A Posting that names a place no geocoder could place. Surfaced and flagged, never dropped — silently
+dropping is how a User loses a role they wanted and never finds out. A remote Posting is not
+unresolved: it names no place because it needs none.
+_Avoid_: Ungeocoded, bad location, missing location
+
 ### Fetch orchestration
 
 **Fetch Run**:

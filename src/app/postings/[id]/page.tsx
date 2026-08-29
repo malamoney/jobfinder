@@ -44,11 +44,18 @@ export default async function PostingPage({
             </h1>
             <p className="text-sm text-gray-600">{posting.company}</p>
           </div>
-          {posting.expired && (
-            <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
-              Expired
-            </span>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            {posting.expired && (
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+                Expired
+              </span>
+            )}
+            {posting.unresolvedLocation && (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                Location unresolved
+              </span>
+            )}
+          </div>
         </div>
 
         <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-600">

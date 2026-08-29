@@ -2,11 +2,13 @@ import { and, eq, isNull, type SQL } from "drizzle-orm";
 import type { Writer } from "@/db";
 import { postings } from "@/db/schema";
 import { extractArrangements } from "@/postings/arrangement";
+import { normalizeLocation } from "@/postings/location";
 import { extractSalary } from "@/postings/salary";
 
 /**
- * Extraction: deriving normalized salary and Arrangement from a Posting's free
- * text where the Source published nothing structured (CONTEXT.md, "Extraction").
+ * Extraction: deriving normalized salary, Arrangement, and a geocoding key from
+ * a Posting's free text where the Source published nothing structured
+ * (CONTEXT.md, "Extraction").
  *
  * Stage three of the matching funnel (#2). It runs over the Postings a User's
  * cheap stages let through, not the whole Corpus — extracting every ingested
@@ -59,6 +61,10 @@ export async function extractPostings(
         salaryMax: salary ? Math.round(salary.max) : null,
         salaryPeriod: salary?.period ?? null,
         arrangements: extractArrangements(text),
+        // The geocode cache key (#12), from the location string alone rather
+        // than the joined text — a place named in the description is not where
+        // the role is.
+        normalizedLocation: normalizeLocation(posting.location),
         extractedAt,
       })
       .where(eq(postings.id, posting.id));

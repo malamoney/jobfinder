@@ -3,6 +3,7 @@ import {
   arrayOverlaps,
   eq,
   ilike,
+  isNotNull,
   isNull,
   not,
   or,
@@ -10,21 +11,26 @@ import {
   type Column,
   type SQL,
 } from "drizzle-orm";
-import { getDb } from "@/db";
+import { getDb, type Transaction } from "@/db";
 import {
   criteria,
+  geocodes,
   matches,
   postings,
   type CriteriaRow,
   type Posting,
 } from "@/db/schema";
 import {
+  DISTANCE_ARRANGEMENTS,
   EMPLOYMENT_ARRANGEMENTS,
   LOCATION_ARRANGEMENTS,
   type Arrangement,
 } from "@/criteria/schema";
+import { normalizeLocation } from "@/postings/location";
 import { WORKING_HOURS_PER_YEAR } from "@/postings/salary";
+import type { Coordinate } from "@/geocoding/nominatim";
 import { extractPostings } from "./extraction";
+import { ensureGeocoded, readGeocode } from "./geocoding";
 
 /**
  * The matching funnel: the ordered, deterministic stages that turn a User's
@@ -43,8 +49,24 @@ import { extractPostings } from "./extraction";
  * Extraction is what splits the run in two. The stages before it are cheap and
  * read only what a Source published; the stages after it read fields Extraction
  * derives, and Extraction runs over the survivors of the cheap stages alone —
- * never the whole Corpus (#11). Distance (#12) adds another derived stage.
+ * never the whole Corpus (#11). Distance (#12) is another derived stage: it
+ * needs both the extracted Arrangements and the geocoded location.
  */
+
+/** Earth's mean radius in miles, for the great-circle distance in SQL. */
+const EARTH_RADIUS_MILES = 3958.7559;
+
+/**
+ * What a derived stage may need beyond the stored Criteria: the User's home
+ * coordinate, resolved once per match run.
+ *
+ * Null when the User set no radius, or when their home location could not be
+ * geocoded — the distance stage cannot filter without a point to measure from,
+ * and showing every role beats hiding a commutable one.
+ */
+type MatchContext = {
+  home: Coordinate | null;
+};
 
 /** One stage of the funnel. */
 type FunnelStage = {
@@ -60,7 +82,7 @@ type FunnelStage = {
    * A predicate over `postings` keeping only the rows this stage accepts, or
    * `undefined` when these Criteria give the stage nothing to filter on.
    */
-  narrow(stated: CriteriaRow): SQL | undefined;
+  narrow(stated: CriteriaRow, context: MatchContext): SQL | undefined;
 };
 
 /**
@@ -165,11 +187,64 @@ function axisClause(
   );
 }
 
+/**
+ * The commute radius, over the geocoded location.
+ *
+ * "A hybrid role four hundred miles away is exactly as uncommutable as an
+ * onsite one" (#12): the radius applies to onsite and hybrid Postings and to
+ * nothing else. A remote Posting ignores it. A Posting whose text names no
+ * location mode is left alone too — unknown is not "commute", the same way the
+ * Arrangement stage never excludes on a silent axis.
+ *
+ * A Posting whose location could not be geocoded is *kept*, not dropped:
+ * silently dropping it is how a User loses a role they wanted and never finds
+ * out (#12). The Dashboard flags it as unresolved instead.
+ *
+ * The distance is a great-circle computation in SQL against the `geocodes`
+ * cache, which `matchCriteria` has already filled for every surviving location.
+ */
+const withinCommuteRadius: FunnelStage = {
+  name: "commute radius over the geocoded location",
+  derived: true,
+  narrow({ radiusMiles }, { home }) {
+    if (radiusMiles == null || !home) return undefined;
+
+    // The radius bites only on a Posting whose text places it onsite or hybrid
+    // and does not also offer remote. Everything else — a remote role, or one
+    // whose text names no location mode — is left alone, the same way the
+    // Arrangement stage never excludes on a silent axis.
+    const radiusDoesNotApply = or(
+      not(arrayOverlaps(postings.arrangements, [...DISTANCE_ARRANGEMENTS])),
+      arrayOverlaps(postings.arrangements, ["remote"] satisfies Arrangement[]),
+    );
+
+    // The only Postings the radius drops: those whose location the cache
+    // resolved to a point that is too far. A location with no resolved point —
+    // no cache row, or a negative result — matches nothing here and is kept, so
+    // an unresolvable location is surfaced rather than lost.
+    const outsideRadius = sql`
+      exists (
+        select 1 from ${geocodes} as g
+        where g.location = ${postings.normalizedLocation}
+          and g.latitude is not null
+          and ${EARTH_RADIUS_MILES} * acos(least(1, greatest(-1,
+            sin(radians(${home.latitude})) * sin(radians(g.latitude))
+            + cos(radians(${home.latitude})) * cos(radians(g.latitude))
+              * cos(radians(g.longitude) - radians(${home.longitude}))
+          ))) > ${radiusMiles}
+      )
+    `;
+
+    return or(radiusDoesNotApply, not(outsideRadius));
+  },
+};
+
 /** The stages, in the order they run. */
 const FUNNEL: FunnelStage[] = [
   titleAndKeywordMatch,
   minimumSalary,
   acceptedArrangements,
+  withinCommuteRadius,
 ];
 
 /**
@@ -181,8 +256,84 @@ const FUNNEL: FunnelStage[] = [
  * state a title, so the cheap stages always narrow — this is a guard, not a
  * path taken.
  */
-function combine(stages: FunnelStage[], stated: CriteriaRow): SQL | undefined {
-  return and(...stages.map((stage) => stage.narrow(stated)));
+function combine(
+  stages: FunnelStage[],
+  stated: CriteriaRow,
+  context: MatchContext,
+): SQL | undefined {
+  return and(...stages.map((stage) => stage.narrow(stated, context)));
+}
+
+/** The context the cheap stages run under; none of them read it. */
+const NO_CONTEXT: MatchContext = { home: null };
+
+/** The normalized key for a User's home location, or null when they set none. */
+function homeKeyOf(stated: CriteriaRow): string | null {
+  if (stated.radiusMiles == null) return null;
+  return normalizeLocation(stated.homeLocation);
+}
+
+/**
+ * Fills the geocode cache with every location a distance-bounded match run will
+ * need — the survivors of the cheap stages, plus the User's home.
+ *
+ * Runs before the match transaction opens, on a plain handle: a warm-up run
+ * makes one external call per uncached string, and none of that should hold the
+ * User's `matches` rows locked. What it geocodes is read straight back out of
+ * the cache inside the transaction (`resolveHomeCoordinate`, the distance
+ * stage's subquery). A no-op when the User set no radius, or once the Corpus's
+ * locations are all cached.
+ *
+ * The Criteria are read here and again in the transaction; a change in between
+ * only means the cache was warmed for a slightly different survivor set, which
+ * the next run settles.
+ */
+async function warmGeocodesForMatch(userId: string): Promise<void> {
+  const db = getDb();
+
+  const [stated] = await db
+    .select()
+    .from(criteria)
+    .where(eq(criteria.userId, userId));
+  if (!stated) return;
+
+  const homeKey = homeKeyOf(stated);
+  if (!homeKey) return;
+
+  const cheap = combine(
+    FUNNEL.filter((stage) => !stage.derived),
+    stated,
+    NO_CONTEXT,
+  );
+  if (!cheap) return;
+
+  const located = await db
+    .selectDistinct({ location: postings.location })
+    .from(postings)
+    .where(and(cheap, isNotNull(postings.location)));
+
+  const keys = new Set<string>([homeKey]);
+  for (const row of located) {
+    const key = normalizeLocation(row.location);
+    if (key) keys.add(key);
+  }
+
+  await ensureGeocoded(db, [...keys]);
+}
+
+/**
+ * The User's home coordinate, read from the cache `warmGeocodesForMatch` filled.
+ *
+ * Null when the User set no radius, or when their home location would not
+ * geocode — the distance stage then does not run, because showing every role
+ * beats hiding a commutable one.
+ */
+async function resolveHomeCoordinate(
+  tx: Transaction,
+  stated: CriteriaRow,
+): Promise<Coordinate | null> {
+  const homeKey = homeKeyOf(stated);
+  return homeKey ? readGeocode(tx, homeKey) : null;
 }
 
 /**
@@ -212,13 +363,22 @@ function keywordsFoundIn(
  * Postings collected before this Criteria statement existed are matched like any
  * other — the Corpus has no notion of which Fetch brought a Posting in.
  *
- * The run is two queries around Extraction: the cheap stages select the
+ * The transaction is two queries around Extraction: the cheap stages select the
  * survivors, Extraction fills the derived fields for those survivors only, and
  * the full funnel then selects the Matches. Re-running the cheap stages in the
  * second query is deliberate — they are free, and it avoids carrying a list of
  * thousands of ids between the two.
+ *
+ * Geocoding for the distance stage (#12) is done first, outside the transaction
+ * (`warmGeocodesForMatch`), so its external calls never hold the User's Matches
+ * locked. It is a no-op unless the User bounds their search by distance.
  */
 export async function matchCriteria(userId: string): Promise<void> {
+  // Distance (#12): fill the geocode cache before the transaction opens, so a
+  // warm-up run's external calls never hold this User's `matches` rows locked
+  // across the network. A no-op when the User set no radius.
+  await warmGeocodesForMatch(userId);
+
   await getDb().transaction(async (tx) => {
     await tx.delete(matches).where(eq(matches.userId, userId));
 
@@ -229,15 +389,21 @@ export async function matchCriteria(userId: string): Promise<void> {
     if (!stated) return;
 
     const cheapStages = FUNNEL.filter((stage) => !stage.derived);
-    const cheap = combine(cheapStages, stated);
+    const cheap = combine(cheapStages, stated, NO_CONTEXT);
     if (!cheap) return;
 
-    // Stage three: Extraction over the survivors of the cheap stages only
-    // (#11). Cached on the Posting, so a survivor a previous match already
-    // extracted costs nothing here.
+    // Extraction over the survivors of the cheap stages only (#11). Cached on
+    // the Posting, so a survivor a previous match already extracted costs
+    // nothing here.
     await extractPostings(tx, cheap);
 
-    const full = combine(FUNNEL, stated);
+    // Distance (#12): the radius stage measures in SQL against the geocode
+    // cache `warmGeocodesForMatch` has already filled.
+    const context: MatchContext = {
+      home: await resolveHomeCoordinate(tx, stated),
+    };
+
+    const full = combine(FUNNEL, stated, context);
     if (!full) return;
 
     const hits = await tx.select().from(postings).where(full);
