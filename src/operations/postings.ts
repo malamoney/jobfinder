@@ -1,6 +1,7 @@
 import { asc } from "drizzle-orm";
 import { getDb } from "@/db";
 import { postings, type Posting } from "@/db/schema";
+import { DISTANCE_ARRANGEMENTS } from "@/criteria/schema";
 
 /**
  * Reads the whole Corpus, oldest Fetch first.
@@ -45,4 +46,39 @@ const ABSENT_FETCHES_UNTIL_EXPIRED = 2;
  */
 export function isExpired(posting: Pick<Posting, "absentFetches">): boolean {
   return posting.absentFetches >= ABSENT_FETCHES_UNTIL_EXPIRED;
+}
+
+/**
+ * Whether the commute radius was meant to place this Posting but could not (#12).
+ *
+ * Only meaningful for a User who bounds by distance (`filtersByDistance`): for
+ * anyone else the radius never runs and nothing was geocoded, so there is
+ * nothing to flag. Among distance-bounded Users, a Posting is unresolved when
+ * its text places it onsite or hybrid — the Arrangements the radius acts on —
+ * and the geocode cache holds no coordinate for its location: normalization
+ * found no place, or the geocoder resolved it to none. Such a Posting is
+ * surfaced rather than dropped, and the Dashboard flags it so the miss is
+ * visible.
+ *
+ * A remote Posting, or one whose text names no location mode, is never flagged:
+ * the radius does not act on it, so an absent coordinate costs it nothing.
+ *
+ * `coordinate` is the joined `geocodes` row for the Posting's location — its
+ * `latitude` null on a negative result, the whole value null/undefined when no
+ * row was joined.
+ */
+export function hasUnresolvedLocation(
+  posting: Pick<Posting, "location" | "arrangements">,
+  coordinate: { latitude: number | null } | null | undefined,
+  filtersByDistance: boolean,
+): boolean {
+  if (!filtersByDistance || posting.location == null) return false;
+
+  const commuteRole =
+    posting.arrangements.some((arrangement) =>
+      (DISTANCE_ARRANGEMENTS as readonly string[]).includes(arrangement),
+    ) && !posting.arrangements.includes("remote");
+  if (!commuteRole) return false;
+
+  return coordinate == null || coordinate.latitude == null;
 }

@@ -15,6 +15,7 @@ import {
 import { getDb } from "@/db";
 import { reviewState, user } from "@/db/schema";
 import { boardReturns, greenhouseJob } from "@/test/fixtures/greenhouse";
+import { geocoderKnows } from "@/test/fixtures/nominatim";
 import type { CriteriaInput } from "@/criteria/schema";
 
 const PASSWORD = "correct-horse-battery-staple";
@@ -279,6 +280,44 @@ describe("Review State against what a Source does", () => {
     expect(details?.expired).toBe(true);
     expect(details?.review.status).toBe("applied");
     expect(details?.review.notes).toBe("Waiting to hear back.");
+  });
+});
+
+describe("an unresolved location on the Posting page", () => {
+  it("flags a Posting whose location could not be geocoded", async () => {
+    const postingId = await corpusHas([
+      greenhouseJob({
+        id: 1,
+        location: { name: "Undisclosed location" },
+        content: "&lt;p&gt;This is an onsite role.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+    // A match run over an onsite Criteria geocodes the location; it resolves to
+    // nothing and is cached as unresolved.
+    geocoderKnows({
+      "boston, ma": { latitude: 42.3601, longitude: -71.0589 },
+    });
+    await saveCriteria(userId, {
+      titles: ["Staff Engineer"],
+      keywords: [],
+      arrangements: ["full-time", "onsite"],
+      homeLocation: "Boston, MA",
+      radiusMiles: 25,
+    });
+
+    expect((await readPosting(userId, postingId))?.unresolvedLocation).toBe(true);
+  });
+
+  it("does not flag a Posting the Source gave no location for", async () => {
+    const postingId = await corpusHas([
+      greenhouseJob({ id: 1, location: null }),
+    ]);
+    const userId = await givenAUser();
+
+    expect((await readPosting(userId, postingId))?.unresolvedLocation).toBe(
+      false,
+    );
   });
 });
 

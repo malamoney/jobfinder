@@ -12,6 +12,11 @@ import {
 import { getDb } from "@/db";
 import { postings, user } from "@/db/schema";
 import { boardReturns, greenhouseJob } from "@/test/fixtures/greenhouse";
+import {
+  geocoderIsDown,
+  geocoderKnows,
+  type Coordinate,
+} from "@/test/fixtures/nominatim";
 import type { CriteriaInput } from "@/criteria/schema";
 
 const PASSWORD = "correct-horse-battery-staple";
@@ -551,5 +556,173 @@ describe("accepted Arrangements", () => {
 
     const [posting] = (await readDashboard(userId)).postings;
     expect([...posting.arrangements].sort()).toEqual(["full-time", "remote"]);
+  });
+});
+
+describe("the commute radius", () => {
+  const BOSTON: Coordinate = { latitude: 42.3601, longitude: -71.0589 };
+  const CAMBRIDGE: Coordinate = { latitude: 42.3736, longitude: -71.1097 };
+  const NEW_YORK: Coordinate = { latitude: 40.7128, longitude: -74.006 };
+
+  /** Criteria that accept an onsite or hybrid role, bounded 25 miles of Boston. */
+  function commuteCriteria(
+    overrides: Partial<CriteriaInput> = {},
+  ): CriteriaInput {
+    return statedCriteria({
+      titles: ["Engineer"],
+      arrangements: ["full-time", "onsite", "hybrid"],
+      homeLocation: "Boston, MA",
+      radiusMiles: 25,
+      ...overrides,
+    });
+  }
+
+  /** A job at `location` whose text names `arrangement`. */
+  function jobAt(
+    id: number,
+    title: string,
+    location: string,
+    arrangement: string,
+  ): Record<string, unknown> {
+    return greenhouseJob({
+      id,
+      title,
+      location: { name: location },
+      content: `&lt;p&gt;This is a ${arrangement} role.&lt;/p&gt;`,
+    });
+  }
+
+  it("surfaces an onsite Posting inside the radius", async () => {
+    geocoderKnows({ "boston, ma": BOSTON, "cambridge, ma": CAMBRIDGE });
+    await corpusHas([jobAt(1, "Platform Engineer", "Cambridge, MA", "onsite")]);
+    const userId = await givenAUser();
+
+    await saveCriteria(userId, commuteCriteria());
+
+    const { postings } = await readDashboard(userId);
+    expect(postings.map((p) => p.title)).toEqual(["Platform Engineer"]);
+    expect(postings[0].unresolvedLocation).toBe(false);
+  });
+
+  it("excludes an onsite Posting outside the radius", async () => {
+    geocoderKnows({ "boston, ma": BOSTON, "new york, ny": NEW_YORK });
+    await corpusHas([jobAt(1, "Platform Engineer", "New York, NY", "onsite")]);
+    const userId = await givenAUser();
+
+    await saveCriteria(userId, commuteCriteria());
+
+    expect((await readDashboard(userId)).postings).toHaveLength(0);
+  });
+
+  it("excludes a hybrid Posting outside the radius on the same basis", async () => {
+    geocoderKnows({ "boston, ma": BOSTON, "new york, ny": NEW_YORK });
+    await corpusHas([jobAt(1, "Platform Engineer", "New York, NY", "hybrid")]);
+    const userId = await givenAUser();
+
+    await saveCriteria(userId, commuteCriteria());
+
+    expect((await readDashboard(userId)).postings).toHaveLength(0);
+  });
+
+  it("leaves a remote Posting alone wherever it is based", async () => {
+    geocoderKnows({ "boston, ma": BOSTON });
+    await corpusHas([
+      jobAt(1, "Platform Engineer", "San Francisco, CA", "fully remote"),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      commuteCriteria({
+        arrangements: ["full-time", "onsite", "hybrid", "remote"],
+      }),
+    );
+
+    expect((await readDashboard(userId)).postings.map((p) => p.title)).toEqual([
+      "Platform Engineer",
+    ]);
+  });
+
+  it("surfaces an onsite Posting whose location will not geocode, flagged unresolved", async () => {
+    geocoderKnows({ "boston, ma": BOSTON });
+    await corpusHas([
+      jobAt(1, "Platform Engineer", "Undisclosed location", "onsite"),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(userId, commuteCriteria());
+
+    const [posting] = (await readDashboard(userId)).postings;
+    expect(posting.title).toBe("Platform Engineer");
+    expect(posting.unresolvedLocation).toBe(true);
+  });
+
+  it("geocodes each distinct location once, however many Postings share it", async () => {
+    const geo = geocoderKnows({ "boston, ma": BOSTON });
+    await corpusHas([
+      jobAt(1, "Platform Engineer", "Boston, MA", "onsite"),
+      jobAt(2, "Data Engineer", "Boston,  MA", "onsite"),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(userId, commuteCriteria());
+
+    // The two Postings and the home location all normalize to one string.
+    expect(geo.queries()).toEqual(["boston, ma"]);
+  });
+
+  it("resolves a known location from cache on the next match run", async () => {
+    geocoderKnows({ "boston, ma": BOSTON, "cambridge, ma": CAMBRIDGE });
+    await corpusHas([jobAt(1, "Platform Engineer", "Cambridge, MA", "onsite")]);
+    const userId = await givenAUser();
+    await saveCriteria(userId, commuteCriteria());
+
+    const geo = geocoderKnows({ "boston, ma": BOSTON, "cambridge, ma": CAMBRIDGE });
+    await saveCriteria(userId, commuteCriteria());
+
+    expect(geo.queries()).toEqual([]);
+  });
+
+  it("does no geocoding for a User whose Criteria set no radius", async () => {
+    const geo = geocoderKnows({ "boston, ma": BOSTON });
+    await corpusHas([jobAt(1, "Platform Engineer", "Boston, MA", "onsite")]);
+    const userId = await givenAUser();
+
+    await saveCriteria(userId, statedCriteria({ titles: ["Engineer"] }));
+
+    expect(geo.queries()).toEqual([]);
+  });
+
+  it("flags no location as unresolved for a User who does not filter by distance", async () => {
+    geocoderKnows({});
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Platform Engineer",
+        location: { name: "New York, NY" },
+        content: "&lt;p&gt;A fully remote role.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(userId, statedCriteria({ titles: ["Engineer"] }));
+
+    const [posting] = (await readDashboard(userId)).postings;
+    expect(posting.unresolvedLocation).toBe(false);
+  });
+
+  it("surfaces an onsite Posting when the geocoder is down, then filters it once it recovers", async () => {
+    geocoderIsDown();
+    await corpusHas([jobAt(1, "Platform Engineer", "New York, NY", "onsite")]);
+    const userId = await givenAUser();
+
+    await saveCriteria(userId, commuteCriteria());
+    expect(
+      (await readDashboard(userId)).postings.map((p) => p.title),
+    ).toEqual(["Platform Engineer"]);
+
+    geocoderKnows({ "boston, ma": BOSTON, "new york, ny": NEW_YORK });
+    await saveCriteria(userId, commuteCriteria());
+    expect((await readDashboard(userId)).postings).toHaveLength(0);
   });
 });

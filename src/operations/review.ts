@@ -1,7 +1,13 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { postings, reviewState, type Posting } from "@/db/schema";
+import {
+  criteria,
+  geocodes,
+  postings,
+  reviewState,
+  type Posting,
+} from "@/db/schema";
 import {
   DEFAULT_STATUS,
   notesInput,
@@ -10,7 +16,7 @@ import {
   type PostingReview,
   type ReviewOutcome,
 } from "@/review/schema";
-import { isExpired } from "./postings";
+import { hasUnresolvedLocation, isExpired } from "./postings";
 
 /**
  * Reading and writing a User's Review State.
@@ -28,6 +34,8 @@ import { isExpired } from "./postings";
 /** A Posting in full, with the signed-in User's Review State attached. */
 export type PostingDetails = Posting & {
   expired: boolean;
+  /** Whether the Posting names a place that could not be geocoded (#12). */
+  unresolvedLocation: boolean;
   review: PostingReview;
 };
 
@@ -57,13 +65,29 @@ export async function readPosting(
 ): Promise<PostingDetails | null> {
   if (!isPostingId(postingId)) return null;
 
-  const [row] = await getDb()
-    .select({ posting: postings, review: reviewState })
+  const db = getDb();
+
+  const [stated] = await db
+    .select({ radiusMiles: criteria.radiusMiles })
+    .from(criteria)
+    .where(eq(criteria.userId, userId));
+  const filtersByDistance = stated?.radiusMiles != null;
+
+  const [row] = await db
+    .select({
+      posting: postings,
+      review: reviewState,
+      coordinate: {
+        latitude: geocodes.latitude,
+        longitude: geocodes.longitude,
+      },
+    })
     .from(postings)
     .leftJoin(
       reviewState,
       and(eq(reviewState.postingId, postings.id), eq(reviewState.userId, userId)),
     )
+    .leftJoin(geocodes, eq(geocodes.location, postings.normalizedLocation))
     .where(eq(postings.id, postingId));
 
   if (!row) return null;
@@ -71,6 +95,11 @@ export async function readPosting(
   return {
     ...row.posting,
     expired: isExpired(row.posting),
+    unresolvedLocation: hasUnresolvedLocation(
+      row.posting,
+      row.coordinate,
+      filtersByDistance,
+    ),
     review: row.review
       ? {
           status: row.review.status,

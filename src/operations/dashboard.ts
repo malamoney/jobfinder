@@ -1,8 +1,15 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { matches, postings, reviewState, type Posting } from "@/db/schema";
+import {
+  criteria,
+  geocodes,
+  matches,
+  postings,
+  reviewState,
+  type Posting,
+} from "@/db/schema";
 import { DEFAULT_STATUS, type ReviewStatus } from "@/review/schema";
-import { isExpired } from "./postings";
+import { hasUnresolvedLocation, isExpired } from "./postings";
 
 /**
  * Reading a User's Dashboard: the Postings their Criteria matched, in the order
@@ -23,6 +30,11 @@ export type DashboardPosting = Posting & {
   matchedKeywords: string[];
   /** Whether the Board has stopped returning this Posting (#7). */
   expired: boolean;
+  /**
+   * Whether the Posting names a place that could not be geocoded (#12). The
+   * radius was not applied to it — it is shown so it is not silently lost.
+   */
+  unresolvedLocation: boolean;
   /** Where the Posting sits in the User's review pipeline; `new` until touched. */
   status: ReviewStatus;
   /** When the User last marked this `applied`, or null if they never have. */
@@ -68,12 +80,26 @@ export async function readDashboard(
   userId: string,
   filter?: DashboardFilter,
 ): Promise<Dashboard> {
-  const rows = await getDb()
+  const db = getDb();
+
+  // Whether this User bounds their search by distance — the one condition under
+  // which an un-geocoded location is worth flagging (#12).
+  const [stated] = await db
+    .select({ radiusMiles: criteria.radiusMiles })
+    .from(criteria)
+    .where(eq(criteria.userId, userId));
+  const filtersByDistance = stated?.radiusMiles != null;
+
+  const rows = await db
     .select({
       posting: postings,
       matchedKeywords: matches.matchedKeywords,
       status: reviewState.status,
       appliedAt: reviewState.appliedAt,
+      coordinate: {
+        latitude: geocodes.latitude,
+        longitude: geocodes.longitude,
+      },
     })
     .from(matches)
     .innerJoin(postings, eq(postings.id, matches.postingId))
@@ -84,6 +110,7 @@ export async function readDashboard(
         eq(reviewState.userId, userId),
       ),
     )
+    .leftJoin(geocodes, eq(geocodes.location, postings.normalizedLocation))
     .where(eq(matches.userId, userId))
     .orderBy(
       sql`${postings.postedAt} desc nulls last`,
@@ -92,13 +119,20 @@ export async function readDashboard(
       asc(postings.sourceId),
     );
 
-  const all = rows.map(({ posting, matchedKeywords, status, appliedAt }) => ({
-    ...posting,
-    matchedKeywords,
-    expired: isExpired(posting),
-    status: status ?? DEFAULT_STATUS,
-    appliedAt,
-  }));
+  const all = rows.map(
+    ({ posting, matchedKeywords, status, appliedAt, coordinate }) => ({
+      ...posting,
+      matchedKeywords,
+      expired: isExpired(posting),
+      unresolvedLocation: hasUnresolvedLocation(
+        posting,
+        coordinate,
+        filtersByDistance,
+      ),
+      status: status ?? DEFAULT_STATUS,
+      appliedAt,
+    }),
+  );
 
   return {
     postings: all.filter((posting) => shownBy(filter, posting.status)),
