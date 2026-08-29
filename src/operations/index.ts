@@ -21,6 +21,11 @@ export {
 } from "./boards";
 export { readCriteria, saveCriteria } from "./criteria";
 export {
+  readDashboard,
+  type Dashboard,
+  type DashboardPosting,
+} from "./dashboard";
+export {
   fetchBoard,
   type Board,
   type BoardAddress,
@@ -37,4 +42,5 @@ export {
   type FetchRunReport,
   type FetchTaskReport,
 } from "./fetch-run";
+export { matchCriteria } from "./matching";
 export { isExpired, listPostings } from "./postings";
