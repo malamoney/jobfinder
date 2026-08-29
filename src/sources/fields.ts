@@ -148,6 +148,38 @@ export function everyPlace(
   return named.length === 0 ? null : named.join(" / ");
 }
 
+/**
+ * The pay period a Source's own word for it names, or null where it names none
+ * this understands.
+ *
+ * The structured-pay counterpart to `arrangementLabel`: the ATS Sources publish
+ * a period key `statedSalary` maps directly (`per-year-salary`), but the
+ * aggregators (#15) write an English word — Himalayas `annual`, USAJOBS `Per
+ * Year` off its `RateIntervalCode` — and they spell it more than one way. A
+ * word nobody here recognises is null rather than a guess, which is what leaves
+ * the figure to prose Extraction.
+ */
+export function salaryPeriodFromWords(
+  value: string | null | undefined,
+): "year" | "month" | "hour" | null {
+  switch (value?.toLowerCase().replace(/[-_\s]/g, "").replace(/ly$/, "")) {
+    case "year":
+    case "annual":
+    case "annum":
+    case "peryear":
+    case "perannum":
+      return "year";
+    case "month":
+    case "permonth":
+      return "month";
+    case "hour":
+    case "perhour":
+      return "hour";
+    default:
+      return null;
+  }
+}
+
 /** Pay exactly as a Source published it, before it is believed. */
 export type StatedPay = {
   /** The ISO code. Anything but USD is not read — see below. */

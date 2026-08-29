@@ -29,18 +29,25 @@ export * from "./auth-schema";
  * a Source (#15, #16) should be a code change, and a Source Key already in the
  * Corpus should not become unreadable if a name is ever retired.
  *
- * Every name here is an applicant-tracking Source reached through its own
- * adapter in `@/sources` (ADR 0003). Each was checked before it was added for
- * the one thing the Source Key rests on: that the Source's own identifier for a
- * job is unique across the whole Source rather than within one Board. Each
- * adapter records what that check found.
+ * Each name is reached through its own adapter in `@/sources` (ADR 0003). Each
+ * was checked before it was added for the one thing the Source Key rests on:
+ * that the Source's own identifier for a job is unique across the whole Source
+ * rather than within one Board. Each adapter records what that check found.
+ *
+ * The first five are applicant-tracking Boards, each one company's listings.
+ * `usajobs` and `himalayas` are aggregators (#15): a single feed spanning many
+ * employers, too large to fetch whole in one Fetch, so their Postings expire by
+ * the close date the feed publishes rather than by absence (see
+ * `reconcileBoard`).
  */
 export type SourceName =
   | "greenhouse"
   | "lever"
   | "ashby"
   | "workable"
-  | "recruitee";
+  | "recruitee"
+  | "usajobs"
+  | "himalayas";
 
 /**
  * The Corpus: every Posting fetched from every Source, shared by all Users.
@@ -111,6 +118,15 @@ export const postings = pgTable(
     // not be read, or answered with a shape the adapter does not understand,
     // is not evidence about any Posting and must leave this column alone.
     absentFetches: integer("absent_fetches").notNull().default(0),
+
+    // The close date the Source published for this Posting, or null where it
+    // published none. Set only by aggregator adapters (#15): their feed is too
+    // large to fetch whole in one Fetch, so a Posting missing from a run is no
+    // evidence it is gone and `absent_fetches` is never bumped for them —
+    // `isExpired` reads this instead. Null for ATS Postings, which expire by
+    // absence (ADR 0004). Refreshed from the Source on every re-Fetch, so a
+    // date the employer pushed back moves here too.
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
 
     // Extraction (#11): normalized fields derived from the Posting's free text
     // where the Source published nothing structured. `extracted_at` is the

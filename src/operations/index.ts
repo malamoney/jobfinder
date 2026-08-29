@@ -27,6 +27,7 @@ export {
   type DashboardPosting,
 } from "./dashboard";
 export {
+  boardTimeoutFor,
   fetchBoard,
   type Board,
   type BoardAddress,

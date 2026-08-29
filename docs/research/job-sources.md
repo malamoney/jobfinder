@@ -57,6 +57,29 @@ looks like on that Source is unverified.
 accounts on 2026-08-29 — so `description` is the whole description. Those fields belong to the
 authenticated v3 job API, which is not what this reads.
 
+### Aggregator adapter notes — ✅ verified 2026-08-29 (USAJOBS, Himalayas)
+
+Checked live before writing the USAJOBS and Himalayas adapters (#15). These two are not Boards — a
+feed spanning many employers — so they diverge from the ATS spine in two ways, recorded in ADR
+0007: absence from a Fetch is not evidence a role is gone (the feed is too large to pull whole), so
+they expire by the close date the feed publishes; and the adapter pages a feed rather than making
+one request, so it gets a longer fetch ceiling.
+
+| Source | Reached by | Id | Pagination | Close date | Watch out for |
+| --- | --- | --- | --- | --- | --- |
+| **USAJOBS** | Keyword (`Slug`); `all` for everything | `MatchedObjectId`, global | `Page` 1..`SearchResult.UserArea.NumberOfPages`, 500/page | `ApplicationCloseDate` | Announcement lives two levels down under `MatchedObjectDescriptor`; pay figures are strings in `PositionRemuneration[].MinimumRange`; needs `Authorization-Key` + a `User-Agent` contact address, both from env — a Fetch with either missing **throws**, so #17 records a task failure rather than the Corpus silently losing every federal Posting |
+| **Himalayas** | The feed (`Slug` names it only) | `guid` (the job's canonical URL), global | `nextCursor` → `?cursor=`, null on the last page, newest-first | `expiryDate` | Dates are epoch **seconds**, not ms; every role is remote and `locationRestrictions` narrows where; `nextCursor` paging also dedupes across pages as new jobs arrive at the top |
+
+Each adapter caps its own request count — Himalayas pulls the ~2,000 newest, a USAJOBS keyword up to
+5,000 — so a feed's size cannot spend a Worker's whole budget. Neither backfills the whole feed and
+neither is meant to.
+
+The Muse was **not** built with these. Its pagination hard-caps at page 99 (`page` ≥ 100 → HTTP
+400) while `page_count` in the body keeps counting past it, and slicing by `category` × `level` is
+not fine enough — `Software Engineering` / `Senior Level` alone returned `page_count: 2017`,
+`total: 40321` on 2026-08-29. Combined with a 500-requests/hour anonymous limit, a working adapter
+needs a slice cursor persisted across Fetch Runs and a request budget. Tracked as its own issue.
+
 ### Slug discovery
 
 No ATS offers a company directory. Harvest slugs from **Common Crawl CDX**:

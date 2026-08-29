@@ -19,13 +19,17 @@ import { seedBoards, type BoardAddress } from "@/operations";
 import { closeDb } from "@/db";
 import { probeCandidates } from "./discovery/probe-many";
 import { describe, everyFew, summarise } from "./discovery/report";
+import { AGGREGATOR_BOARDS } from "./data/aggregator-boards";
 import { GREENHOUSE_BOARDS } from "./data/greenhouse-boards";
 
 async function main(): Promise<void> {
-  const candidates: BoardAddress[] = GREENHOUSE_BOARDS.map((slug) => ({
-    source: "greenhouse",
-    slug,
-  }));
+  const candidates: BoardAddress[] = [
+    ...GREENHOUSE_BOARDS.map((slug) => ({
+      source: "greenhouse" as const,
+      slug,
+    })),
+    ...AGGREGATOR_BOARDS,
+  ];
 
   console.log(`Probing ${candidates.length} Boards before seeding…`);
   const probed = await probeCandidates(candidates, { onProbed: everyFew() });

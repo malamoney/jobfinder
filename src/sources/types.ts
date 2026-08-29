@@ -24,6 +24,17 @@ export type SourcePosting = {
   applyUrl: string;
   postedAt: Date | null;
   /**
+   * The close date the Source published for this opening, or null where it
+   * published none.
+   *
+   * Set only by the aggregator adapters (#15). Their feed spans far more
+   * employers than one Fetch can pull, so a Posting the run did not return is
+   * not evidence it is gone — `reconcileBoard` skips absence-counting for them
+   * and `isExpired` reads this date instead. An ATS adapter omits it: one
+   * request is its Board's whole state, so absence is the signal (ADR 0004).
+   */
+  expiresAt?: Date | null;
+  /**
    * The salary the Source published in a field of its own, or null where it
    * published none — which is the common case, and the one Extraction exists
    * for.

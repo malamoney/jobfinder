@@ -12,8 +12,10 @@ import { postings, type SourceName } from "@/db/schema";
 import { dedupKey } from "@/postings/dedup-key";
 import { fetchAshbyBoard } from "@/sources/ashby";
 import { fetchGreenhouseBoard } from "@/sources/greenhouse";
+import { fetchHimalayasBoard } from "@/sources/himalayas";
 import { fetchLeverBoard } from "@/sources/lever";
 import { fetchRecruiteeBoard } from "@/sources/recruitee";
+import { fetchUsajobsBoard } from "@/sources/usajobs";
 import { fetchWorkableBoard } from "@/sources/workable";
 import type { SourcePosting } from "@/sources/types";
 
@@ -42,22 +44,65 @@ export type Board = BoardAddress & {
 };
 
 /**
+ * How one Source is fetched, and how its Postings stop being live.
+ *
+ * `expiry` is the fork between the two kinds of Source (#15):
+ *
+ * - `absence` — the ATS Boards. One request returns the Board's entire current
+ *   state, so a Posting missing from a successful Fetch is gone, and
+ *   `countAbsences` moves it toward Expired (ADR 0004).
+ * - `published-expiry` — the aggregators. Their feed spans thousands of
+ *   employers and a Fetch pulls only a bounded slice of it, so absence means
+ *   nothing. `countAbsences` is skipped, and `isExpired` reads the close date
+ *   the feed published for each Posting (`expiresAt`).
+ *
+ * `timeoutMs` overrides the caller's default ceiling for Sources that page
+ * through a feed and so take longer than a single-request Board.
+ */
+type SourceAdapter = {
+  fetch: (slug: string, signal: AbortSignal) => Promise<SourcePosting[]>;
+  expiry: "absence" | "published-expiry";
+  timeoutMs?: number;
+};
+
+/**
  * The adapter each Source is reached through.
  *
  * A record keyed by `SourceName` rather than a lookup with a default, so a
  * Source added to the union without an adapter is a type error rather than a
  * Fetch that fails at midnight.
  */
-const ADAPTERS: Record<
-  SourceName,
-  (slug: string, signal: AbortSignal) => Promise<SourcePosting[]>
-> = {
-  greenhouse: fetchGreenhouseBoard,
-  lever: fetchLeverBoard,
-  ashby: fetchAshbyBoard,
-  workable: fetchWorkableBoard,
-  recruitee: fetchRecruiteeBoard,
+const ADAPTERS: Record<SourceName, SourceAdapter> = {
+  greenhouse: { fetch: fetchGreenhouseBoard, expiry: "absence" },
+  lever: { fetch: fetchLeverBoard, expiry: "absence" },
+  ashby: { fetch: fetchAshbyBoard, expiry: "absence" },
+  workable: { fetch: fetchWorkableBoard, expiry: "absence" },
+  recruitee: { fetch: fetchRecruiteeBoard, expiry: "absence" },
+  usajobs: {
+    fetch: fetchUsajobsBoard,
+    expiry: "published-expiry",
+    timeoutMs: 35_000,
+  },
+  himalayas: {
+    fetch: fetchHimalayasBoard,
+    expiry: "published-expiry",
+    timeoutMs: 35_000,
+  },
 };
+
+/**
+ * The ceiling one Board's Fetch gets before a Worker's remaining budget is
+ * applied.
+ *
+ * An aggregator pages through a feed and needs longer than a single-request
+ * Board, so it raises the floor to its own `timeoutMs`; every other Source
+ * takes `fallback` unchanged. The Worker still caps this against how much of
+ * its batch is left (`runFetchBatch`), so a longer ceiling never lets a Board
+ * outlive the invocation working it.
+ */
+export function boardTimeoutFor(source: SourceName, fallback: number): number {
+  return Math.max(ADAPTERS[source].timeoutMs ?? 0, fallback);
+}
 
 /** How patient a Fetch of one Board is willing to be. */
 export type BoardFetchOptions = {
@@ -113,12 +158,18 @@ export async function fetchBoard(
  */
 export async function readBoard(
   board: BoardAddress,
-  { timeoutMs = DEFAULT_TIMEOUT_MS }: BoardFetchOptions = {},
+  { timeoutMs }: BoardFetchOptions = {},
 ): Promise<SourcePosting[]> {
+  // A caller that named a ceiling (a Worker, spending its own budget) is
+  // trusted to have already accounted for the Source — `runFetchBatch` folds
+  // in `boardTimeoutFor`. A caller that named none (tests, #18's probe) gets
+  // the Source's own ceiling over the bare default.
+  const ceiling =
+    timeoutMs ?? boardTimeoutFor(board.source, DEFAULT_TIMEOUT_MS);
   try {
-    return await ADAPTERS[board.source](
+    return await ADAPTERS[board.source].fetch(
       board.slug,
-      AbortSignal.timeout(timeoutMs),
+      AbortSignal.timeout(ceiling),
     );
   } catch (error) {
     // Said in the adapters' own register, so #17 can tell a Board that never
@@ -126,7 +177,7 @@ export async function readBoard(
     // raw abort says only "the operation was aborted".
     if (isTimeout(error)) {
       throw new Error(
-        `${board.source} Board "${board.slug}" did not answer within ${timeoutMs}ms`,
+        `${board.source} Board "${board.slug}" did not answer within ${ceiling}ms`,
       );
     }
     throw error;
@@ -140,8 +191,16 @@ function isTimeout(error: unknown): boolean {
 
 /**
  * Makes the Corpus agree with what a Board returned: the Postings it listed
- * are stored, and the ones it no longer lists are counted as absent, which is
- * how they eventually expire (#7).
+ * are stored, and — for a Source whose Fetch sees the Board's whole state —
+ * the ones it no longer lists are counted as absent, which is how they
+ * eventually expire (#7).
+ *
+ * Absence is only counted for `absence`-expiry Sources. An aggregator's Fetch
+ * pulls a bounded slice of a feed spanning thousands of employers (#15), so a
+ * Posting missing from the slice is not gone — it expires by the close date
+ * the feed published for it (`isExpired` reads `expiresAt`), and counting it
+ * absent here would expire live roles a night or two after they scrolled off
+ * the newest page.
  *
  * Takes a transaction rather than opening one, because both writes are one
  * statement about the Board and the caller may have more to say in the same
@@ -154,7 +213,9 @@ export async function reconcileBoard(
   fetched: SourcePosting[],
 ): Promise<void> {
   await storePostings(tx, board, fetched);
-  await countAbsences(tx, board, fetched);
+  if (ADAPTERS[board.source].expiry === "absence") {
+    await countAbsences(tx, board, fetched);
+  }
 }
 
 /**
@@ -215,6 +276,10 @@ async function storePostings(
     .insert(postings)
     .values(
       fetched.map(({ salary, ...posting }) => ({
+        // `...posting` carries `expiresAt` straight through for the aggregator
+        // Sources (#15) and omits it for the ATS ones, which leaves the column
+        // null — and, since it is not in `PRESERVED_ON_REFETCH`, a re-Fetch
+        // refreshes it from the Source like every other published field.
         ...posting,
         boardId: board.id,
         // Approximate identity across Sources (#13), derived here so it is
