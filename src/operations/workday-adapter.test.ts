@@ -1,36 +1,33 @@
+import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { addBoard, fetchBoard, listPostings, type Board } from "@/operations";
-import type { WorkdayTenant } from "@/sources/workday-tenants";
+import { server } from "@/test/msw";
 import {
-  WORKDAY_TEST_TENANT,
   workdayBoardRefuses,
   workdayBoardReturns,
   workdayDetail,
+  workdayJobsUrl,
   workdayListing,
 } from "@/test/fixtures/workday";
 
 /**
- * The registry under test: the one test tenant, a second for the cross-tenant
- * Source Key case, and one whose config would not make a safe hostname. The
- * factory imports the fixture so the tenant it builds URLs from is the same
- * object the adapter resolves.
+ * The registry under test: the test tenant under two Slugs (the second for the
+ * cross-tenant Source Key case), one whose shard would not make a safe
+ * hostname, and one whose site would not make a safe path. The factory imports
+ * the fixture so the config it builds URLs from is the one the adapter
+ * resolves.
  */
 vi.mock("@/sources/workday-tenants", async () => {
   const { WORKDAY_TEST_TENANT: base } = await import("@/test/fixtures/workday");
   return {
     WORKDAY_TENANTS: {
       acme: base,
-      globex: { ...base, tenant: "globex", company: "Globex" },
-      hostile: { ...base, shard: "wd1.evil.example.com" },
+      globex: base,
+      "bad-shard": { ...base, shard: "wd1.evil.example.com" },
+      "bad-site": { ...base, site: "../secrets" },
     },
   };
 });
-
-const GLOBEX: WorkdayTenant = {
-  ...WORKDAY_TEST_TENANT,
-  tenant: "globex",
-  company: "Globex",
-};
 
 /**
  * The Workday adapter (#16), fetched for real through `fetchBoard` — a real
@@ -41,8 +38,8 @@ const GLOBEX: WorkdayTenant = {
  * Workday gets its own file rather than a row in `source-adapters.test.ts`
  * because it is shaped differently on every axis that file's shared cases
  * assume: the list is a POST, a description is a second request, and the
- * tenant is not addressable from the Slug. The registry is mocked to the one
- * test tenant so a real NVIDIA config is not a dependency of the suite.
+ * tenant is not addressable from the Slug. The registry is mocked so a real
+ * NVIDIA config is not a dependency of the suite.
  */
 
 /** Puts the test Workday tenant into the curated set. */
@@ -168,6 +165,68 @@ describe("fetching a Workday tenant", () => {
     expect(await listPostings()).toEqual([]);
   });
 
+  // A list that keeps handing back full pages and never comes up short is one
+  // whose `total` cannot be trusted at all — the Fetch fails rather than
+  // storing a prefix that ADR 0004 would then read as the tenant's whole
+  // state.
+  it("fails the Fetch when the list never comes back short", async () => {
+    server.use(
+      http.post(workdayJobsUrl(), () =>
+        // Every page full, every page the same job, `total` small.
+        HttpResponse.json({
+          total: 5,
+          jobPostings: Array.from({ length: 20 }, (_, index) => ({
+            externalPath: `/job/x/Engineer_JR${index}`,
+          })),
+        }),
+      ),
+    );
+
+    await expect(fetchBoard(acme)).rejects.toThrow(/did not finish paging/);
+    expect(await listPostings()).toEqual([]);
+  });
+
+  // An under-reported `total` does not hide a tenant that is actually over
+  // budget: the list's own length trips the ceiling.
+  it("fails the Fetch when the list runs past the budget despite a small total", async () => {
+    let offset = 0;
+    server.use(
+      http.post(workdayJobsUrl(), async ({ request }) => {
+        const body = (await request.json()) as { offset?: number };
+        offset = Number(body.offset ?? 0);
+        return HttpResponse.json({
+          total: 30,
+          jobPostings: Array.from({ length: 20 }, (_, index) => ({
+            externalPath: `/job/x/Engineer_JR${offset + index}`,
+          })),
+        });
+      }),
+    );
+
+    await expect(fetchBoard(acme)).rejects.toThrow(/budget/);
+    expect(await listPostings()).toEqual([]);
+  });
+
+  // A first page that reports matches but returns none is a broken response,
+  // not an empty tenant — ADR 0004 must not read it as every role expiring.
+  it("fails the Fetch when a matching tenant returns an empty first page", async () => {
+    workdayBoardReturns([], { total: 40 });
+
+    await expect(fetchBoard(acme)).rejects.toThrow(/came back empty/);
+    expect(await listPostings()).toEqual([]);
+  });
+
+  // A job path carrying `..` would climb out of the tenant's namespace, in the
+  // detail URL and in the Source Key alike.
+  it("fails the Fetch when a job path is not one it can use", async () => {
+    workdayBoardReturns([
+      { listing: workdayListing({ externalPath: "/job/../../etc/passwd" }) },
+    ]);
+
+    await expect(fetchBoard(acme)).rejects.toThrow(/job path it cannot use/);
+    expect(await listPostings()).toEqual([]);
+  });
+
   // The lenient-inbound rule: Sources add fields without notice, on the list
   // envelope, the list entries, and the detail alike.
   it("ignores fields the tenant added since the adapter was written", async () => {
@@ -220,13 +279,20 @@ describe("fetching a Workday tenant", () => {
     expect(await listPostings()).toEqual([]);
   });
 
-  // The shard and tenant land in the hostname, so a config that is not a DNS
-  // label is refused before a request is built — the exposure `boardSubdomain`
-  // guards for Recruitee, with the shard added.
-  it("refuses a tenant whose config would not make a safe hostname", async () => {
-    const hostile = await givenATenant("hostile");
+  // The Slug and shard land in the hostname and the site lands in the path,
+  // none of them encoded — the exposure `boardSubdomain` guards for Recruitee,
+  // widened to the two fields Workday adds.
+  it("refuses a tenant whose shard would not make a safe hostname", async () => {
+    const board = await givenATenant("bad-shard");
 
-    await expect(fetchBoard(hostile)).rejects.toThrow(/not safe in a hostname/);
+    await expect(fetchBoard(board)).rejects.toThrow(/not safe in a hostname/);
+    expect(await listPostings()).toEqual([]);
+  });
+
+  it("refuses a tenant whose site would not make a safe request path", async () => {
+    const board = await givenATenant("bad-site");
+
+    await expect(fetchBoard(board)).rejects.toThrow(/not safe in a request path/);
     expect(await listPostings()).toEqual([]);
   });
 
@@ -288,7 +354,7 @@ describe("Workday across two tenants", () => {
           detail: workdayDetail({ title: "Globex Engineer" }),
         },
       ],
-      { tenant: GLOBEX },
+      { slug: "globex" },
     );
     await fetchBoard(globex);
 

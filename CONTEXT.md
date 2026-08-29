@@ -26,6 +26,13 @@ Aggregator, where there is no company to name, it names a slice of the feed inst
 keyword, or just the feed itself.
 _Avoid_: Handle, key, company ID
 
+**Tenant**:
+A Workday customer's careers instance, the Workday form of a Board. Unlike every other Board it
+cannot be reached from its Slug alone: the hostname shard, the site name, and the keyword its jobs
+are filtered to are configuration held by hand alongside the Slug (ADR 0003, `@/sources/workday-tenants`).
+Workday charges a description request per job, so Tenants are a hand-picked short list, never harvested.
+_Avoid_: Instance, account, org
+
 **Aggregator**:
 A Source that is one feed spanning many employers rather than one company's Board — USAJOBS,
 Himalayas (ADR 0007). Too large to fetch whole in one Fetch, so its Postings expire by the close

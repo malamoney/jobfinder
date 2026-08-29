@@ -18,34 +18,37 @@ import { server } from "@/test/msw";
  * test — MSW refuses a request no handler declared.
  */
 
+/** The Slug (and Workday tenant name) the Workday tests run against. */
+export const WORKDAY_TEST_SLUG = "acme";
+
 /**
- * The tenant the Workday tests run against.
+ * The config the test tenant is mocked to.
  *
  * `src/operations/workday-adapter.test.ts` mocks `@/sources/workday-tenants` so
  * this is the registry under test; the fixture builds its URLs from the same
  * values.
  */
 export const WORKDAY_TEST_TENANT: WorkdayTenant = {
-  tenant: "acme",
   shard: "wd1",
   site: "External",
   company: "Acme",
   search: "engineer",
 };
 
-function origin(tenant: WorkdayTenant): string {
-  return `https://${tenant.tenant}.${tenant.shard}.myworkdayjobs.com`;
+function origin(slug: string, tenant: WorkdayTenant): string {
+  return `https://${slug}.${tenant.shard}.myworkdayjobs.com`;
 }
 
-function cxsPath(tenant: WorkdayTenant): string {
-  return `${origin(tenant)}/wday/cxs/${tenant.tenant}/${tenant.site}`;
+function cxsPath(slug: string, tenant: WorkdayTenant): string {
+  return `${origin(slug, tenant)}/wday/cxs/${slug}/${tenant.site}`;
 }
 
 /** The list endpoint the adapter is expected to POST to, for a given tenant. */
 export function workdayJobsUrl(
+  slug: string = WORKDAY_TEST_SLUG,
   tenant: WorkdayTenant = WORKDAY_TEST_TENANT,
 ): string {
-  return `${cxsPath(tenant)}/jobs`;
+  return `${cxsPath(slug, tenant)}/jobs`;
 }
 
 /** One entry in the job list, as Workday returns it. */
@@ -82,7 +85,7 @@ export function workdayDetail(
       startDate: "2026-06-17",
       postedOn: "Posted 5 Days Ago",
       jobRequisitionId: "JR100042",
-      externalUrl: `${origin(WORKDAY_TEST_TENANT)}/en-US/${WORKDAY_TEST_TENANT.site}/job/US-CA-Santa-Clara/Staff-Engineer-Infrastructure_JR100042`,
+      externalUrl: `https://${WORKDAY_TEST_SLUG}.${WORKDAY_TEST_TENANT.shard}.myworkdayjobs.com/en-US/${WORKDAY_TEST_TENANT.site}/job/US-CA-Santa-Clara/Staff-Engineer-Infrastructure_JR100042`,
       ...info,
     },
   };
@@ -103,7 +106,9 @@ type WorkdayReturnsOptions = {
    */
   total?: number;
   pageSize?: number;
-  /** The tenant these responses belong to. Defaults to the test tenant. */
+  /** The Slug these responses belong to. Defaults to the test Slug. */
+  slug?: string;
+  /** The config these responses belong to. Defaults to the test tenant. */
   tenant?: WorkdayTenant;
 };
 
@@ -116,6 +121,7 @@ export function workdayBoardReturns(
   {
     total,
     pageSize = 20,
+    slug = WORKDAY_TEST_SLUG,
     tenant = WORKDAY_TEST_TENANT,
   }: WorkdayReturnsOptions = {},
 ): void {
@@ -127,7 +133,7 @@ export function workdayBoardReturns(
         job.detail ??
         workdayDetail({
           title: listing.title,
-          externalUrl: `${origin(tenant)}/en-US/${tenant.site}${String(
+          externalUrl: `${origin(slug, tenant)}/en-US/${tenant.site}${String(
             listing.externalPath,
           )}`,
         }),
@@ -136,7 +142,7 @@ export function workdayBoardReturns(
   const reportedTotal = total ?? entries.length;
 
   server.use(
-    http.post(workdayJobsUrl(tenant), async ({ request }) => {
+    http.post(workdayJobsUrl(slug, tenant), async ({ request }) => {
       const body = (await request.json()) as {
         offset?: number;
         limit?: number;
@@ -150,9 +156,9 @@ export function workdayBoardReturns(
           .map((entry) => entry.listing),
       });
     }),
-    http.get(`${cxsPath(tenant)}/job/*`, ({ request }) => {
+    http.get(`${cxsPath(slug, tenant)}/job/*`, ({ request }) => {
       const path = new URL(request.url).pathname.replace(
-        `/wday/cxs/${tenant.tenant}/${tenant.site}`,
+        `/wday/cxs/${slug}/${tenant.site}`,
         "",
       );
       const entry = entries.find(
@@ -169,10 +175,11 @@ export function workdayBoardReturns(
 /** Declares that a tenant's list endpoint answers, but refuses to serve it. */
 export function workdayBoardRefuses(
   status = 500,
+  slug: string = WORKDAY_TEST_SLUG,
   tenant: WorkdayTenant = WORKDAY_TEST_TENANT,
 ): void {
   server.use(
-    http.post(workdayJobsUrl(tenant), () =>
+    http.post(workdayJobsUrl(slug, tenant), () =>
       HttpResponse.json({ error: "tenant unavailable" }, { status }),
     ),
   );

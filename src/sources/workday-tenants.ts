@@ -2,9 +2,11 @@
  * The hand-picked Workday tenants a Fetch is allowed to sweep.
  *
  * Workday is the one Source whose Board cannot be addressed from a Slug alone
- * (ADR 0003, #16). Three things vary per tenant and none is derivable:
+ * (ADR 0003, #16). The Slug names the tenant — the `{tenant}` in
+ * `{tenant}.wd{N}.myworkdayjobs.com` — but three things it does not carry vary
+ * per tenant and none is derivable:
  *
- * - the `wd{N}` **shard** that is part of the hostname,
+ * - the `wd{N}` **shard** that is also part of the hostname,
  * - the career-**site** name that is part of the request path,
  * - the **search** that narrows the tenant to the roles this Corpus is for.
  *
@@ -28,8 +30,6 @@
  * expire and re-add roles for one night.
  */
 export type WorkdayTenant = {
-  /** The `{tenant}` in `{tenant}.wd{N}.myworkdayjobs.com` and in the CxS path. */
-  tenant: string;
   /** The `wd{N}` shard in the hostname — `wd1`, `wd5`. Not derivable. */
   shard: string;
   /** The career-site name in the CxS path — `NVIDIAExternalCareerSite`. */
@@ -48,7 +48,8 @@ export type WorkdayTenant = {
 };
 
 /**
- * The configured tenants, keyed by Slug.
+ * The configured tenants, keyed by Slug — which is also the Workday tenant
+ * name, so it is not repeated inside the value.
  *
  * Grown by hand as tenants are verified. A tenant whose shard or site is wrong
  * fails its seed probe (`scripts/seed-boards.ts`) and is added disabled rather
@@ -56,7 +57,6 @@ export type WorkdayTenant = {
  */
 export const WORKDAY_TENANTS: Record<string, WorkdayTenant> = {
   nvidia: {
-    tenant: "nvidia",
     shard: "wd5",
     site: "NVIDIAExternalCareerSite",
     company: "NVIDIA",

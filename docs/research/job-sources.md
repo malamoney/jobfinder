@@ -82,13 +82,15 @@ be addressed from a Slug (ADR 0003).
 
 | Reached by | Id | Pagination | Detail | Request budget |
 | --- | --- | --- | --- | --- |
-| A configured tenant in `@/sources/workday-tenants` — `{ tenant, shard, site, company, search }`, maintained by hand | `{tenant}:{externalPath}` — a requisition id is unique only *within* a tenant, so the Source Key is tenant-prefixed, done in the adapter rather than the schema | `POST .../wday/cxs/{tenant}/{site}/jobs` with `{ appliedFacets, limit: 20, offset, searchText }`, until `offset ≥ total` | `GET .../wday/cxs/{tenant}/{site}{externalPath}` per job → `jobPostingInfo.jobDescription` (HTML), `location`, `additionalLocations`, `remoteType`, `startDate`, `externalUrl` | `MAX_JOBS_PER_TENANT` (600). A tenant whose `searchText` matches more **throws** — #17 records it, and the search is narrowed or the ceiling raised deliberately |
+| A configured tenant in `@/sources/workday-tenants` — the Slug names it, and `{ shard, site, company, search }` is held by hand alongside | `{slug}:{externalPath}` — a requisition id is unique only *within* a tenant, so the Source Key is tenant-prefixed, done in the adapter rather than the schema | `POST .../wday/cxs/{slug}/{site}/jobs` with `{ appliedFacets, limit: 20, offset, searchText }`, until a page comes back short (`total` is only read for the budget check — it under-reports) | `GET .../wday/cxs/{slug}/{site}{externalPath}` per job → `jobPostingInfo.jobDescription` (HTML), `location`, `additionalLocations`, `remoteType`, `startDate`, `externalUrl` | `MAX_JOBS_PER_TENANT` (600), checked against both `total` and the list's own length. A tenant over it **throws** — #17 records it, and the search is narrowed or the ceiling raised deliberately |
 
 - **`searchText` is fixed config, not a knob.** Each tenant carries a keyword (`engineer`) so the
   Corpus pulls only the slice ADR 0003 scopes it to — and because expiry reads absence from a
   successful Fetch as gone (ADR 0004), the slice has to be the same set night to night.
-- **The shard is in the hostname.** `{tenant}.wd{N}.myworkdayjobs.com` — the adapter refuses a
-  tenant or shard that is not a DNS label, the same guard `boardSubdomain` gives Recruitee.
+- **The shard is in the hostname, the site is in the path.** `{slug}.wd{N}.myworkdayjobs.com/wday/cxs/{slug}/{site}` —
+  the adapter refuses a Slug or shard that is not a DNS label and a site that is not an opaque path
+  segment, the same class of guard `boardSubdomain` gives Recruitee. `externalPath` from the list
+  response is checked for `..`/scheme before it becomes a request path and a Source Key.
 - **No harvesting path.** Discovery (#18) can turn up a `myworkdayjobs.com` host, but its shard,
   site, and search are a person's to add to the registry before a sweep touches it.
 - ⚠️ Only NVIDIA (`wd5` / `NVIDIAExternalCareerSite`) is seeded and verified; add tenants as their

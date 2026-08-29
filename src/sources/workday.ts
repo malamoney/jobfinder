@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { readSourceDocument } from "./adapter";
+import { isHostLabel, readSourceDocument } from "./adapter";
 import { arrangementLabel, everyPlace, placeWithArrangement, toDate } from "./fields";
 import type { SourcePosting } from "./types";
 import { WORKDAY_TENANTS, type WorkdayTenant } from "./workday-tenants";
@@ -19,16 +19,16 @@ import { WORKDAY_TENANTS, type WorkdayTenant } from "./workday-tenants";
  *   an `externalPath`; the description comes from `GET .../{externalPath}`,
  *   one request per job. That is what makes Workday ~100× the per-Board
  *   request cost of any other Source.
- * - **The tenant cannot be derived from the Slug.** The `wd{N}` shard, the
- *   site name, the company, and the search all come from `WORKDAY_TENANTS`
- *   (`./workday-tenants`), maintained by hand. A Slug not configured there
- *   cannot be fetched.
+ * - **The tenant cannot be derived from the Slug.** The Slug names the tenant,
+ *   but the `wd{N}` shard, the site name, the company, and the search all come
+ *   from `WORKDAY_TENANTS` (`./workday-tenants`), maintained by hand. A Slug
+ *   not configured there cannot be fetched.
  *
- * Cost is bounded by `MAX_JOBS_PER_TENANT` and made observable by failing
- * loudly at it: a tenant whose search matches more than the ceiling throws
- * rather than fetching a silent prefix, so #17 records the failure and the
- * ceiling is raised — or the tenant's search narrowed — as a decision someone
- * made rather than a number that crept up.
+ * Cost is bounded by `MAX_JOBS_PER_TENANT` and made observable two ways: a
+ * tenant whose search matches more than the ceiling fails the Fetch loudly
+ * (#17 records it, nothing is written), and on the success path the request
+ * cost is `postings + ceil(postings / PAGE_SIZE)` — so a tenant's standing
+ * Posting count in the Corpus is proportional to what it costs to fetch.
  *
  * Expiry: Workday is an `absence` Source like the ATS Boards. One Fetch pulls
  * the tenant's whole `searchText` slice, so a job that drops out of it is
@@ -37,7 +37,7 @@ import { WORKDAY_TENANTS, type WorkdayTenant } from "./workday-tenants";
  * counter.
  *
  * Source Key scope: a Workday requisition id is unique only within a tenant,
- * so the Source Key is tenant-prefixed — `{tenant}:{externalPath}` — to stay
+ * so the Source Key is tenant-prefixed — `{slug}:{externalPath}` — to stay
  * unique across the whole Source without a schema change (`postings.board_id`
  * would be the alternative).
  */
@@ -62,8 +62,14 @@ const PAGE_SIZE = 20;
  */
 export const MAX_JOBS_PER_TENANT = 600;
 
-/** A hard ceiling on list requests, in case `total` cannot be trusted. */
+/**
+ * A page ceiling one over what the job budget needs, so a list that never
+ * agrees with its own `total` is a loud failure rather than a silent prefix.
+ */
 const MAX_LIST_PAGES = Math.ceil(MAX_JOBS_PER_TENANT / PAGE_SIZE) + 1;
+
+/** A career-site name — an opaque path segment, so `/`, `.`, `?`, `#` are out. */
+const SITE_SEGMENT = /^[A-Za-z0-9_-]+$/;
 
 /** One entry in the job list, reduced to what the adapter depends on. */
 const jobListing = z.object({
@@ -89,46 +95,51 @@ const jobDetail = z.object({
   }),
 });
 
-function origin(tenant: WorkdayTenant): string {
-  return `https://${tenant.tenant}.${tenant.shard}.myworkdayjobs.com`;
+/** A configured tenant with the Slug that named it, threaded together. */
+type ResolvedTenant = WorkdayTenant & { slug: string };
+
+function origin(tenant: ResolvedTenant): string {
+  return `https://${tenant.slug}.${tenant.shard}.myworkdayjobs.com`;
 }
 
-function cxsPath(tenant: WorkdayTenant): string {
-  return `${origin(tenant)}/wday/cxs/${tenant.tenant}/${tenant.site}`;
+function cxsPath(tenant: ResolvedTenant): string {
+  return `${origin(tenant)}/wday/cxs/${tenant.slug}/${tenant.site}`;
 }
 
 /** The public job page, for the tenant whose detail omits `externalUrl`. */
-function jobPageUrl(tenant: WorkdayTenant, externalPath: string): string {
+function jobPageUrl(tenant: ResolvedTenant, externalPath: string): string {
   return `${origin(tenant)}/en-US/${tenant.site}${externalPath}`;
 }
-
-const HOST_LABEL = /^[a-zA-Z0-9][a-zA-Z0-9-]*$/;
 
 /**
  * The tenant a Slug names, or a Board-phrased error.
  *
- * Two failures, both before a request is built: a Slug with no configuration
+ * Every failure is before a request is built: a Slug with no configuration
  * (the "no harvesting path" — a harvested Workday host is inert until a person
- * fills in `./workday-tenants`), and a configuration whose tenant or shard is
- * not a DNS label. The shard and tenant land in the hostname, and
- * `encodeURIComponent` does not contain a `.` or `/` there — the same exposure
- * `boardSubdomain` guards for Recruitee, with the shard added.
+ * fills in `./workday-tenants`), and a configuration that would not make a
+ * safe URL. The Slug and shard land in the hostname and the site lands in the
+ * path, and `encodeURIComponent` is not applied to any of them — the same
+ * exposure `boardSubdomain` guards for Recruitee, widened to the two fields
+ * Workday adds.
  */
-function resolveWorkdayTenant(slug: string): WorkdayTenant {
-  const tenant = WORKDAY_TENANTS[slug];
-  if (!tenant) {
+function resolveWorkdayTenant(slug: string): ResolvedTenant {
+  const config = WORKDAY_TENANTS[slug];
+  if (!config) {
     throw new Error(
       `${LABEL} Board "${slug}" is not a configured tenant — its shard, site, and search are set by hand in workday-tenants.ts`,
     );
   }
-  for (const part of ["tenant", "shard"] as const) {
-    if (!HOST_LABEL.test(tenant[part])) {
-      throw new Error(
-        `${LABEL} Board "${slug}" has a ${part} that is not safe in a hostname: "${tenant[part]}"`,
-      );
-    }
+  if (!isHostLabel(slug) || !isHostLabel(config.shard)) {
+    throw new Error(
+      `${LABEL} Board "${slug}" has a Slug or shard that is not safe in a hostname (shard "${config.shard}")`,
+    );
   }
-  return tenant;
+  if (!SITE_SEGMENT.test(config.site)) {
+    throw new Error(
+      `${LABEL} Board "${slug}" has a site that is not safe in a request path: "${config.site}"`,
+    );
+  }
+  return { ...config, slug };
 }
 
 /** Fetches one Workday tenant's `searchText` slice and returns its Postings. */
@@ -137,11 +148,11 @@ export async function fetchWorkdayBoard(
   signal: AbortSignal,
 ): Promise<SourcePosting[]> {
   const tenant = resolveWorkdayTenant(slug);
-  const paths = await listJobPaths(tenant, slug, signal);
+  const paths = await listJobPaths(tenant, signal);
 
   const postings: SourcePosting[] = [];
   for (const externalPath of paths) {
-    postings.push(await fetchJob(tenant, slug, externalPath, signal));
+    postings.push(await fetchJob(tenant, externalPath, signal));
   }
   return postings;
 }
@@ -154,10 +165,19 @@ export async function fetchWorkdayBoard(
  * loop was walking it, and fetching its detail twice would hand the Corpus
  * upsert the same Source Key twice and fail the whole Fetch — so the paths are
  * de-duplicated here, before any detail request is spent on them.
+ *
+ * The walk ends when a page comes back short — that, not the reported `total`,
+ * is the end of the list, because a `total` that under-reports would otherwise
+ * stop the walk early and leave a partial list looking like the tenant's whole
+ * state (ADR 0004). `total` is only ever read to refuse a tenant over budget.
+ *
+ * Three things end the walk as a failure rather than a result: a `total` over
+ * budget, a first page that reports matches but returns none, and a list whose
+ * own length runs past the budget or past `MAX_LIST_PAGES` — a list that never
+ * short-pages is one whose `total` cannot be trusted at all.
  */
 async function listJobPaths(
-  tenant: WorkdayTenant,
-  slug: string,
+  tenant: ResolvedTenant,
   signal: AbortSignal,
 ): Promise<string[]> {
   const paths = new Set<string>();
@@ -166,7 +186,7 @@ async function listJobPaths(
     const offset = page * PAGE_SIZE;
     const result = await readSourceDocument({
       label: LABEL,
-      subject: `Board "${slug}" jobs ${offset}–${offset + PAGE_SIZE}`,
+      subject: `Board "${tenant.slug}" jobs ${offset}–${offset + PAGE_SIZE}`,
       url: `${cxsPath(tenant)}/jobs`,
       method: "POST",
       body: {
@@ -179,37 +199,57 @@ async function listJobPaths(
       signal,
     });
 
-    if (page === 0 && result.total > MAX_JOBS_PER_TENANT) {
+    const batch = result.jobPostings ?? [];
+    if (page === 0 && result.total > 0 && batch.length === 0) {
       throw new Error(
-        `${LABEL} Board "${slug}" matches ${result.total} jobs for search "${tenant.search}", above the ${MAX_JOBS_PER_TENANT}-job budget — narrow the tenant's search or raise MAX_JOBS_PER_TENANT`,
+        `${LABEL} Board "${tenant.slug}" reports ${result.total} matching jobs but its list came back empty — the response shape may have changed`,
+      );
+    }
+    for (const listing of batch) {
+      paths.add(usablePath(tenant, listing.externalPath));
+    }
+
+    if (Math.max(result.total, paths.size) > MAX_JOBS_PER_TENANT) {
+      throw new Error(
+        `${LABEL} Board "${tenant.slug}" has ${Math.max(
+          result.total,
+          paths.size,
+        )} jobs for search "${tenant.search}", above the ${MAX_JOBS_PER_TENANT}-job budget — narrow the tenant's search or raise MAX_JOBS_PER_TENANT`,
       );
     }
 
-    const batch = result.jobPostings ?? [];
-    for (const listing of batch) paths.add(listing.externalPath);
-
-    if (
-      batch.length < PAGE_SIZE ||
-      paths.size >= result.total ||
-      // A backstop for a `total` the page count never catches up to.
-      paths.size >= MAX_JOBS_PER_TENANT
-    ) {
-      break;
-    }
+    if (batch.length < PAGE_SIZE) return [...paths];
   }
-  return [...paths];
+
+  throw new Error(
+    `${LABEL} Board "${tenant.slug}" did not finish paging within ${MAX_LIST_PAGES} pages — its list never came back short, so its total is not to be trusted`,
+  );
+}
+
+/**
+ * A job's `externalPath`, checked before it is spliced into a URL and a Source
+ * Key. It comes from Workday's own list response, but it becomes the path of
+ * the detail request and the tail of the Source Key, so a value carrying `..`
+ * or a scheme is refused rather than trusted.
+ */
+function usablePath(tenant: ResolvedTenant, externalPath: string): string {
+  if (!externalPath.startsWith("/") || /\.\.|:\/\//.test(externalPath)) {
+    throw new Error(
+      `${LABEL} Board "${tenant.slug}" returned a job path it cannot use: "${externalPath}"`,
+    );
+  }
+  return externalPath;
 }
 
 /** Fetches one job's detail document and turns it into a Posting. */
 async function fetchJob(
-  tenant: WorkdayTenant,
-  slug: string,
+  tenant: ResolvedTenant,
   externalPath: string,
   signal: AbortSignal,
 ): Promise<SourcePosting> {
   const { jobPostingInfo: info } = await readSourceDocument({
     label: LABEL,
-    subject: `Board "${slug}" job ${externalPath}`,
+    subject: `Board "${tenant.slug}" job ${externalPath}`,
     url: `${cxsPath(tenant)}${externalPath}`,
     schema: jobDetail,
     signal,
@@ -218,13 +258,14 @@ async function fetchJob(
   return {
     source: "workday",
     // Tenant-prefixed: a requisition id is unique only within a tenant.
-    sourceId: `${tenant.tenant}:${externalPath}`,
+    sourceId: `${tenant.slug}:${externalPath}`,
     company: tenant.company,
     title: info.title,
     description: info.jobDescription,
     // Workday states the workplace type as a field of its own (`remoteType`:
     // `Remote`, `Hybrid`, `On-site`), which the matching funnel would never
-    // see unless it is written into the location string it reads (#11).
+    // see unless it is written into the location string it reads (#11) — the
+    // same thing every other adapter does with `placeWithArrangement`.
     location: placeWithArrangement(
       arrangementLabel(info.remoteType),
       everyPlace([info.location, ...(info.additionalLocations ?? [])]),

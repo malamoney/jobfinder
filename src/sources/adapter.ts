@@ -170,10 +170,23 @@ function explainIssues(error: z.ZodError): string {
  * before a request is made.
  */
 export function boardSubdomain(source: string, slug: string): string {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(slug)) {
+  if (!isHostLabel(slug)) {
     throw new Error(
       `${source} Board "${slug}" is not a Slug this Source can address`,
     );
   }
   return slug.toLowerCase();
+}
+
+/**
+ * Whether a string is safe to place in a hostname — a DNS label: letters,
+ * digits, and hyphens, not starting with a hyphen.
+ *
+ * `boardSubdomain` guards Recruitee's Slug with this; Workday (#16) guards both
+ * its tenant Slug and the `wd{N}` shard, since both land in
+ * `{tenant}.{shard}.myworkdayjobs.com` where `encodeURIComponent` would not
+ * contain a `.` or `/`.
+ */
+export function isHostLabel(value: string): boolean {
+  return /^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(value);
 }
