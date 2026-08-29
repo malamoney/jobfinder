@@ -11,7 +11,7 @@ import {
 } from "@/operations";
 import { REVIEW_STATUSES, STATUS_LABELS } from "@/review/schema";
 import { logOutAction } from "../actions";
-import { formatDay } from "../format";
+import { formatDay, formatSalary } from "../format";
 
 export const metadata: Metadata = { title: "Dashboard · Jobfinder" };
 
@@ -177,9 +177,9 @@ function PostingCard({ posting }: { posting: DashboardPosting }) {
 
       <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-600">
         <Fact label="Location" value={posting.location ?? "Not given"} />
-        {/* Salary Extraction is #11; until then no Posting carries one, and an
-            unknown salary is shown as "not listed" rather than a number (#36). */}
-        <Fact label="Salary" value="Not listed" />
+        {/* Extraction (#11) fills salary where the Posting's text states one; an
+            unknown reads as "not listed", never a number or a zero (#36). */}
+        <Fact label="Salary" value={formatSalary(posting)} />
         <Fact label="Posted" value={formatDay(posting.postedAt, "Date not given")} />
       </dl>
 

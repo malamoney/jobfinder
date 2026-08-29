@@ -10,7 +10,7 @@ import {
   type Board,
 } from "@/operations";
 import { getDb } from "@/db";
-import { user } from "@/db/schema";
+import { postings, user } from "@/db/schema";
 import { boardReturns, greenhouseJob } from "@/test/fixtures/greenhouse";
 import type { CriteriaInput } from "@/criteria/schema";
 
@@ -298,5 +298,258 @@ describe("Expired Postings on the Dashboard", () => {
     // The filled role is still shown, but it is not something to open the app
     // for, so it is left out of the unreviewed count (#33).
     expect(dashboard.unreviewedCount).toBe(1);
+  });
+});
+
+describe("Extraction over the survivors of the cheap stages", () => {
+  it("extracts a Posting a User's title surfaced and leaves the others untouched", async () => {
+    await corpusHas([
+      greenhouseJob({ id: 1, title: "Staff Engineer" }),
+      greenhouseJob({ id: 2, title: "Account Executive" }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(userId, statedCriteria({ titles: ["Staff Engineer"] }));
+
+    // Extraction is stage three of the funnel: it runs over what the cheap
+    // stages let through, never the whole Corpus (#11). The Posting no title
+    // matched has never been through it.
+    const extracted = Object.fromEntries(
+      (await getDb().select().from(postings)).map((row) => [
+        row.title,
+        row.extractedAt !== null,
+      ]),
+    );
+    expect(extracted).toEqual({
+      "Staff Engineer": true,
+      "Account Executive": false,
+    });
+  });
+
+  it("re-extracts a Posting after a re-Fetch rewrote its description", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Engineer",
+        content: "&lt;p&gt;Compensation is competitive.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+    await saveCriteria(userId, statedCriteria({ titles: ["Staff Engineer"] }));
+    expect((await readDashboard(userId)).postings[0].salaryMax).toBeNull();
+
+    // The company edits the posting to state a band; the next Fetch overwrites
+    // the description and clears the derived fields, so the next match run
+    // extracts it again.
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Engineer",
+        content: "&lt;p&gt;The salary range is $190,000 - $210,000.&lt;/p&gt;",
+      }),
+    ]);
+    await saveCriteria(userId, statedCriteria({ titles: ["Staff Engineer"] }));
+
+    expect((await readDashboard(userId)).postings[0].salaryMax).toBe(210_000);
+  });
+});
+
+describe("a minimum salary", () => {
+  it("excludes a Posting that states a salary below the floor", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Engineer, Data",
+        content: "&lt;p&gt;Base salary range: $120,000 - $140,000.&lt;/p&gt;",
+      }),
+      greenhouseJob({
+        id: 2,
+        title: "Staff Engineer, Platform",
+        content: "&lt;p&gt;Base salary range: $190,000 - $220,000.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      statedCriteria({ titles: ["Staff Engineer"], minSalary: 180_000 }),
+    );
+
+    expect(
+      (await readDashboard(userId)).postings.map((p) => p.title),
+    ).toEqual(["Staff Engineer, Platform"]);
+  });
+
+  it("passes a Posting that states no salary at all", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Engineer",
+        content: "&lt;p&gt;Compensation is competitive and DOE.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      statedCriteria({ titles: ["Staff Engineer"], minSalary: 180_000 }),
+    );
+
+    expect((await readDashboard(userId)).postings).toHaveLength(1);
+  });
+
+  it("annualises an hourly rate before comparing it to the floor", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Contract Engineer, Underpaid",
+        content: "&lt;p&gt;This role pays $50/hour.&lt;/p&gt;",
+      }),
+      greenhouseJob({
+        id: 2,
+        title: "Contract Engineer, Paid",
+        content: "&lt;p&gt;This role pays $95/hour.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      statedCriteria({ titles: ["Contract Engineer"], minSalary: 150_000 }),
+    );
+
+    expect(
+      (await readDashboard(userId)).postings.map((p) => p.title),
+    ).toEqual(["Contract Engineer, Paid"]);
+  });
+
+  it("carries the extracted salary onto the Dashboard, with null where none was stated", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Engineer, Open",
+        content: "&lt;p&gt;The base salary range is $170,000 - $195,000 per year.&lt;/p&gt;",
+      }),
+      greenhouseJob({
+        id: 2,
+        title: "Staff Engineer, Quiet",
+        content: "&lt;p&gt;We do not discuss pay up front.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(userId, statedCriteria({ titles: ["Staff Engineer"] }));
+
+    const byTitle = Object.fromEntries(
+      (await readDashboard(userId)).postings.map((p) => [
+        p.title,
+        { min: p.salaryMin, max: p.salaryMax, period: p.salaryPeriod },
+      ]),
+    );
+    expect(byTitle).toEqual({
+      "Staff Engineer, Open": { min: 170_000, max: 195_000, period: "year" },
+      "Staff Engineer, Quiet": { min: null, max: null, period: null },
+    });
+  });
+});
+
+describe("accepted Arrangements", () => {
+  it("excludes a Posting whose text puts it in an Arrangement the User did not accept", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Engineer, Office",
+        location: { name: "New York, NY" },
+        content: "&lt;p&gt;This is an onsite role, five days a week.&lt;/p&gt;",
+      }),
+      greenhouseJob({
+        id: 2,
+        title: "Staff Engineer, Anywhere",
+        location: { name: "Remote - US" },
+        content: "&lt;p&gt;Fully remote, work from anywhere.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      statedCriteria({
+        titles: ["Staff Engineer"],
+        arrangements: ["remote", "full-time"],
+      }),
+    );
+
+    expect(
+      (await readDashboard(userId)).postings.map((p) => p.title),
+    ).toEqual(["Staff Engineer, Anywhere"]);
+  });
+
+  it("passes a Posting whose text names no Arrangement at all", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Engineer",
+        location: { name: "New York, NY" },
+        content: "&lt;p&gt;Join the platform team building our billing system.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      statedCriteria({
+        titles: ["Staff Engineer"],
+        arrangements: ["remote", "full-time"],
+      }),
+    );
+
+    expect((await readDashboard(userId)).postings).toHaveLength(1);
+  });
+
+  it("excludes on employment type independently of location mode", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Engineer, Salaried",
+        location: { name: "Remote" },
+        content: "&lt;p&gt;Full-time and fully remote.&lt;/p&gt;",
+      }),
+      greenhouseJob({
+        id: 2,
+        title: "Staff Engineer, Sessional",
+        location: { name: "Remote" },
+        content: "&lt;p&gt;Part-time, remote, roughly 20 hours a week.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      statedCriteria({
+        titles: ["Staff Engineer"],
+        arrangements: ["remote", "part-time"],
+      }),
+    );
+
+    expect(
+      (await readDashboard(userId)).postings.map((p) => p.title),
+    ).toEqual(["Staff Engineer, Sessional"]);
+  });
+
+  it("carries the detected Arrangements onto the Posting", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Engineer",
+        location: { name: "Remote - US" },
+        content: "&lt;p&gt;A full-time, fully remote position.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(userId, statedCriteria({ titles: ["Staff Engineer"] }));
+
+    const [posting] = (await readDashboard(userId)).postings;
+    expect([...posting.arrangements].sort()).toEqual(["full-time", "remote"]);
   });
 });
