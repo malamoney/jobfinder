@@ -3,7 +3,11 @@ import type { Writer } from "@/db";
 import { postings } from "@/db/schema";
 import { extractArrangements } from "@/postings/arrangement";
 import { normalizeLocation } from "@/postings/location";
-import { extractSalary } from "@/postings/salary";
+import {
+  extractSalary,
+  type ExtractedSalary,
+  type SalaryPeriod,
+} from "@/postings/salary";
 
 /**
  * Extraction: deriving normalized salary, Arrangement, and a geocoding key from
@@ -42,6 +46,9 @@ export async function extractPostings(
       title: postings.title,
       location: postings.location,
       description: postings.description,
+      salaryMin: postings.salaryMin,
+      salaryMax: postings.salaryMax,
+      salaryPeriod: postings.salaryPeriod,
     })
     .from(postings)
     .where(and(scope, isNull(postings.extractedAt)));
@@ -52,7 +59,12 @@ export async function extractPostings(
     const text = [posting.title, posting.location, posting.description]
       .filter((part): part is string => Boolean(part))
       .join("\n");
-    const salary = extractSalary(text);
+    // A salary the Source stated structurally wins over one recognised in prose
+    // (#14). A Posting can only carry one at this point because it has not been
+    // through Extraction — a re-Fetch clears `extracted_at` and rewrites the
+    // salary columns from what the Source published in the same statement — so
+    // a figure already here came from ingestion, not from an earlier run.
+    const salary = salaryAlreadyOnRecord(posting) ?? extractSalary(text);
 
     await writer
       .update(postings)
@@ -69,4 +81,24 @@ export async function extractPostings(
       })
       .where(eq(postings.id, posting.id));
   }
+}
+
+/**
+ * The salary a Posting arrived with, where its Source published one.
+ *
+ * Named for where it is read from rather than for who stated it, so it does not
+ * read as the `statedSalary` in `@/sources/fields` — that one reads a Source's
+ * own field, this one reads the columns ingestion wrote it into.
+ */
+function salaryAlreadyOnRecord(posting: {
+  salaryMin: number | null;
+  salaryMax: number | null;
+  salaryPeriod: SalaryPeriod | null;
+}): ExtractedSalary | null {
+  if (posting.salaryMin === null || posting.salaryPeriod === null) return null;
+  return {
+    min: posting.salaryMin,
+    max: posting.salaryMax ?? posting.salaryMin,
+    period: posting.salaryPeriod,
+  };
 }
