@@ -10,7 +10,11 @@ import {
 import { getDb, type Transaction } from "@/db";
 import { postings, type SourceName } from "@/db/schema";
 import { dedupKey } from "@/postings/dedup-key";
+import { fetchAshbyBoard } from "@/sources/ashby";
 import { fetchGreenhouseBoard } from "@/sources/greenhouse";
+import { fetchLeverBoard } from "@/sources/lever";
+import { fetchRecruiteeBoard } from "@/sources/recruitee";
+import { fetchWorkableBoard } from "@/sources/workable";
 import type { SourcePosting } from "@/sources/types";
 
 /**
@@ -37,12 +41,22 @@ export type Board = BoardAddress & {
   id: string;
 };
 
-/** The adapter each Source is reached through. */
+/**
+ * The adapter each Source is reached through.
+ *
+ * A record keyed by `SourceName` rather than a lookup with a default, so a
+ * Source added to the union without an adapter is a type error rather than a
+ * Fetch that fails at midnight.
+ */
 const ADAPTERS: Record<
   SourceName,
   (slug: string, signal: AbortSignal) => Promise<SourcePosting[]>
 > = {
   greenhouse: fetchGreenhouseBoard,
+  lever: fetchLeverBoard,
+  ashby: fetchAshbyBoard,
+  workable: fetchWorkableBoard,
+  recruitee: fetchRecruiteeBoard,
 };
 
 /** How patient a Fetch of one Board is willing to be. */
@@ -200,13 +214,22 @@ async function storePostings(
   await tx
     .insert(postings)
     .values(
-      fetched.map((posting) => ({
+      fetched.map(({ salary, ...posting }) => ({
         ...posting,
         boardId: board.id,
         // Approximate identity across Sources (#13), derived here so it is
         // written on first sight and — since `dedup_key` is not in
         // `PRESERVED_ON_REFETCH` — refreshed from `excluded` on every re-Fetch.
         dedupKey: dedupKey(posting),
+        // A salary the Source published in a field of its own (#14) lands in
+        // the same columns Extraction writes, and `extractPostings` leaves a
+        // Posting that already has one alone. Null where the Source published
+        // none, which is what leaves the salary to Extraction — and, since
+        // these columns are refreshed from `excluded` on a re-Fetch, a company
+        // that removed the figure has it removed here too.
+        salaryMin: salary ? Math.round(salary.min) : null,
+        salaryMax: salary ? Math.round(salary.max) : null,
+        salaryPeriod: salary?.period ?? null,
       })),
     )
     .onConflictDoUpdate({

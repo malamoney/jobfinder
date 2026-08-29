@@ -24,6 +24,29 @@ white-collar, and remote engineering/design/PM roles.
 | **Himalayas** | `https://himalayas.app/jobs/api` | None | ✅ 103,883 remote jobs, cursor pagination, actively maintained |
 | **The Muse** | `https://www.themuse.com/api/public/jobs` | None (500/hr anon) | ✅ Full HTML in list response. **Hard cap at page 99** — slice by category × location × level |
 
+### Tier 1 adapter notes — ✅ verified 2026-08-29
+
+Checked live before writing the Lever, Ashby, Workable, and Recruitee adapters (#14). The first
+column is the one the Corpus depends on: the Source Key is `(source, source_id)` and a Source
+numbering its jobs only *within* a Board would have two companies silently overwriting each other
+on every Fetch.
+
+| Source | Id scope | Company name | Structured pay | Watch out for |
+| --- | --- | --- | --- | --- |
+| **Greenhouse** | Global (numeric, confirmed 2026-08-25) | `company_name` | No | `content` is HTML-escaped |
+| **Lever** | Global (UUID) | **None published** | `salaryRange`, ~2% of postings | Bare array, no envelope; description split across `description` + `lists` + `additional` |
+| **Ashby** | Global (UUID) | **None published** | `compensation.summaryComponents`, common | `compensation` is absent without `includeCompensation=true`; components include equity and bonus, only `compensationType: "Salary"` is pay |
+| **Workable** | Global (`shortcode`, is the public URL) | Envelope `name` | No | **One entry per job per location** — the same `shortcode` arrives more than once |
+| **Recruitee** | Global (numeric) — three Boards sampled, ids interleaved across 312,680–2,721,844 with no repetition | `company_name` | `salary`, EUR-heavy | Addressed by **subdomain**, so the Slug lands in the hostname; `requirements` is a document separate from `description`; dates are `2026-08-25 11:59:25 UTC`, not ISO 8601 |
+
+Lever and Ashby publishing no company name is the finding with the widest blast radius: a Posting
+must carry one — it is displayed, and it is a third of the Dedup Key — so those two adapters derive
+it from the Slug (`companyFromSlug`).
+
+Only USD pay is read from a structured field, for the same reason the prose extractor ignores
+non-dollar figures: the floor a User states is in dollars and nothing converts currencies. That
+excludes most of what Recruitee publishes.
+
 ### Slug discovery
 
 No ATS offers a company directory. Harvest slugs from **Common Crawl CDX**:

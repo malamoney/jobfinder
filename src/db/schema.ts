@@ -26,10 +26,21 @@ export * from "./auth-schema";
  * The Sources Postings can be fetched from.
  *
  * A TypeScript union over a `text` column rather than a Postgres enum: adding
- * a Source (#14, #15, #16) should be a code change, and a Source Key already
- * in the Corpus should not become unreadable if a name is ever retired.
+ * a Source (#15, #16) should be a code change, and a Source Key already in the
+ * Corpus should not become unreadable if a name is ever retired.
+ *
+ * Every name here is an applicant-tracking Source reached through its own
+ * adapter in `@/sources` (ADR 0003). Each was checked before it was added for
+ * the one thing the Source Key rests on: that the Source's own identifier for a
+ * job is unique across the whole Source rather than within one Board. Each
+ * adapter records what that check found.
  */
-export type SourceName = "greenhouse";
+export type SourceName =
+  | "greenhouse"
+  | "lever"
+  | "ashby"
+  | "workable"
+  | "recruitee";
 
 /**
  * The Corpus: every Posting fetched from every Source, shared by all Users.

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { readBoardDocument, toDate } from "./adapter";
 import type { SourcePosting } from "./types";
 
 /**
@@ -10,7 +11,13 @@ import type { SourcePosting } from "./types";
  *
  * Tested through `fetchBoard` in `src/operations` rather than directly, so one
  * assertion covers the adapter, the Source Key upsert, and persistence.
+ *
+ * Source Key scope: Greenhouse job ids are unique across the whole Source, not
+ * per Board — confirmed against the live API on 2026-08-25 — so `(greenhouse,
+ * id)` identifies a Posting on its own.
  */
+
+const LABEL = "Greenhouse";
 
 function boardUrl(slug: string): string {
   return `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(
@@ -21,12 +28,8 @@ function boardUrl(slug: string): string {
 /**
  * What the adapter depends on, and nothing more.
  *
- * Unknown fields are stripped rather than rejected — Zod objects drop them by
- * default — because Greenhouse adds fields without notice and rejecting a
- * response would take a whole Board down over a field nobody wanted. The
- * fields listed here are the other half of that rule: if one of them is gone
- * the Board is broken, not empty, and the Fetch must fail loudly rather than
- * report that the Board returned no Postings (#7).
+ * Unknown fields are stripped and missing ones are fatal; `readBoardDocument`
+ * holds both halves of that rule and the reasoning behind them.
  */
 const greenhouseJob = z.object({
   id: z.union([z.number(), z.string()]),
@@ -42,36 +45,20 @@ const greenhouseBoard = z.object({
   jobs: z.array(greenhouseJob),
 });
 
-/**
- * Fetches one Greenhouse Board and returns its Postings.
- *
- * The `signal` is the ceiling on how long this may take, and it belongs to the
- * caller rather than to this adapter: the Worker is the one whose budget is
- * being spent, and only it knows how much of that is left (#25). It covers the
- * body as well as the headers, so a Source that starts answering and then
- * stalls is bounded too.
- */
+/** Fetches one Greenhouse Board and returns its Postings. */
 export async function fetchGreenhouseBoard(
   slug: string,
   signal: AbortSignal,
 ): Promise<SourcePosting[]> {
-  const response = await fetch(boardUrl(slug), { signal });
-  if (!response.ok) {
-    throw new Error(
-      `Greenhouse Board "${slug}" returned ${response.status} ${response.statusText}`,
-    );
-  }
+  const board = await readBoardDocument({
+    label: LABEL,
+    slug,
+    url: boardUrl(slug),
+    schema: greenhouseBoard,
+    signal,
+  });
 
-  const parsed = greenhouseBoard.safeParse(await response.json());
-  if (!parsed.success) {
-    throw new Error(
-      `Greenhouse Board "${slug}" returned a response this adapter does not understand: ${explainIssues(
-        parsed.error,
-      )}`,
-    );
-  }
-
-  return parsed.data.jobs.map((job) => ({
+  return board.jobs.map((job) => ({
     source: "greenhouse" as const,
     sourceId: String(job.id),
     company: job.company_name,
@@ -83,20 +70,10 @@ export async function fetchGreenhouseBoard(
     // wrongly on the Dashboard. No published date is null, not a guess.
     postedAt: toDate(job.first_published),
     applyUrl: job.absolute_url,
+    // Greenhouse publishes pay only in the description, so every Greenhouse
+    // salary is Extraction's to find.
+    salary: null,
   }));
-}
-
-/** Names the fields that were wrong, so a broken Board is diagnosable. */
-function explainIssues(error: z.ZodError): string {
-  return error.issues
-    .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
-    .join("; ");
-}
-
-function toDate(value: string | null | undefined): Date | null {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 const NAMED_ENTITIES: Record<string, string> = {
