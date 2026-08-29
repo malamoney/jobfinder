@@ -62,6 +62,14 @@ export const postings = pgTable(
     company: text("company").notNull(),
     title: text("title").notNull(),
     description: text("description").notNull(),
+    // The Dedup Key: approximate identity across Sources (#13), derived by
+    // `dedupKey` in `@/postings/dedup-key` from normalized company, title, and
+    // location. Written on every ingestion and refreshed on a re-Fetch with the
+    // other derived columns, so a company that corrected its name or place
+    // regroups rather than keeping a stale key. Postings sharing one are the
+    // same opening published in more than one place; all are retained and the
+    // Dashboard presents one (`chooseRepresentative`).
+    dedupKey: text("dedup_key").notNull(),
     // Free text as the Source wrote it — `Greater Boston Area`,
     // `San Francisco, CA / Remote`, `Multiple locations`.
     location: text("location"),
@@ -128,6 +136,9 @@ export const postings = pgTable(
     // The distance funnel stage (#12) joins `geocodes` onto this column, and
     // the Dashboard joins it again to flag an unresolved location.
     index("postings_normalized_location").on(table.normalizedLocation),
+    // The Dashboard groups a User's matched Postings by this to present one per
+    // opening (#13), and the Posting page looks up a Posting's group by it.
+    index("postings_dedup_key").on(table.dedupKey),
   ],
 );
 

@@ -16,6 +16,7 @@ import {
   type PostingReview,
   type ReviewOutcome,
 } from "@/review/schema";
+import { latestGroupReview } from "./dedup";
 import { hasUnresolvedLocation, isExpired } from "./postings";
 
 /**
@@ -57,7 +58,12 @@ function isPostingId(value: string): boolean {
  * in the Corpus.
  *
  * The Corpus is shared, so any Posting is readable by any User — what is
- * per-User is the Review State joined onto it.
+ * per-User is the Review State. That state belongs to the opening, not the
+ * listing: it is read across the Posting's whole Dedup Key group (#13), so a
+ * User who marked one Source's copy sees that mark on the page for any other
+ * copy of the same opening. `setStatus` and `setNotes` still write against a
+ * single Posting — the one the User is looking at — and this read is what makes
+ * the group agree.
  */
 export async function readPosting(
   userId: string,
@@ -76,21 +82,34 @@ export async function readPosting(
   const [row] = await db
     .select({
       posting: postings,
-      review: reviewState,
       coordinate: {
         latitude: geocodes.latitude,
         longitude: geocodes.longitude,
       },
     })
     .from(postings)
-    .leftJoin(
-      reviewState,
-      and(eq(reviewState.postingId, postings.id), eq(reviewState.userId, userId)),
-    )
     .leftJoin(geocodes, eq(geocodes.location, postings.normalizedLocation))
     .where(eq(postings.id, postingId));
 
   if (!row) return null;
+
+  const marks = await db
+    .select({
+      status: reviewState.status,
+      notes: reviewState.notes,
+      statusChangedAt: reviewState.statusChangedAt,
+      appliedAt: reviewState.appliedAt,
+      updatedAt: reviewState.updatedAt,
+    })
+    .from(reviewState)
+    .innerJoin(postings, eq(postings.id, reviewState.postingId))
+    .where(
+      and(
+        eq(reviewState.userId, userId),
+        eq(postings.dedupKey, row.posting.dedupKey),
+      ),
+    );
+  const effective = latestGroupReview(marks);
 
   return {
     ...row.posting,
@@ -100,12 +119,12 @@ export async function readPosting(
       row.coordinate,
       filtersByDistance,
     ),
-    review: row.review
+    review: effective
       ? {
-          status: row.review.status,
-          notes: row.review.notes,
-          statusChangedAt: row.review.statusChangedAt,
-          appliedAt: row.review.appliedAt,
+          status: effective.status,
+          notes: effective.notes,
+          statusChangedAt: effective.statusChangedAt,
+          appliedAt: effective.appliedAt,
         }
       : UNREVIEWED,
   };
