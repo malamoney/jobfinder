@@ -18,7 +18,11 @@ import {
   type CriteriaRow,
   type Posting,
 } from "@/db/schema";
-import type { Arrangement } from "@/criteria/schema";
+import {
+  EMPLOYMENT_ARRANGEMENTS,
+  LOCATION_ARRANGEMENTS,
+  type Arrangement,
+} from "@/criteria/schema";
 import { WORKING_HOURS_PER_YEAR } from "@/postings/salary";
 import { extractPostings } from "./extraction";
 
@@ -117,18 +121,6 @@ const minimumSalary: FunnelStage = {
   },
 };
 
-/** The Arrangement values that describe where the work happens. */
-const LOCATION_MODES = [
-  "remote",
-  "onsite",
-  "hybrid",
-] as const satisfies readonly Arrangement[];
-/** The Arrangement values that describe the employment type. */
-const EMPLOYMENT_TYPES = [
-  "full-time",
-  "part-time",
-] as const satisfies readonly Arrangement[];
-
 /**
  * Accepted Arrangements, over the structure Extraction derived.
  *
@@ -147,7 +139,7 @@ const acceptedArrangements: FunnelStage = {
   name: "accepted arrangements over extracted structure",
   derived: true,
   narrow({ arrangements }) {
-    const perAxis = [LOCATION_MODES, EMPLOYMENT_TYPES]
+    const perAxis = [LOCATION_ARRANGEMENTS, EMPLOYMENT_ARRANGEMENTS]
       .map((axis) => axisClause(arrangements, axis))
       .filter((clause): clause is SQL => clause !== undefined);
     return perAxis.length ? and(...perAxis) : undefined;
