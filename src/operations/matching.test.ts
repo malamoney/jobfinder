@@ -4,6 +4,7 @@ import { signUp } from "@/auth";
 import {
   addBoard,
   fetchBoard,
+  matchAllUsers,
   matchCriteria,
   readDashboard,
   saveCriteria,
@@ -276,6 +277,37 @@ describe("re-matching when Criteria change", () => {
     await matchCriteria(userId);
 
     expect((await readDashboard(userId)).postings).toHaveLength(1);
+  });
+});
+
+describe("re-matching every User after a Fetch", () => {
+  it("surfaces a newly collected Posting on every User's Dashboard", async () => {
+    const ada = await givenAUser("ada@example.com");
+    const grace = await givenAUser("grace@example.com");
+    await saveCriteria(ada, statedCriteria({ titles: ["Engineer"] }));
+    await saveCriteria(grace, statedCriteria({ titles: ["Engineer"] }));
+    expect((await readDashboard(ada)).postings).toHaveLength(0);
+
+    // A Fetch collects a matching Posting after both Users stated Criteria.
+    await corpusHas([greenhouseJob({ id: 1, title: "Platform Engineer" })]);
+    await matchAllUsers();
+
+    expect((await readDashboard(ada)).postings.map((p) => p.title)).toEqual([
+      "Platform Engineer",
+    ]);
+    expect((await readDashboard(grace)).postings.map((p) => p.title)).toEqual([
+      "Platform Engineer",
+    ]);
+  });
+
+  it("leaves a signed-up User who has stated no Criteria alone", async () => {
+    await givenAUser("nocrit@example.com");
+    const ada = await givenAUser("ada@example.com");
+    await saveCriteria(ada, statedCriteria({ titles: ["Engineer"] }));
+    await corpusHas([greenhouseJob({ id: 1, title: "Platform Engineer" })]);
+
+    await expect(matchAllUsers()).resolves.toBeUndefined();
+    expect((await readDashboard(ada)).postings).toHaveLength(1);
   });
 });
 

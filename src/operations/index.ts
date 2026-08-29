@@ -43,7 +43,20 @@ export {
   type FetchRunReport,
   type FetchTaskReport,
 } from "./fetch-run";
-export { matchCriteria } from "./matching";
+export {
+  drainAndRematch,
+  drainFetchQueue,
+  readLatestFetchRun,
+  requestFetch,
+  DEFAULT_DRAIN_BUDGET_MS,
+  FETCH_COOLDOWN_MS,
+  type DrainOptions,
+  type DrainResult,
+  type FetchFailure,
+  type FetchRequestOutcome,
+  type FetchRunSummary,
+} from "./fetch-schedule";
+export { matchAllUsers, matchCriteria } from "./matching";
 export { isExpired, listPostings } from "./postings";
 export {
   readPosting,

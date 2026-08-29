@@ -356,7 +356,8 @@ function keywordsFoundIn(
  * Matches are derived (ADR 0001): this discards the User's Matches and rebuilds
  * them from scratch, so a Criteria edit that dropped a keyword cannot leave a
  * Match it used to justify behind. `saveCriteria` calls this on every save, and
- * a Dashboard "Run Now" (#48) will call it directly.
+ * `matchAllUsers` calls it for everyone after a Fetch and behind the Dashboard's
+ * "Run matching now" (#17).
  *
  * One transaction, and the Criteria are read inside it, so the rebuild cannot
  * race a concurrent save and land against a statement that no longer exists.
@@ -417,4 +418,26 @@ export async function matchCriteria(userId: string): Promise<void> {
       })),
     );
   });
+}
+
+/**
+ * Re-matches every User who has stated Criteria.
+ *
+ * The nightly Fetch runs this once it has collected, so a User's Dashboard
+ * shows Postings that arrived overnight without their having to touch anything
+ * (#2, user story 20; #17). "Run matching now" on the Dashboard re-matches one
+ * User the same way, on demand.
+ *
+ * Sequential, each User its own transaction: a partial failure leaves the Users
+ * already done correctly matched, and the geocode cache one User's run fills
+ * serves the next.
+ */
+export async function matchAllUsers(): Promise<void> {
+  const stated = await getDb()
+    .select({ userId: criteria.userId })
+    .from(criteria);
+
+  for (const { userId } of stated) {
+    await matchCriteria(userId);
+  }
 }

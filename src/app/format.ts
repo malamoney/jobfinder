@@ -16,6 +16,20 @@ export function formatDay(date: Date | null, fallback = "Not given"): string {
   });
 }
 
+/**
+ * A date with the time of day, for the last-Fetch line on the Dashboard (#17) —
+ * "the sweep ran an hour ago" is only answerable if the clock time is shown.
+ */
+export function formatDateTime(date: Date | null, fallback = "Never"): string {
+  if (!date) return fallback;
+  return new Date(date).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 /** The salary text shown when Extraction found no salary in a Posting. */
 export const SALARY_NOT_LISTED = "Not listed";
 
