@@ -44,7 +44,17 @@ Re-fetching a Posting with a known Source Key updates it rather than inserting a
 
 **Dedup Key**:
 A Posting's approximate identity across Sources, derived from normalized company, title, and
-location. Postings sharing one are the same opening published in more than one place.
+location. Postings sharing one are the same opening published in more than one place. Cheap and
+deterministic — no fuzzy matching. Grouped Postings are all retained; the Dashboard presents one
+(ADR 0006).
+_Avoid_: Fingerprint, hash
+
+**Representative**:
+The one member of a Dedup Key group the Dashboard and Posting page show for the opening: a live
+listing over an Expired one, then the fullest description, then the most direct apply URL, then
+Source and Source id so the choice is stable. The group's Review State and matched Keywords are read
+across every member, not just this one.
+_Avoid_: Primary, canonical, winner
 
 **Expired**:
 A Posting that a Source stopped returning across consecutive successful Fetches. Retained rather

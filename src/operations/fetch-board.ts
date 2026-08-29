@@ -9,6 +9,7 @@ import {
 } from "drizzle-orm";
 import { getDb, type Transaction } from "@/db";
 import { postings, type SourceName } from "@/db/schema";
+import { dedupKey } from "@/postings/dedup-key";
 import { fetchGreenhouseBoard } from "@/sources/greenhouse";
 import type { SourcePosting } from "@/sources/types";
 
@@ -198,7 +199,16 @@ async function storePostings(
 
   await tx
     .insert(postings)
-    .values(fetched.map((posting) => ({ ...posting, boardId: board.id })))
+    .values(
+      fetched.map((posting) => ({
+        ...posting,
+        boardId: board.id,
+        // Approximate identity across Sources (#13), derived here so it is
+        // written on first sight and — since `dedup_key` is not in
+        // `PRESERVED_ON_REFETCH` — refreshed from `excluded` on every re-Fetch.
+        dedupKey: dedupKey(posting),
+      })),
+    )
     .onConflictDoUpdate({
       target: [postings.source, postings.sourceId],
       set: REFRESHED_ON_REFETCH,
