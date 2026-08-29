@@ -5,7 +5,8 @@ import { useState, useTransition, type KeyboardEvent } from "react";
 // This is the schema with nothing behind it, which is what lets the same rules
 // answer a typo here and reject a crafted POST on the server.
 import {
-  ARRANGEMENTS,
+  EMPLOYMENT_ARRANGEMENTS,
+  LOCATION_ARRANGEMENTS,
   criteriaProblem,
   needsDistanceBounds,
   type Arrangement,
@@ -23,6 +24,17 @@ const ARRANGEMENT_LABELS: Record<Arrangement, string> = {
   onsite: "Onsite",
   hybrid: "Hybrid",
 };
+
+/**
+ * The checkboxes, split by the two axes Matching reads a selection along
+ * (`@/criteria/schema`). Leaving a group empty constrains nothing on that axis
+ * — so the groups are shown, and labelled, rather than one flat list that hides
+ * why an untouched value is not a filter.
+ */
+const ARRANGEMENT_GROUPS = [
+  { legend: "Where you work", values: LOCATION_ARRANGEMENTS },
+  { legend: "Employment type", values: EMPLOYMENT_ARRANGEMENTS },
+] as const;
 
 /** An empty statement, for a User stating Criteria for the first time. */
 const BLANK: Criteria = {
@@ -233,27 +245,38 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
           placeholder="postgres"
         />
 
-        <fieldset className="flex flex-col gap-2">
-          <legend className="text-sm font-medium">Arrangements you accept</legend>
-          <p className="text-xs text-gray-500">
-            Roles structured in a way you cannot take are never shown.
-          </p>
-          <div className="mt-1 flex flex-wrap gap-3">
-            {ARRANGEMENTS.map((arrangement) => (
-              <label
-                key={arrangement}
-                className="flex items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-              >
-                <input
-                  type="checkbox"
-                  checked={arrangements.includes(arrangement)}
-                  onChange={() => toggleArrangement(arrangement)}
-                />
-                {ARRANGEMENT_LABELS[arrangement]}
-              </label>
-            ))}
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-medium">Arrangements you accept</p>
+            <p className="text-xs text-gray-500">
+              Roles structured in a way you cannot take are never shown. A group
+              you leave untouched is not used to filter — so leave one blank if
+              you have no preference there.
+            </p>
           </div>
-        </fieldset>
+          {ARRANGEMENT_GROUPS.map(({ legend, values }) => (
+            <fieldset key={legend} className="flex flex-col gap-2">
+              <legend className="text-xs font-medium text-gray-700">
+                {legend}
+              </legend>
+              <div className="flex flex-wrap gap-3">
+                {values.map((arrangement) => (
+                  <label
+                    key={arrangement}
+                    className="flex items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={arrangements.includes(arrangement)}
+                      onChange={() => toggleArrangement(arrangement)}
+                    />
+                    {ARRANGEMENT_LABELS[arrangement]}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ))}
+        </div>
 
         {wantsDistance && (
           <fieldset className="flex flex-col gap-4">

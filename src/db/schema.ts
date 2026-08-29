@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 import type { Arrangement } from "@/criteria/schema";
 import type { ReviewStatus } from "@/review/schema";
+import type { SalaryPeriod } from "@/postings/salary";
 import { user } from "./auth-schema";
 
 /**
@@ -83,6 +84,32 @@ export const postings = pgTable(
     // not be read, or answered with a shape the adapter does not understand,
     // is not evidence about any Posting and must leave this column alone.
     absentFetches: integer("absent_fetches").notNull().default(0),
+
+    // Extraction (#11): normalized fields derived from the Posting's free text
+    // where the Source published nothing structured. `extracted_at` is the
+    // marker that Extraction has run; the rest are null / empty until it has.
+    // A re-Fetch resets all of them (they are not in `PRESERVED_ON_REFETCH`),
+    // because a description the company edited may state a different salary or
+    // Arrangement, and the derived fields must not outlive the text they came
+    // from.
+    //
+    // `salary_min` and `salary_max` are the two figures as the text stated
+    // them, in `salary_period`'s unit — a range collapses to one figure in
+    // both. The funnel annualises them to compare against a floor (`annualise`
+    // in `@/postings/salary`); the UI shows them in their own unit. All null
+    // when the text stated no salary, which a floor always lets through
+    // (CONTEXT.md: unknown is not zero).
+    salaryMin: integer("salary_min"),
+    salaryMax: integer("salary_max"),
+    salaryPeriod: text("salary_period").$type<SalaryPeriod>(),
+    // The Arrangements the text names, or empty when it names none. Empty is
+    // "unknown", which the Arrangement funnel stage never excludes on.
+    arrangements: text("arrangements")
+      .array()
+      .$type<Arrangement[]>()
+      .notNull()
+      .default([]),
+    extractedAt: timestamp("extracted_at", { withTimezone: true }),
   },
   (table) => [
     uniqueIndex("postings_source_key").on(table.source, table.sourceId),

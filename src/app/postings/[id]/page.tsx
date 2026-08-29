@@ -5,7 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { currentUser } from "@/auth";
 import { readPosting } from "@/operations";
 import { sanitizeDescription } from "@/postings/description";
-import { formatDay } from "../../format";
+import { formatDay, formatSalary } from "../../format";
 import { ReviewControls } from "./review-controls";
 
 export const metadata: Metadata = { title: "Posting · Jobfinder" };
@@ -53,9 +53,9 @@ export default async function PostingPage({
 
         <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-600">
           <Fact label="Location" value={posting.location ?? "Not given"} />
-          {/* Salary Extraction is #11; no Posting carries one yet, and an
-              unknown salary is shown as "not listed", never a number (#36). */}
-          <Fact label="Salary" value="Not listed" />
+          {/* Extraction (#11) fills salary from the Posting's text where it
+              states one; an unknown reads as "not listed", never a number (#36). */}
+          <Fact label="Salary" value={formatSalary(posting)} />
           <Fact
             label="Posted"
             value={formatDay(posting.postedAt, "Date not given")}

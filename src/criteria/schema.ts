@@ -34,6 +34,28 @@ export const ARRANGEMENTS = [
 export type Arrangement = (typeof ARRANGEMENTS)[number];
 
 /**
+ * The two axes an Arrangement selection is read along (#11): where the work
+ * happens, and what the employment commitment is. They are independent — a User
+ * who constrains one and leaves the other untouched is saying nothing about the
+ * untouched one, not rejecting every value of it, and Matching filters each
+ * axis separately on that basis (`src/operations/matching.ts`).
+ *
+ * The form groups its checkboxes by these; Matching splits a stated set by
+ * them. One definition so the two cannot disagree about which value is which
+ * axis.
+ */
+export const LOCATION_ARRANGEMENTS = [
+  "remote",
+  "onsite",
+  "hybrid",
+] as const satisfies readonly Arrangement[];
+
+export const EMPLOYMENT_ARRANGEMENTS = [
+  "full-time",
+  "part-time",
+] as const satisfies readonly Arrangement[];
+
+/**
  * The Arrangements a distance bound applies to. An onsite or hybrid role the
  * User could not commute to should be excluded like the other; a remote role
  * ignores the radius entirely (`CONTEXT.md`, ADR 0001's funnel).

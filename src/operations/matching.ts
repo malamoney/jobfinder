@@ -1,4 +1,15 @@
-import { and, eq, ilike, or, type Column, type SQL } from "drizzle-orm";
+import {
+  and,
+  arrayOverlaps,
+  eq,
+  ilike,
+  isNull,
+  not,
+  or,
+  sql,
+  type Column,
+  type SQL,
+} from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   criteria,
@@ -7,6 +18,13 @@ import {
   type CriteriaRow,
   type Posting,
 } from "@/db/schema";
+import {
+  EMPLOYMENT_ARRANGEMENTS,
+  LOCATION_ARRANGEMENTS,
+  type Arrangement,
+} from "@/criteria/schema";
+import { WORKING_HOURS_PER_YEAR } from "@/postings/salary";
+import { extractPostings } from "./extraction";
 
 /**
  * The matching funnel: the ordered, deterministic stages that turn a User's
@@ -17,18 +35,27 @@ import {
  * nothing to spend by recomputing everything (ADR 0001).
  *
  * The funnel is a list of stages run in order, each narrowing the Postings the
- * previous one let through. The parent spec names four: SQL over
+ * previous one let through. The parent spec (#2) names four: SQL over
  * source-structured fields; literal title and keyword text matching; Extraction
- * over the survivors; SQL over the extracted fields for salary, Arrangement, and
- * distance. Only the text stage does anything yet — no Criteria field this
- * ticket stores needs the others — so later tickets add entries to `FUNNEL`
- * rather than rewriting it (#11 salary and Arrangement, #12 distance).
+ * over the survivors; SQL over the extracted fields for salary, Arrangement,
+ * and distance.
+ *
+ * Extraction is what splits the run in two. The stages before it are cheap and
+ * read only what a Source published; the stages after it read fields Extraction
+ * derives, and Extraction runs over the survivors of the cheap stages alone —
+ * never the whole Corpus (#11). Distance (#12) adds another derived stage.
  */
 
 /** One stage of the funnel. */
 type FunnelStage = {
   /** What the stage does, so `FUNNEL` reads as an ordered list. */
   name: string;
+  /**
+   * Whether this stage reads fields that Extraction derives. A derived stage
+   * runs only after Extraction has filled those fields for the survivors of the
+   * cheap stages.
+   */
+  derived?: boolean;
   /**
    * A predicate over `postings` keeping only the rows this stage accepts, or
    * `undefined` when these Criteria give the stage nothing to filter on.
@@ -74,17 +101,88 @@ const titleAndKeywordMatch: FunnelStage = {
   },
 };
 
-/** The stages, in the order they run. */
-const FUNNEL: FunnelStage[] = [titleAndKeywordMatch];
+/**
+ * Minimum salary, over the pay Extraction derived.
+ *
+ * Excludes a Posting only when it *states* a salary below the floor. The
+ * Posting's `salary_max` is in its own unit, so an hourly rate is annualised
+ * here — with the same factor `@/postings/salary` uses — before the comparison.
+ * A Posting whose text stated no salary has `salary_max` null and always
+ * passes: unknown is not zero (CONTEXT.md, "Criteria"), and excluding every
+ * Posting that lists nothing would discard most of the market.
+ */
+const minimumSalary: FunnelStage = {
+  name: "minimum salary over extracted pay",
+  derived: true,
+  narrow({ minSalary }) {
+    if (minSalary == null) return undefined;
+    const annualisedMax = sql`${postings.salaryMax} * case when ${postings.salaryPeriod} = 'hour' then ${WORKING_HOURS_PER_YEAR} else 1 end`;
+    return or(isNull(postings.salaryMax), sql`${annualisedMax} >= ${minSalary}`);
+  },
+};
 
 /**
- * Every stage's predicate combined, or `undefined` when no stage narrowed
- * anything — which Matching reads as "select nothing", not "select the Corpus":
- * Criteria that pick out no Postings should surface none. Valid Criteria always
- * state a title, so this is a guard rather than a path taken.
+ * Accepted Arrangements, over the structure Extraction derived.
+ *
+ * "Never see roles structured in a way I cannot take" (#2, user story 11).
+ * Arrangement is two independent axes — where the work happens and the
+ * employment type — and a Posting is excluded only when, on an axis the User
+ * constrained, everything its text says about that axis falls outside what the
+ * User accepts.
+ *
+ * An axis the Posting's text is silent on never excludes it (unknown, the same
+ * way an absent salary passes a floor). An axis the User selected nothing on is
+ * not a constraint — a User who ticks only "remote" is saying nothing about
+ * employment type, not rejecting every full-time role.
  */
-function funnelPredicate(stated: CriteriaRow): SQL | undefined {
-  return and(...FUNNEL.map((stage) => stage.narrow(stated)));
+const acceptedArrangements: FunnelStage = {
+  name: "accepted arrangements over extracted structure",
+  derived: true,
+  narrow({ arrangements }) {
+    const perAxis = [LOCATION_ARRANGEMENTS, EMPLOYMENT_ARRANGEMENTS]
+      .map((axis) => axisClause(arrangements, axis))
+      .filter((clause): clause is SQL => clause !== undefined);
+    return perAxis.length ? and(...perAxis) : undefined;
+  },
+};
+
+/**
+ * Keeps a Posting unless its text places it wholly outside the User's choices
+ * on one axis. `undefined` when the User constrained nothing on that axis.
+ */
+function axisClause(
+  accepted: readonly Arrangement[],
+  axis: readonly Arrangement[],
+): SQL | undefined {
+  const wanted = axis.filter((value) => accepted.includes(value));
+  if (wanted.length === 0) return undefined;
+
+  return or(
+    // The Posting's text names nothing on this axis — unknown, so keep it.
+    not(arrayOverlaps(postings.arrangements, [...axis])),
+    // Or something it does name is one the User accepts.
+    arrayOverlaps(postings.arrangements, [...wanted]),
+  );
+}
+
+/** The stages, in the order they run. */
+const FUNNEL: FunnelStage[] = [
+  titleAndKeywordMatch,
+  minimumSalary,
+  acceptedArrangements,
+];
+
+/**
+ * The combined predicate of the given stages, or `undefined` when none of them
+ * narrowed anything.
+ *
+ * `undefined` is read by Matching as "select nothing", not "select the Corpus":
+ * Criteria that pick out no Postings should surface none. Valid Criteria always
+ * state a title, so the cheap stages always narrow — this is a guard, not a
+ * path taken.
+ */
+function combine(stages: FunnelStage[], stated: CriteriaRow): SQL | undefined {
+  return and(...stages.map((stage) => stage.narrow(stated)));
 }
 
 /**
@@ -113,6 +211,12 @@ function keywordsFoundIn(
  * race a concurrent save and land against a statement that no longer exists.
  * Postings collected before this Criteria statement existed are matched like any
  * other — the Corpus has no notion of which Fetch brought a Posting in.
+ *
+ * The run is two queries around Extraction: the cheap stages select the
+ * survivors, Extraction fills the derived fields for those survivors only, and
+ * the full funnel then selects the Matches. Re-running the cheap stages in the
+ * second query is deliberate — they are free, and it avoids carrying a list of
+ * thousands of ids between the two.
  */
 export async function matchCriteria(userId: string): Promise<void> {
   await getDb().transaction(async (tx) => {
@@ -124,10 +228,19 @@ export async function matchCriteria(userId: string): Promise<void> {
       .where(eq(criteria.userId, userId));
     if (!stated) return;
 
-    const predicate = funnelPredicate(stated);
-    if (!predicate) return;
+    const cheapStages = FUNNEL.filter((stage) => !stage.derived);
+    const cheap = combine(cheapStages, stated);
+    if (!cheap) return;
 
-    const hits = await tx.select().from(postings).where(predicate);
+    // Stage three: Extraction over the survivors of the cheap stages only
+    // (#11). Cached on the Posting, so a survivor a previous match already
+    // extracted costs nothing here.
+    await extractPostings(tx, cheap);
+
+    const full = combine(FUNNEL, stated);
+    if (!full) return;
+
+    const hits = await tx.select().from(postings).where(full);
     if (hits.length === 0) return;
 
     await tx.insert(matches).values(
