@@ -3,28 +3,58 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/auth";
-import { readCriteria, readDashboard, type DashboardPosting } from "@/operations";
+import {
+  readCriteria,
+  readDashboard,
+  type DashboardFilter,
+  type DashboardPosting,
+} from "@/operations";
+import { REVIEW_STATUSES, STATUS_LABELS } from "@/review/schema";
 import { logOutAction } from "../actions";
+import { formatDay } from "../format";
 
 export const metadata: Metadata = { title: "Dashboard · Jobfinder" };
 
+/** The filters offered above the list, in the order they are shown. */
+const FILTERS: { key: DashboardFilter | "open"; label: string }[] = [
+  { key: "open", label: "Open" },
+  ...REVIEW_STATUSES.map((status) => ({
+    key: status,
+    label: STATUS_LABELS[status],
+  })),
+  { key: "all", label: "All" },
+];
+
+/** The `?status=` values `readDashboard` understands. */
+const FILTER_VALUES = new Set<string>([...REVIEW_STATUSES, "all"]);
+
+/** The filter a `?status=` value names, or undefined for the default view. */
+function parseFilter(raw: string | undefined): DashboardFilter | undefined {
+  return raw && FILTER_VALUES.has(raw) ? (raw as DashboardFilter) : undefined;
+}
+
 /**
  * The Dashboard: every Posting matching the signed-in User's Criteria, on one
- * page.
+ * page, filterable by review Status.
  *
- * The User is checked on the server before anything renders, the same way the
- * Criteria page does it. Matching has already run — `saveCriteria` re-matches
- * on every save and the nightly Fetch re-matches after it collects — so this
- * only reads what is there.
+ * The User is checked on the server before anything renders. Matching has
+ * already run — `saveCriteria` re-matches on every save and the nightly Fetch
+ * re-matches after it collects — so this only reads what is there.
  */
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
   const signedIn = await currentUser(await headers());
   if (!signedIn) redirect("/login");
 
+  const filter = parseFilter((await searchParams).status);
+
   const stated = await readCriteria(signedIn.id);
-  const { postings, unreviewedCount } = stated
-    ? await readDashboard(signedIn.id)
-    : { postings: [], unreviewedCount: 0 };
+  const { postings, matchedCount, unreviewedCount } = stated
+    ? await readDashboard(signedIn.id, filter)
+    : { postings: [], matchedCount: 0, unreviewedCount: 0 };
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-8 px-6 py-16">
@@ -45,7 +75,7 @@ export default async function DashboardPage() {
           message="Tell Jobfinder what you are looking for, and the matches appear here."
           cta="State your criteria"
         />
-      ) : postings.length === 0 ? (
+      ) : matchedCount === 0 ? (
         <Empty
           message="Nothing in the corpus matches your criteria yet. New postings are collected every night."
           cta="Edit your criteria"
@@ -64,11 +94,38 @@ export default async function DashboardPage() {
             </Link>
           </div>
 
-          <ul className="flex flex-col gap-4">
-            {postings.map((posting) => (
-              <PostingCard key={posting.id} posting={posting} />
-            ))}
-          </ul>
+          <nav className="flex flex-wrap gap-2">
+            {FILTERS.map(({ key, label }) => {
+              const active =
+                key === "open" ? filter === undefined : filter === key;
+              return (
+                <Link
+                  key={key}
+                  href={key === "open" ? "/dashboard" : `/dashboard?status=${key}`}
+                  aria-current={active ? "page" : undefined}
+                  className={`rounded-full border px-3 py-1 text-sm ${
+                    active
+                      ? "border-gray-900 bg-gray-900 text-white"
+                      : "border-gray-300 text-gray-700"
+                  }`}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+          </nav>
+
+          {postings.length === 0 ? (
+            <p className="text-sm text-gray-600">
+              No postings under this filter.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-4">
+              {postings.map((posting) => (
+                <PostingCard key={posting.id} posting={posting} />
+              ))}
+            </ul>
+          )}
         </>
       )}
     </main>
@@ -90,20 +147,32 @@ function Empty({ message, cta }: { message: string; cta: string }) {
   );
 }
 
-/** One matched Posting, triageable at a glance. */
+/** One matched Posting, triageable at a glance and a link to the full page. */
 function PostingCard({ posting }: { posting: DashboardPosting }) {
   return (
     <li className="flex flex-col gap-3 rounded-lg border border-gray-200 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-0.5">
-          <h2 className="font-medium text-gray-900">{posting.title}</h2>
+          <Link
+            href={`/postings/${posting.id}`}
+            className="font-medium text-gray-900 underline"
+          >
+            {posting.title}
+          </Link>
           <span className="text-sm text-gray-600">{posting.company}</span>
         </div>
-        {posting.expired && (
-          <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
-            Expired
-          </span>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {posting.status !== "new" && (
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+              {STATUS_LABELS[posting.status]}
+            </span>
+          )}
+          {posting.expired && (
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+              Expired
+            </span>
+          )}
+        </div>
       </div>
 
       <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-600">
@@ -111,7 +180,7 @@ function PostingCard({ posting }: { posting: DashboardPosting }) {
         {/* Salary Extraction is #11; until then no Posting carries one, and an
             unknown salary is shown as "not listed" rather than a number (#36). */}
         <Fact label="Salary" value="Not listed" />
-        <Fact label="Posted" value={formatPostedAt(posting.postedAt)} />
+        <Fact label="Posted" value={formatDay(posting.postedAt, "Date not given")} />
       </dl>
 
       {posting.matchedKeywords.length > 0 && (
@@ -137,14 +206,4 @@ function Fact({ label, value }: { label: string; value: string }) {
       <dd>{value}</dd>
     </div>
   );
-}
-
-/** A posted date the way a person reads it, or a plain note when there is none. */
-function formatPostedAt(postedAt: Date | null): string {
-  if (!postedAt) return "Date not given";
-  return postedAt.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
 }

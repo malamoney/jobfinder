@@ -10,6 +10,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import type { Arrangement } from "@/criteria/schema";
+import type { ReviewStatus } from "@/review/schema";
 import { user } from "./auth-schema";
 
 /**
@@ -302,3 +303,60 @@ export const matches = pgTable(
 
 /** A User's Match as stored. */
 export type MatchRow = typeof matches.$inferSelect;
+
+/**
+ * A User's Review State: their own standing relationship to a Posting.
+ *
+ * Owned by the User and never recomputed or overwritten by a Source — this is
+ * the one table a Fetch does not touch. A re-Fetch rewrites the Corpus columns
+ * on `postings`; an expiry bumps `absent_fetches`; neither reaches here, so a
+ * role a User marked `applied` keeps that Status after the listing comes down
+ * (CONTEXT.md, "Review State"; #2, required coverage).
+ *
+ * A row exists only once a User has acted on a Posting. No row means Status
+ * `new` and no Notes — the state every Posting starts in — so nothing has to be
+ * back-filled when Matching surfaces a Posting for the first time.
+ *
+ * `status` is a single column, not a set of booleans: a Posting sits in exactly
+ * one place in the pipeline at a time, and overlapping flags could say
+ * otherwise. `applied_at` is the last time `status` became `applied`, kept so a
+ * User can see how long they have been waiting to hear back (#2, user story 42);
+ * it is not cleared when they move the Status away again.
+ */
+export const reviewState = pgTable(
+  "review_state",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    postingId: uuid("posting_id")
+      .notNull()
+      .references(() => postings.id, { onDelete: "cascade" }),
+
+    status: text("status")
+      .$type<ReviewStatus>()
+      .notNull()
+      .default("new"),
+    notes: text("notes").notNull().default(""),
+
+    // When `status` was last moved off `new`, and when it last became
+    // `applied`. Both null until the thing they date has happened — a row that
+    // exists only because a note was written has a `new` Status that was never
+    // "changed".
+    statusChangedAt: timestamp("status_changed_at", { withTimezone: true }),
+    appliedAt: timestamp("applied_at", { withTimezone: true }),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.postingId] }),
+  ],
+);
+
+/** A User's Review State for one Posting, as stored. */
+export type ReviewStateRow = typeof reviewState.$inferSelect;

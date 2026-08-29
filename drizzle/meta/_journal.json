@@ -64,6 +64,13 @@
       "when": 1787968350219,
       "tag": "0008_long_meteorite",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787981084756,
+      "tag": "0009_spotty_felicia_hardy",
+      "breakpoints": true
     }
   ]
 }
