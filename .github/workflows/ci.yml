@@ -74,3 +74,35 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
       - run: pnpm build
+
+  migrate:
+    name: migrate production
+    runs-on: ubuntu-latest
+
+    # Only a merge to main migrates. `pull_request` and every preview build are
+    # left alone — which is the objection the provisioning wizard raised
+    # against migrating from inside the build.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    # Never migrate a checkout that does not typecheck, lint, test, and build.
+    needs: [typecheck, lint, test, build]
+
+    # One migration at a time, and never cancelled partway through — this
+    # overrides the workflow-level `cancel-in-progress: true`, which must not
+    # apply to a job that writes to the production database.
+    concurrency:
+      group: migrate-production
+      cancel-in-progress: false
+
+    # Scopes `PROD_DATABASE_URL` to this job and lets a human add required
+    # reviewers on the GitHub environment if they want a gate before it runs.
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      # drizzle-kit records each migration it applies, so a run with nothing
+      # new to do is a no-op rather than an error.
+      - run: pnpm db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}

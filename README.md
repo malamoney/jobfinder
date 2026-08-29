@@ -30,8 +30,12 @@ development, and tests.
 
 ```bash
 pnpm db:generate   # generate a migration from src/db/schema.ts
-pnpm db:migrate    # apply migrations to DATABASE_URL
+pnpm db:migrate    # apply migrations to DATABASE_URL (your dev branch)
 ```
+
+Production is migrated by the `migrate production` CI job when a PR merges to `main`. It runs
+`pnpm db:migrate` against the `PROD_DATABASE_URL` repository secret and is gated to `main`, so
+preview builds never migrate anything.
 
 ## The curated set of Boards
 
