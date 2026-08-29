@@ -3,3 +3,34 @@
 @theme {
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
+
+/*
+ * A Posting's description is sanitized HTML from a Source (see
+ * `@/postings/description`). Tailwind's reset strips margins from every element,
+ * so the spacing a job description needs to be readable is put back here rather
+ * than annotating tags the sanitizer produces.
+ */
+.description :is(p, ul, ol, blockquote, pre, h1, h2, h3, h4, h5, h6) {
+  margin-block: 0.75em;
+}
+.description :is(h1, h2, h3, h4, h5, h6) {
+  font-weight: 600;
+}
+.description :is(ul, ol) {
+  padding-inline-start: 1.5em;
+}
+.description ul {
+  list-style: disc;
+}
+.description ol {
+  list-style: decimal;
+}
+.description a {
+  text-decoration: underline;
+}
+.description :first-child {
+  margin-block-start: 0;
+}
+.description :last-child {
+  margin-block-end: 0;
+}

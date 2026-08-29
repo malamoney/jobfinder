@@ -23,6 +23,7 @@ export { readCriteria, saveCriteria } from "./criteria";
 export {
   readDashboard,
   type Dashboard,
+  type DashboardFilter,
   type DashboardPosting,
 } from "./dashboard";
 export {
@@ -44,3 +45,9 @@ export {
 } from "./fetch-run";
 export { matchCriteria } from "./matching";
 export { isExpired, listPostings } from "./postings";
+export {
+  readPosting,
+  setNotes,
+  setStatus,
+  type PostingDetails,
+} from "./review";
