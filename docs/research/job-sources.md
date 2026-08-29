@@ -35,7 +35,7 @@ on every Fetch.
 | --- | --- | --- | --- | --- |
 | **Greenhouse** | Global (numeric, confirmed 2026-08-25) | `company_name` | No | `content` is HTML-escaped |
 | **Lever** | Global (UUID) | **None published** | `salaryRange`, ~2% of postings | Bare array, no envelope; description split across `description` + `lists` + `additional` |
-| **Ashby** | Global (UUID) | **None published** | `compensation.summaryComponents`, common | `compensation` is absent without `includeCompensation=true`; components include equity and bonus, only `compensationType: "Salary"` is pay |
+| **Ashby** | Global (UUID) | **None published** | `compensation.summaryComponents`, common | `compensation` is absent without `includeCompensation=true`; components include equity and bonus, only `compensationType: "Salary"` is pay; `secondaryLocations` carries most of where a job is open — 57 of 67 jobs on the sampled Board, median 4 and up to 19 |
 | **Workable** | Global (`shortcode`, is the public URL) | Envelope `name` | No | **One entry per job per location** — the same `shortcode` arrives more than once |
 | **Recruitee** | Global (numeric) — three Boards sampled, ids interleaved across 312,680–2,721,844 with no repetition | `company_name` | `salary`, EUR-heavy | Addressed by **subdomain**, so the Slug lands in the hostname; `requirements` is a document separate from `description`; dates are `2026-08-25 11:59:25 UTC`, not ISO 8601 |
 
@@ -46,6 +46,16 @@ it from the Slug (`companyFromSlug`).
 Only USD pay is read from a structured field, for the same reason the prose extractor ignores
 non-dollar figures: the floor a User states is in dollars and nothing converts currencies. That
 excludes most of what Recruitee publishes.
+
+Three of the five say more than one place per job, each in its own way — Workable by repeating the
+job, Lever in `allLocations`, Ashby in `secondaryLocations` — and the Corpus holds one location
+string per Posting. All of them are named, joined with ` / `. ⚠️ The Workable and Ashby samples were
+one Board each; the Ashby one was entirely remote roles, so what a *commutable* multi-location job
+looks like on that Source is unverified.
+
+⚠️ Workable's public widget carries no `requirements` or `benefits` field — checked across three
+accounts on 2026-08-29 — so `description` is the whole description. Those fields belong to the
+authenticated v3 job API, which is not what this reads.
 
 ### Slug discovery
 

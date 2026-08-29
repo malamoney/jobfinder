@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { readBoardDocument, toDate } from "./adapter";
+import { readBoardDocument } from "./adapter";
+import { toDate } from "./fields";
 import type { SourcePosting } from "./types";
 
 /**

@@ -1,12 +1,11 @@
 import { z } from "zod";
+import { boardSubdomain, readBoardDocument } from "./adapter";
 import {
-  hostnameLabel,
-  placeNamed,
-  readBoardDocument,
+  placeWithArrangement,
   statedSalary,
   toDate,
-  type WorkplaceLabel,
-} from "./adapter";
+  type ArrangementLabel,
+} from "./fields";
 import type { SourcePosting } from "./types";
 
 /**
@@ -28,7 +27,7 @@ import type { SourcePosting } from "./types";
 const LABEL = "Recruitee";
 
 function boardUrl(slug: string): string {
-  return `https://${hostnameLabel(LABEL, slug)}.recruitee.com/api/offers/`;
+  return `https://${boardSubdomain(LABEL, slug)}.recruitee.com/api/offers/`;
 }
 
 const recruiteeOffer = z.object({
@@ -59,7 +58,14 @@ const recruiteeBoard = z.object({
   offers: z.array(recruiteeOffer),
 });
 
-/** How Recruitee spells the pay periods `statedSalary` understands. */
+/**
+ * The pay periods `statedSalary` understands, as Recruitee spells them.
+ *
+ * The spellings happen to coincide, so this reads as an identity map. It is a
+ * whitelist rather than a translation: Recruitee also publishes `week` and
+ * `day`, which nothing downstream can annualise, and they must fall through to
+ * "no salary stated" rather than through a period nobody checked.
+ */
 const PERIOD: Record<string, "year" | "month" | "hour"> = {
   year: "year",
   month: "month",
@@ -87,7 +93,7 @@ export async function fetchRecruiteeBoard(
     description: [offer.description, offer.requirements].filter(Boolean).join(""),
     // Recruitee states the workplace type as flags beside the place, so it is
     // written into the location where the Arrangement funnel reads it.
-    location: placeNamed(workplaceOf(offer), offer.location),
+    location: placeWithArrangement(arrangementOf(offer), offer.location),
     // `careers_url` is the offer's page; `careers_apply_url` is the form on it.
     applyUrl: offer.careers_url,
     postedAt: toDate(offer.published_at),
@@ -100,10 +106,10 @@ export async function fetchRecruiteeBoard(
   }));
 }
 
-/** The workplace type the offer's flags state, if they state one. */
-function workplaceOf(
+/** The Arrangement the offer's flags state, if they state one. */
+function arrangementOf(
   offer: z.infer<typeof recruiteeOffer>,
-): WorkplaceLabel | null {
+): ArrangementLabel | null {
   if (offer.remote) return "Remote";
   if (offer.hybrid) return "Hybrid";
   return null;

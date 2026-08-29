@@ -299,6 +299,22 @@ describe("fetching a Lever Board", () => {
     );
   });
 
+  // Lever sends the list empty rather than absent, so a fallback that only
+  // caught null would read "no locations" and throw away the primary one
+  // sitting beside it.
+  it("keeps the primary location when the list of them is empty", async () => {
+    leverBoardReturns("acme", [
+      leverPosting({
+        workplaceType: "onsite",
+        categories: { location: "Boston, MA", allLocations: [] },
+      }),
+    ]);
+
+    await fetchBoard(acme);
+
+    expect((await listPostings())[0].location).toBe("Onsite - Boston, MA");
+  });
+
   it("prefers the salary Lever states over the one its description implies", async () => {
     leverBoardReturns("acme", [
       leverPosting({
@@ -354,6 +370,27 @@ describe("fetching an Ashby Board", () => {
       applyUrl: "https://jobs.ashbyhq.com/acme/7458d4e9",
       postedAt: new Date("2026-03-04T14:29:08.532+00:00"),
     });
+  });
+
+  // Most Ashby jobs carry these — 57 of the 67 on the Board sampled live — so
+  // dropping them would lose where most of this Source's roles are open.
+  it("names the other locations a job is open in", async () => {
+    ashbyBoardReturns("acme", [
+      ashbyJob({
+        location: "Berlin",
+        workplaceType: "Hybrid",
+        secondaryLocations: [
+          { location: "Munich" },
+          { location: "Vienna" },
+        ],
+      }),
+    ]);
+
+    await fetchBoard(acme);
+
+    expect((await listPostings())[0].location).toBe(
+      "Hybrid - Berlin / Munich / Vienna",
+    );
   });
 
   it("stores the salary Ashby publishes as data", async () => {

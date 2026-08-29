@@ -1,10 +1,6 @@
 import { z } from "zod";
-import {
-  placeNamed,
-  placesNamed,
-  readBoardDocument,
-  toDate,
-} from "./adapter";
+import { readBoardDocument } from "./adapter";
+import { everyPlace, placeWithArrangement, toDate } from "./fields";
 import type { SourcePosting } from "./types";
 
 /**
@@ -78,12 +74,12 @@ export async function fetchWorkableBoard(
     company: board.name,
     title: job.title,
     description: job.description,
-    location: placeNamed(
+    location: placeWithArrangement(
       // Workable states remote work as a flag rather than in the location, and
       // an adapter that dropped it would publish a remote role no Arrangement
       // filter can see as remote.
       job.telecommuting ? "Remote" : null,
-      placesNamed(places),
+      everyPlace(places),
     ),
     applyUrl: job.url,
     // `published_on` is when the job went live; `created_at` is when it was

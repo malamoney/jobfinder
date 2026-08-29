@@ -1,13 +1,13 @@
 import { z } from "zod";
+import { readBoardDocument } from "./adapter";
 import {
+  arrangementLabel,
   companyFromSlug,
-  placeNamed,
-  placesNamed,
-  readBoardDocument,
+  everyPlace,
+  placeWithArrangement,
   statedSalary,
   toDate,
-  type WorkplaceLabel,
-} from "./adapter";
+} from "./fields";
 import type { SourcePosting } from "./types";
 
 /**
@@ -70,13 +70,6 @@ const leverPosting = z.object({
 
 const leverBoard = z.array(leverPosting);
 
-/** How Lever spells the workplace types the location field carries. */
-const WORKPLACE: Record<string, WorkplaceLabel> = {
-  remote: "Remote",
-  hybrid: "Hybrid",
-  onsite: "Onsite",
-};
-
 /** How Lever spells the pay periods `statedSalary` understands. */
 const INTERVAL: Record<string, "year" | "month" | "hour"> = {
   "per-year-salary": "year",
@@ -105,11 +98,16 @@ export async function fetchLeverBoard(
     company: companyFromSlug(slug),
     title: posting.text,
     description: assembleDescription(posting),
-    location: placeNamed(
-      WORKPLACE[posting.workplaceType?.toLowerCase() ?? ""] ?? null,
-      // `allLocations` is the full set and `location` the primary one; a
-      // posting open in three cities says so.
-      placesNamed(posting.categories?.allLocations ?? [posting.categories?.location]),
+    location: placeWithArrangement(
+      arrangementLabel(posting.workplaceType),
+      // `allLocations` is the full set and `location` the primary one, so a
+      // posting open in three cities says so. Lever sends the list empty rather
+      // than absent, which is why this turns on its length: falling back only
+      // on null would read an empty list as "no location" and throw away the
+      // primary one beside it.
+      posting.categories?.allLocations?.length
+        ? everyPlace(posting.categories.allLocations)
+        : everyPlace([posting.categories?.location]),
     ),
     // `hostedUrl` is the posting's page rather than `applyUrl`'s form, matching
     // what Greenhouse's `absolute_url` gives: a reader wants to see the role

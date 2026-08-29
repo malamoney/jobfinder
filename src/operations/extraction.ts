@@ -64,7 +64,7 @@ export async function extractPostings(
     // through Extraction — a re-Fetch clears `extracted_at` and rewrites the
     // salary columns from what the Source published in the same statement — so
     // a figure already here came from ingestion, not from an earlier run.
-    const salary = statedSalary(posting) ?? extractSalary(text);
+    const salary = salaryAlreadyOnRecord(posting) ?? extractSalary(text);
 
     await writer
       .update(postings)
@@ -83,8 +83,14 @@ export async function extractPostings(
   }
 }
 
-/** The salary a Posting arrived with, where its Source published one. */
-function statedSalary(posting: {
+/**
+ * The salary a Posting arrived with, where its Source published one.
+ *
+ * Named for where it is read from rather than for who stated it, so it does not
+ * read as the `statedSalary` in `@/sources/fields` — that one reads a Source's
+ * own field, this one reads the columns ingestion wrote it into.
+ */
+function salaryAlreadyOnRecord(posting: {
   salaryMin: number | null;
   salaryMax: number | null;
   salaryPeriod: SalaryPeriod | null;

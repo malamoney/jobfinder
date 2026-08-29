@@ -1,12 +1,13 @@
 import { z } from "zod";
+import { readBoardDocument } from "./adapter";
 import {
+  arrangementLabel,
   companyFromSlug,
-  placeNamed,
-  readBoardDocument,
+  everyPlace,
+  placeWithArrangement,
   statedSalary,
   toDate,
-  type WorkplaceLabel,
-} from "./adapter";
+} from "./fields";
 import type { SourcePosting } from "./types";
 
 /**
@@ -55,6 +56,11 @@ const ashbyJob = z.object({
   jobUrl: z.string(),
   descriptionHtml: z.string(),
   location: z.string().nullish(),
+  // The other places a job is open in, beside the primary one. Common rather
+  // than exotic: 57 of the 67 jobs on the Board sampled on 2026-08-29 had them.
+  secondaryLocations: z
+    .array(z.object({ location: z.string().nullish() }))
+    .nullish(),
   workplaceType: z.string().nullish(),
   publishedAt: z.string().nullish(),
   isListed: z.boolean().nullish(),
@@ -66,13 +72,6 @@ const ashbyJob = z.object({
 const ashbyBoard = z.object({
   jobs: z.array(ashbyJob),
 });
-
-/** How Ashby spells the workplace types the location field carries. */
-const WORKPLACE: Record<string, WorkplaceLabel> = {
-  remote: "Remote",
-  hybrid: "Hybrid",
-  onsite: "Onsite",
-};
 
 /** How Ashby spells the pay periods `statedSalary` understands. */
 const INTERVAL: Record<string, "year" | "month" | "hour"> = {
@@ -109,9 +108,14 @@ export async function fetchAshbyBoard(
         company: companyFromSlug(slug),
         title: job.title,
         description: job.descriptionHtml,
-        location: placeNamed(
-          WORKPLACE[job.workplaceType?.toLowerCase() ?? ""] ?? null,
-          job.location,
+        location: placeWithArrangement(
+          arrangementLabel(job.workplaceType),
+          // The primary place first, then the rest. A job open across half of
+          // Europe says so rather than claiming only its first country.
+          everyPlace([
+            job.location,
+            ...(job.secondaryLocations ?? []).map((place) => place.location),
+          ]),
         ),
         // The posting's page rather than `applyUrl`'s form, matching what
         // Greenhouse's `absolute_url` gives.
