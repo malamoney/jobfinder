@@ -11,7 +11,7 @@ import {
   type Column,
   type SQL,
 } from "drizzle-orm";
-import { getDb, type Writer } from "@/db";
+import { getDb, type Transaction, type Writer } from "@/db";
 import {
   boards,
   fetchRuns,
@@ -51,32 +51,39 @@ export type FetchRunReport = {
  * drain the queue afterwards, one bounded batch at a time.
  */
 export async function startFetchRun(): Promise<FetchRunId> {
-  const db = getDb();
+  return getDb().transaction((tx) => createFetchRun(tx));
+}
 
-  return db.transaction(async (tx) => {
-    const [run] = await tx.insert(fetchRuns).values({}).returning();
+/**
+ * The body of `startFetchRun`, given an open transaction.
+ *
+ * Split out so `requestFetch` (#17) can create a run in the same transaction it
+ * takes the cooldown lock in — a check-then-act cooldown with the two in
+ * separate transactions would let two concurrent clicks both start a run.
+ */
+export async function createFetchRun(tx: Transaction): Promise<FetchRunId> {
+  const [run] = await tx.insert(fetchRuns).values({}).returning();
 
-    const enabled = await tx
-      .select({ id: boards.id })
-      .from(boards)
-      .where(eq(boards.enabled, true));
+  const enabled = await tx
+    .select({ id: boards.id })
+    .from(boards)
+    .where(eq(boards.enabled, true));
 
-    if (enabled.length > 0) {
-      await tx
-        .insert(fetchTasks)
-        .values(enabled.map((board) => ({ runId: run.id, boardId: board.id })));
-    } else {
-      // A Run with nothing to fetch is over the moment it starts. Leaving it
-      // open would strand it: no Worker would ever touch it, so nothing would
-      // ever close it.
-      await tx
-        .update(fetchRuns)
-        .set({ finishedAt: sql`now()` })
-        .where(eq(fetchRuns.id, run.id));
-    }
+  if (enabled.length > 0) {
+    await tx
+      .insert(fetchTasks)
+      .values(enabled.map((board) => ({ runId: run.id, boardId: board.id })));
+  } else {
+    // A Run with nothing to fetch is over the moment it starts. Leaving it
+    // open would strand it: no Worker would ever touch it, so nothing would
+    // ever close it.
+    await tx
+      .update(fetchRuns)
+      .set({ finishedAt: sql`now()` })
+      .where(eq(fetchRuns.id, run.id));
+  }
 
-    return run.id;
-  });
+  return run.id;
 }
 
 /** How much of the queue one Worker may take on. */

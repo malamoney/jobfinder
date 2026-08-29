@@ -6,14 +6,21 @@ import { currentUser } from "@/auth";
 import {
   readCriteria,
   readDashboard,
+  readLatestFetchRun,
   type DashboardFilter,
   type DashboardPosting,
+  type FetchRunSummary,
 } from "@/operations";
 import { REVIEW_STATUSES, STATUS_LABELS } from "@/review/schema";
 import { logOutAction } from "../actions";
-import { formatDay, formatSalary } from "../format";
+import { formatDateTime, formatDay, formatSalary } from "../format";
+import { DashboardControls } from "./dashboard-controls";
 
 export const metadata: Metadata = { title: "Dashboard · Jobfinder" };
+
+// Server Actions inherit the page's ceiling (`fetchNowAction`'s background
+// sweep needs the room). 60s is safe on every Vercel plan.
+export const maxDuration = 60;
 
 /** The filters offered above the list, in the order they are shown. */
 const FILTERS: { key: DashboardFilter | "open"; label: string }[] = [
@@ -56,6 +63,8 @@ export default async function DashboardPage({
     ? await readDashboard(signedIn.id, filter)
     : { postings: [], matchedCount: 0, unreviewedCount: 0 };
 
+  const lastFetch = await readLatestFetchRun();
+
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-8 px-6 py-16">
       <header className="flex flex-col gap-3">
@@ -69,6 +78,11 @@ export default async function DashboardPage({
         </div>
         <p className="text-sm text-gray-600">Signed in as {signedIn.email}.</p>
       </header>
+
+      <section className="flex flex-col gap-3 rounded-lg border border-gray-200 p-4">
+        <LastFetchLine fetch={lastFetch} />
+        <DashboardControls />
+      </section>
 
       {!stated ? (
         <Empty
@@ -129,6 +143,58 @@ export default async function DashboardPage({
         </>
       )}
     </main>
+  );
+}
+
+/**
+ * The last Fetch, so a User can tell "no new roles" from "the sweep broke"
+ * (#17). A sweep in progress is noted without hiding the previous outcome, and
+ * the failed Boards sit behind a disclosure — present when it matters, out of
+ * the way when it does not.
+ */
+function LastFetchLine({ fetch }: { fetch: FetchRunSummary | null }) {
+  if (!fetch) {
+    return (
+      <p className="text-sm text-gray-600">
+        No fetch has run yet. The nightly sweep collects new postings at 3am.
+      </p>
+    );
+  }
+
+  const finished =
+    fetch.finishedAt === null
+      ? "The first fetch is running now."
+      : `Last fetched ${formatDateTime(fetch.finishedAt)} · ${fetch.succeeded} of ${fetch.boardCount} boards`;
+
+  return (
+    <div className="flex flex-col gap-1.5 text-sm">
+      <p className="text-gray-600">
+        {finished}
+        {fetch.failed > 0 && (
+          <span className="text-amber-700"> · {fetch.failed} failed</span>
+        )}
+        {fetch.running && (
+          <span className="text-gray-500"> · another fetch is running</span>
+        )}
+      </p>
+      {fetch.failures.length > 0 && (
+        <details className="text-gray-600">
+          <summary className="cursor-pointer text-amber-700">
+            Boards that errored
+          </summary>
+          <ul className="mt-1 flex flex-col gap-1">
+            {fetch.failures.map((failure) => (
+              <li key={`${failure.source}/${failure.slug}`}>
+                <span className="font-medium text-gray-900">
+                  {failure.source}/{failure.slug}
+                </span>
+                <span className="text-gray-500"> — {failure.error}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
   );
 }
 
