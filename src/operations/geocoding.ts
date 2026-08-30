@@ -32,8 +32,26 @@ const sleep = (ms: number) =>
   ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
 
 /**
- * Makes sure every string in `locations` has a `geocodes` row, calling the
- * geocoder only for the ones that do not.
+ * The most uncached strings one call will geocode. The rest are left for the
+ * next call.
+ *
+ * Nominatim's usage policy is one request a second, so a warm-up of N new
+ * strings costs ~N seconds of wall time — and a match run does its warm-up
+ * before it can match (`warmGeocodesForMatch`). A Fetch that introduced
+ * hundreds of new locations would otherwise make the first match run after it
+ * take minutes, and "Run matching now" awaits that run inside the request: past
+ * the platform's function ceiling it is killed outright (`FUNCTION_INVOCATION_TIMEOUT`).
+ *
+ * Bounding it keeps every warm-up short. Nothing is lost by deferring the
+ * rest: the distance stage keeps a Posting whose location has no cache row yet
+ * (surfaced, flagged unresolved — #12), and the next match run, or the nightly
+ * `matchAllUsers`, geocodes the next batch.
+ */
+const DEFAULT_BUDGET = 12;
+
+/**
+ * Makes sure strings in `locations` have a `geocodes` row, calling the geocoder
+ * only for the ones that do not — and for at most `budget` of those per call.
  *
  * Given a plain database handle rather than a transaction: each upsert stands
  * on its own, so a warm-up loop of many external calls never holds a match
@@ -47,6 +65,7 @@ const sleep = (ms: number) =>
 export async function ensureGeocoded(
   writer: Writer,
   locations: readonly string[],
+  budget: number = DEFAULT_BUDGET,
 ): Promise<void> {
   const wanted = [...new Set(locations)];
   if (wanted.length === 0) return;
@@ -58,19 +77,21 @@ export async function ensureGeocoded(
   const known = new Set(cached.map((row) => row.location));
 
   const interval = minIntervalMs();
-  let first = true;
+  let calls = 0;
 
   for (const location of wanted) {
     if (known.has(location)) continue;
-    if (!first) await sleep(interval);
-    first = false;
+    if (calls >= budget) break;
+    if (calls > 0) await sleep(interval);
+    calls++;
 
     let point: Coordinate | null;
     try {
       point = await geocode(location);
     } catch {
       // A geocoder outage: leave the string uncached so it is retried, rather
-      // than remembering it as unresolvable.
+      // than remembering it as unresolvable. Still counts against the budget,
+      // so a geocoder that is down cannot make this loop unbounded.
       continue;
     }
 

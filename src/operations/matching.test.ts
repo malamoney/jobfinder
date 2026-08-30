@@ -12,6 +12,7 @@ import {
 } from "@/operations";
 import { getDb } from "@/db";
 import { postings, user } from "@/db/schema";
+import { normalizeLocation } from "@/postings/location";
 import { boardReturns, greenhouseJob } from "@/test/fixtures/greenhouse";
 import {
   geocoderIsDown,
@@ -701,6 +702,46 @@ describe("the commute radius", () => {
 
     // The two Postings and the home location all normalize to one string.
     expect(geo.queries()).toEqual(["boston, ma"]);
+  });
+
+  // A Fetch can introduce hundreds of new location strings at once. Geocoding
+  // is one Nominatim call a second, and a match run warms the cache before it
+  // can match — so an unbounded warm-up made "Run matching now" (which awaits
+  // the run) take minutes and be killed at the platform's function ceiling
+  // (FUNCTION_INVOCATION_TIMEOUT). One run now geocodes a bounded batch; the
+  // rest are picked up by later runs, and a Posting whose location is not yet
+  // resolved is surfaced meanwhile, not dropped.
+  it("bounds the geocoding one match run does, finishing it over later runs", async () => {
+    const cities = Array.from({ length: 20 }, (_, i) => `City${i}, TS`);
+    const key = (city: string) => normalizeLocation(city) as string;
+    const geo = geocoderKnows(
+      Object.fromEntries([
+        ["boston, ma", BOSTON],
+        ...cities.map((city) => [key(city), BOSTON] as const),
+      ]),
+    );
+    await corpusHas(
+      cities.map((city, i) => jobAt(i + 1, "Platform Engineer", city, "onsite")),
+    );
+    const userId = await givenAUser();
+
+    await saveCriteria(userId, commuteCriteria()); // the first match run
+
+    const geocoded = () =>
+      cities.filter((city) => geo.queries().includes(key(city))).length;
+
+    // One run did not geocode all twenty.
+    expect(geocoded()).toBeLessThan(cities.length);
+
+    // The Postings whose locations are not resolved yet are still on the
+    // Dashboard, flagged unresolved rather than hidden.
+    const shown = await readDashboard(userId);
+    expect(shown.postings.length).toBe(cities.length);
+    expect(shown.postings.some((p) => p.unresolvedLocation)).toBe(true);
+
+    // Later runs drain the rest.
+    for (let i = 0; i < 5; i++) await matchCriteria(userId);
+    expect(geocoded()).toBe(cities.length);
   });
 
   it("resolves a known location from cache on the next match run", async () => {

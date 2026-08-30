@@ -13,7 +13,14 @@ import { advanceSweep } from "../api/cron/fetch/sweep";
  * "Run matching now" re-runs the signed-in User's Criteria over the Corpus
  * already collected. "Fetch new postings" is the heavier one: a real sweep of
  * the Boards, cooldown-guarded so repeated clicking cannot spend a Source's
- * request budget, and run in the background so the click returns straight away.
+ * request budget.
+ *
+ * Both run their work after the response and return straight away. A re-match
+ * warms the geocode cache for any location a Fetch introduced since the last
+ * run (`warmGeocodesForMatch`), one geocoder call a second — bounded per run,
+ * but still seconds of work that must not hold the request open, or a large
+ * first run after a Fetch is killed at the platform's function ceiling
+ * (`FUNCTION_INVOCATION_TIMEOUT`).
  *
  * Both are reachable by a direct POST, so each checks for a User itself rather
  * than trusting the page.
@@ -35,12 +42,16 @@ export async function runMatchingAction(): Promise<DashboardActionResult> {
   const signedIn = await currentUser(await headers());
   if (!signedIn) return ENDED;
 
-  await matchCriteria(signedIn.id);
+  // After the response, for the reason in this module's comment: the warm-up a
+  // re-match may need is bounded but not instant, and holding the request open
+  // for it risks the platform's function timeout.
+  after(() => matchCriteria(signedIn.id));
   revalidatePath("/dashboard");
 
   return {
     ok: true,
-    message: "Re-matched against the postings already collected.",
+    message:
+      "Re-matching against the postings already collected. Refresh shortly to see changes.",
   };
 }
 
