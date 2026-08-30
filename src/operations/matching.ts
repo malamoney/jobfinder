@@ -274,8 +274,8 @@ function homeKeyOf(stated: CriteriaRow): string | null {
 }
 
 /**
- * Fills the geocode cache with every location a distance-bounded match run will
- * need — the survivors of the cheap stages, plus the User's home.
+ * Fills the geocode cache with the locations a distance-bounded match run
+ * needs — the survivors of the cheap stages, plus the User's home.
  *
  * Runs before the match transaction opens, on a plain handle: a warm-up run
  * makes one external call per uncached string, and none of that should hold the
@@ -283,6 +283,13 @@ function homeKeyOf(stated: CriteriaRow): string | null {
  * the cache inside the transaction (`resolveHomeCoordinate`, the distance
  * stage's subquery). A no-op when the User set no radius, or once the Corpus's
  * locations are all cached.
+ *
+ * The home location is geocoded on its own budget, and first: the distance
+ * stage does not run at all without a home coordinate, so it must never be
+ * crowded out of a bounded warm-up by the Posting locations. The rest are
+ * bounded by `ensureGeocoded` — a Fetch that introduced hundreds of new
+ * locations is drained a batch per match run, not all at once inside one
+ * request.
  *
  * The Criteria are read here and again in the transaction; a change in between
  * only means the cache was warmed for a slightly different survivor set, which
@@ -300,6 +307,8 @@ async function warmGeocodesForMatch(userId: string): Promise<void> {
   const homeKey = homeKeyOf(stated);
   if (!homeKey) return;
 
+  await ensureGeocoded(db, [homeKey], 1);
+
   const cheap = combine(
     FUNNEL.filter((stage) => !stage.derived),
     stated,
@@ -312,10 +321,10 @@ async function warmGeocodesForMatch(userId: string): Promise<void> {
     .from(postings)
     .where(and(cheap, isNotNull(postings.location)));
 
-  const keys = new Set<string>([homeKey]);
+  const keys = new Set<string>();
   for (const row of located) {
     const key = normalizeLocation(row.location);
-    if (key) keys.add(key);
+    if (key && key !== homeKey) keys.add(key);
   }
 
   await ensureGeocoded(db, [...keys]);
