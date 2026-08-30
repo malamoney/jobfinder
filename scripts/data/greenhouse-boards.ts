@@ -61,6 +61,7 @@ export const GREENHOUSE_BOARDS: readonly string[] = [
   "clarityinnovates",
   "climatex",
   "cobaltio",
+  "cocoon",
   "coherusbiosciences",
   "communitymanager",
   "commvault",
