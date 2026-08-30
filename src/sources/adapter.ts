@@ -14,6 +14,9 @@ import { z } from "zod";
  * `readBoardDocument` is the ATS case — one request, phrased against the Board.
  * `readSourceDocument` is the general one an aggregator's paged fetch calls per
  * page, with its own `subject` and, where a Source needs it, request headers.
+ * Workday (#16) is the one Source that asks with a POST body rather than a
+ * GET — its list endpoint takes a paging-and-search payload — so `method` and
+ * `body` are here too, unset for every other Source.
  *
  * This module is the *asking*. Turning what came back into a Posting's fields
  * is `./fields`, which has no idea a network exists.
@@ -36,6 +39,17 @@ type SourceRequest<T> = {
    * unauthenticated.
    */
   headers?: HeadersInit;
+  /**
+   * The HTTP method. `GET` for every Source but Workday (#16), whose job list
+   * is a POST.
+   */
+  method?: "GET" | "POST";
+  /**
+   * A JSON request body, sent only when set. Workday's list endpoint takes
+   * `{ appliedFacets, limit, offset, searchText }`; `content-type:
+   * application/json` is added for it unless a caller set one.
+   */
+  body?: unknown;
   schema: z.ZodType<T>;
   /**
    * The ceiling on how long this may take. It belongs to the caller rather
@@ -66,10 +80,26 @@ export async function readSourceDocument<T>({
   subject,
   url,
   headers,
+  method,
+  body: requestBody,
   schema,
   signal,
 }: SourceRequest<T>): Promise<T> {
-  const response = await fetch(url, { signal, headers });
+  const requestHeaders = new Headers(headers);
+  let payload: string | undefined;
+  if (requestBody !== undefined) {
+    payload = JSON.stringify(requestBody);
+    if (!requestHeaders.has("content-type")) {
+      requestHeaders.set("content-type", "application/json");
+    }
+  }
+
+  const response = await fetch(url, {
+    method,
+    signal,
+    headers: requestHeaders,
+    body: payload,
+  });
   if (!response.ok) {
     throw new Error(
       `${label} ${subject} returned ${response.status} ${response.statusText}`,
@@ -140,10 +170,23 @@ function explainIssues(error: z.ZodError): string {
  * before a request is made.
  */
 export function boardSubdomain(source: string, slug: string): string {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(slug)) {
+  if (!isHostLabel(slug)) {
     throw new Error(
       `${source} Board "${slug}" is not a Slug this Source can address`,
     );
   }
   return slug.toLowerCase();
+}
+
+/**
+ * Whether a string is safe to place in a hostname — a DNS label: letters,
+ * digits, and hyphens, not starting with a hyphen.
+ *
+ * `boardSubdomain` guards Recruitee's Slug with this; Workday (#16) guards both
+ * its tenant Slug and the `wd{N}` shard, since both land in
+ * `{tenant}.{shard}.myworkdayjobs.com` where `encodeURIComponent` would not
+ * contain a `.` or `/`.
+ */
+export function isHostLabel(value: string): boolean {
+  return /^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(value);
 }

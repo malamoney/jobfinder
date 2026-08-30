@@ -21,6 +21,7 @@ import { probeCandidates } from "./discovery/probe-many";
 import { describe, everyFew, summarise } from "./discovery/report";
 import { AGGREGATOR_BOARDS } from "./data/aggregator-boards";
 import { GREENHOUSE_BOARDS } from "./data/greenhouse-boards";
+import { WORKDAY_BOARDS } from "./data/workday-boards";
 
 async function main(): Promise<void> {
   const candidates: BoardAddress[] = [
@@ -29,6 +30,7 @@ async function main(): Promise<void> {
       slug,
     })),
     ...AGGREGATOR_BOARDS,
+    ...WORKDAY_BOARDS,
   ];
 
   console.log(`Probing ${candidates.length} Boards before seeding…`);

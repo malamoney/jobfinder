@@ -39,6 +39,12 @@ export * from "./auth-schema";
  * employers, too large to fetch whole in one Fetch, so their Postings expire by
  * the close date the feed publishes rather than by absence (see
  * `reconcileBoard`).
+ *
+ * `workday` is a Board like the first five — one company, absence expiry — but
+ * a deliberate extension rather than a member of the spine (ADR 0003, #16): an
+ * undocumented internal endpoint, a detail request per job, and a tenant that
+ * cannot be addressed from a Slug alone. Its tenants are a hand-maintained
+ * list in `@/sources/workday-tenants`.
  */
 export type SourceName =
   | "greenhouse"
@@ -47,7 +53,8 @@ export type SourceName =
   | "workable"
   | "recruitee"
   | "usajobs"
-  | "himalayas";
+  | "himalayas"
+  | "workday";
 
 /**
  * The Corpus: every Posting fetched from every Source, shared by all Users.

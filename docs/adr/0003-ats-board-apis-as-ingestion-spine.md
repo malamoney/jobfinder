@@ -14,6 +14,12 @@ just past it: JobSpy's Indeed adapter was rejected even though it works, because
 a private GraphQL API using a key extracted from Indeed's own client, which is credential reuse
 rather than reading public data.
 
+Workday's request cost is what keeps it an extension rather than a peer. It needs a detail request
+per job, so one tenant costs what hundreds of Greenhouse Boards cost. It is therefore fetched as the
+slice of itself that matches a keyword, from a hand-maintained tenant list with no harvesting path
+(`@/sources/workday-tenants`), under a per-tenant job budget that fails the Fetch rather than
+growing unnoticed (`MAX_JOBS_PER_TENANT`). See `docs/research/job-sources.md`.
+
 ## Consequences
 
 - The Corpus covers an estimated 10–20% of the US job market, skewed hard toward venture-backed
