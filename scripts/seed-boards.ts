@@ -16,19 +16,36 @@
  * stays off.
  */
 import { seedBoards, type BoardAddress } from "@/operations";
+import type { SourceName } from "@/db/schema";
 import { closeDb } from "@/db";
 import { probeCandidates } from "./discovery/probe-many";
 import { describe, everyFew, summarise } from "./discovery/report";
 import { AGGREGATOR_BOARDS } from "./data/aggregator-boards";
+import { ASHBY_BOARDS } from "./data/ashby-boards";
 import { GREENHOUSE_BOARDS } from "./data/greenhouse-boards";
+import { LEVER_BOARDS } from "./data/lever-boards";
+import { RECRUITEE_BOARDS } from "./data/recruitee-boards";
+import { WORKABLE_BOARDS } from "./data/workable-boards";
 import { WORKDAY_BOARDS } from "./data/workday-boards";
+
+/**
+ * The ATS Sources seeded from a plain list of company Slugs — one Board per
+ * Slug. The aggregators and Workday address a Board by more than a Slug, so
+ * they carry their own `BoardAddress` lists.
+ */
+const ATS_SLUG_LISTS = {
+  greenhouse: GREENHOUSE_BOARDS,
+  lever: LEVER_BOARDS,
+  ashby: ASHBY_BOARDS,
+  workable: WORKABLE_BOARDS,
+  recruitee: RECRUITEE_BOARDS,
+} satisfies Partial<Record<SourceName, readonly string[]>>;
 
 async function main(): Promise<void> {
   const candidates: BoardAddress[] = [
-    ...GREENHOUSE_BOARDS.map((slug) => ({
-      source: "greenhouse" as const,
-      slug,
-    })),
+    ...Object.entries(ATS_SLUG_LISTS).flatMap(([source, slugs]) =>
+      slugs.map((slug) => ({ source: source as SourceName, slug })),
+    ),
     ...AGGREGATOR_BOARDS,
     ...WORKDAY_BOARDS,
   ];

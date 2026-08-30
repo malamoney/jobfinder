@@ -3,6 +3,11 @@
  * promoting into the curated set.
  *
  *   pnpm discover -- --limit 300
+ *   pnpm discover -- --source recruitee
+ *
+ * `--source` is one of the ATS Sources with a harvester (`greenhouse` — the
+ * default — `lever`, `ashby`, `workable`, `recruitee`); everything else about
+ * the run is the same whichever it is.
  *
  * Run by hand, and by hand only. Harvesting every Slug on every sweep is what
  * the curated set exists to avoid — see `docs/research/job-sources.md` for the
@@ -15,10 +20,11 @@
  */
 import { listBoards, type BoardAddress, type BoardProbe } from "@/operations";
 import { closeDb } from "@/db";
-import { harvestGreenhouseSlugs } from "./discovery/greenhouse-slugs";
+import { harvestSlugs } from "./discovery/common-crawl";
 import { probeCandidates } from "./discovery/probe-many";
 import { describe, everyFew, summarise } from "./discovery/report";
 import { sample } from "./discovery/sample";
+import { DEFAULT_SOURCE, discoverySourceFor } from "./discovery/sources";
 
 /**
  * How many candidates to probe unless told otherwise.
@@ -54,9 +60,10 @@ async function main(): Promise<void> {
   const limit = numeric("limit") ?? DEFAULT_LIMIT;
   const pages = numeric("pages");
   const index = text("index");
+  const source = discoverySourceFor(text("source") ?? DEFAULT_SOURCE);
 
-  console.log("Harvesting candidate Slugs from Common Crawl…");
-  const { slugs: harvested, skippedPages } = await harvestGreenhouseSlugs({
+  console.log(`Harvesting candidate ${source.source} Slugs from Common Crawl…`);
+  const { slugs: harvested, skippedPages } = await harvestSlugs(source, {
     index,
     pages,
   });
@@ -75,7 +82,7 @@ async function main(): Promise<void> {
 
   const curated = new Set(
     (await listBoards())
-      .filter((board) => board.source === "greenhouse")
+      .filter((board) => board.source === source.source)
       .map((board) => board.slug),
   );
 
@@ -84,18 +91,18 @@ async function main(): Promise<void> {
   const candidates: BoardAddress[] = sample(
     harvested.filter((slug) => !curated.has(slug)),
     limit,
-  ).map((slug) => ({ source: "greenhouse", slug }));
+  ).map((slug) => ({ source: source.source, slug }));
 
   console.log(
     `  ${curated.size} already curated; probing ${candidates.length} of the rest\n`,
   );
 
   const ranked = await probeCandidates(candidates, { onProbed: everyFew() });
-  report(ranked);
+  report(ranked, source.source);
 }
 
 /** The ranked candidates, as a human reads them. */
-function report(ranked: readonly BoardProbe[]): void {
+function report(ranked: readonly BoardProbe[], source: string): void {
   const { live, postings } = summarise(ranked);
 
   console.log(
@@ -105,7 +112,7 @@ function report(ranked: readonly BoardProbe[]): void {
 
   const worthPromoting = live.filter((probe) => probe.postings > 0);
   console.log(
-    "\nPaste into scripts/data/greenhouse-boards.ts what you want swept:\n",
+    `\nPaste into scripts/data/${source}-boards.ts what you want swept:\n`,
   );
   console.log(
     worthPromoting.map((probe) => `  "${probe.slug}",`).join("\n") || "  (none)",
