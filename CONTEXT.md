@@ -88,6 +88,26 @@ dropping is how a User loses a role they wanted and never finds out. A remote Po
 unresolved: it names no place because it needs none.
 _Avoid_: Ungeocoded, bad location, missing location
 
+### Slug discovery
+
+**Discovery**:
+Finding the Slugs a nightly Fetch could cover, by harvesting Common Crawl for links to a Source's
+Board hosts and reading the Slug out of each URL. Run by hand, nothing schedules it, and it writes
+nothing to the Corpus (ADR 0008).
+_Avoid_: Crawling, scraping, indexing
+
+**Probe**:
+Reading a candidate Board once to report what it lists — how many open roles, a sample of titles —
+without letting its Postings into the Corpus. What turns a harvest of thousands into a list a person
+can judge.
+_Avoid_: Test fetch, dry run, check
+
+**Curated set**:
+The Boards a nightly Fetch actually covers: a per-Source seed file (`scripts/data/{source}-boards.ts`)
+of Slugs each probed live before promotion, grown by hand from Discovery's ranked output. The
+alternative to sweeping the whole harvested long tail (ADR 0003).
+_Avoid_: Allowlist, whitelist, registry
+
 ### Fetch orchestration
 
 **Fetch Run**:
