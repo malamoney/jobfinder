@@ -39,8 +39,10 @@ preview builds never migrate anything.
 
 ## The curated set of Boards
 
-A sweep covers the Boards listed in `scripts/data/greenhouse-boards.ts`, maintained by hand.
-Curation rather than harvesting is a cost decision — see ADR 0003.
+A sweep covers the Boards listed in `scripts/data/*-boards.ts` — one file per ATS Source
+(`greenhouse`, `lever`, `ashby`, `workable`, `recruitee`), plus the aggregator and Workday lists —
+maintained by hand. Curation rather than harvesting is a cost decision (ADR 0003); the
+harvest-and-probe process behind each list is ADR 0008.
 
 ```bash
 pnpm seed:boards    # probe every listed Board, then write it to the curated set
@@ -56,19 +58,22 @@ enabled — so a Board you turned off stays off, and one transient timeout will 
 Board out of the sweep.
 
 `pnpm discover` is run by hand and by nothing else, and writes nothing. It harvests candidate Slugs
-from Common Crawl, probes a random sample, and prints the live ones ranked by how much they are
-advertising, each with a few of its titles — a count alone cannot tell a robotics company from a
-staffing agency, and the set is meant to lean toward the roles being searched for. Promoting a
-Board means pasting its Slug into the seed file and re-running `pnpm seed:boards`.
+from Common Crawl for one Source, probes every one not already curated, and prints the live ones
+ranked by how much they are advertising, each with a few of its titles — a count alone cannot tell
+a robotics company from a staffing agency, and the set is meant to lean toward the roles being
+searched for. Promoting a Board means pasting its Slug into that Source's seed file and re-running
+`pnpm seed:boards`.
 
 ```bash
-pnpm discover -- --limit 300   # probe 300 candidates rather than the default 200
-pnpm discover -- --pages 2     # read part of the index for a quick look, not a real sample
+pnpm discover -- --source ashby   # greenhouse (default), lever, ashby, workable, recruitee
+pnpm discover -- --limit 300      # probe a random 300 rather than the whole harvest
+pnpm discover -- --pages 2        # read part of the index for a quick look, not a real sample
 ```
 
 Beware `--pages`: the index is sorted, so each page is a stretch of the alphabet. Reading two of
 seven pages does not give you two-sevenths of the Boards, it gives you every Board starting with
-"a". A run that could not read a page says so loudly for the same reason.
+"a". A run that could not read a page says so loudly for the same reason. `--limit` is the safe
+way to shorten a run — a uniform-random draw, not the front of the list.
 
 Roughly one in six Slugs goes dead over time, so the set decays. `pnpm boards:status` lists every
 Board with what its last Fetch did, worst first, so the ones worth disabling are at the top.
