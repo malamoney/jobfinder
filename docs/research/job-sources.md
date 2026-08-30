@@ -116,6 +116,16 @@ postings were US-located. Re-validate slugs quarterly; 16% had gone dead.
 
 Prior art: `github.com/Feashliaa/job-board-aggregator` claims ~95,000 harvested slugs.
 
+✅ Extended to Lever, Ashby, Workable, Recruitee (#46) — `pnpm discover --source <name>`, same
+harvest → probe → curate loop. Slug position differs: first path segment for Lever/Ashby/Workable
+(`jobs.lever.co/{slug}`, `jobs.ashbyhq.com/{slug}`, `apply.workable.com/{slug}`), subdomain for
+Recruitee (`{slug}.recruitee.com`); Workable also has a legacy `{slug}.workable.com` form. Measured
+on CC-MAIN-2026-34, 220 slugs sampled each: **Ashby 90% live** (2,611 harvested), **Workable 97%
+live but only 57% advertising a role** (3,163 harvested), **Recruitee 20% live** (549 harvested,
+EU-skewed). **Lever yielded nothing**: `jobs.lever.co` `Disallow`s CCBot in robots.txt so Common
+Crawl has no Board pages under it, and the well-crawled `jobs.eu.lever.co` needs `api.eu.lever.co`,
+which the adapter does not call — an EU-API widening is the follow-up.
+
 ## Tier 2 — breadth, with caveats
 
 - **SmartRecruiters** — real volume, but **two calls per job** (list has no body) and returns
