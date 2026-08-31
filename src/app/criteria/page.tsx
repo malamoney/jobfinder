@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/auth";
 import { readCriteria } from "@/operations";
+import { AppNav } from "../app-nav";
 import { CriteriaForm } from "./criteria-form";
 
 export const metadata: Metadata = { title: "Your criteria · Jobfinder" };
@@ -21,5 +22,10 @@ export default async function CriteriaPage() {
 
   const stated = await readCriteria(signedIn.id);
 
-  return <CriteriaForm initial={stated} />;
+  return (
+    <>
+      <AppNav active="criteria" />
+      <CriteriaForm initial={stated} />
+    </>
+  );
 }

@@ -205,7 +205,7 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
   const saved = outcome?.ok === true && !refused;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-8 px-6 py-16">
+    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-8 px-6 pb-16 pt-24">
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold tracking-tight">
           What are you looking for?
