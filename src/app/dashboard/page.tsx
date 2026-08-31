@@ -12,7 +12,7 @@ import {
   type FetchRunSummary,
 } from "@/operations";
 import { REVIEW_STATUSES, STATUS_LABELS } from "@/review/schema";
-import { logOutAction } from "../actions";
+import { AppNav } from "../app-nav";
 import { formatDateTime, formatDay, formatSalary } from "../format";
 import { DashboardControls } from "./dashboard-controls";
 
@@ -66,83 +66,81 @@ export default async function DashboardPage({
   const lastFetch = await readLatestFetchRun();
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-8 px-6 py-16">
-      <header className="flex flex-col gap-3">
-        <div className="flex items-baseline justify-between gap-4">
+    <>
+      <AppNav active="dashboard" />
+      <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-8 px-6 pb-16 pt-24">
+        <header className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <form action={logOutAction}>
-            <button type="submit" className="text-sm text-gray-500 underline">
-              Log out
-            </button>
-          </form>
-        </div>
-        <p className="text-sm text-gray-600">Signed in as {signedIn.email}.</p>
-      </header>
+          <p className="text-sm text-gray-600">
+            Signed in as {signedIn.email}.
+          </p>
+        </header>
 
-      <section className="flex flex-col gap-3 rounded-lg border border-gray-200 p-4">
-        <LastFetchLine fetch={lastFetch} />
-        <DashboardControls />
-      </section>
+        <section className="flex flex-col gap-3 rounded-lg border border-gray-200 p-4">
+          <LastFetchLine fetch={lastFetch} />
+          <DashboardControls />
+        </section>
 
-      {!stated ? (
-        <Empty
-          message="Tell Jobfinder what you are looking for, and the matches appear here."
-          cta="State your criteria"
-        />
-      ) : matchedCount === 0 ? (
-        <Empty
-          message="Nothing in the corpus matches your criteria yet. New postings are collected every night."
-          cta="Edit your criteria"
-        />
-      ) : (
-        <>
-          <div className="flex items-baseline justify-between gap-4">
-            <p className="text-sm text-gray-600">
-              <span className="font-semibold text-gray-900">
-                {unreviewedCount}
-              </span>{" "}
-              {unreviewedCount === 1 ? "posting" : "postings"} not yet reviewed
-            </p>
-            <Link href="/criteria" className="text-sm underline">
-              Edit your criteria
-            </Link>
-          </div>
+        {!stated ? (
+          <Empty
+            message="Tell Jobfinder what you are looking for, and the matches appear here."
+            cta="State your criteria"
+          />
+        ) : matchedCount === 0 ? (
+          <Empty
+            message="Nothing in the corpus matches your criteria yet. New postings are collected every night."
+            cta="Edit your criteria"
+          />
+        ) : (
+          <>
+            <div className="flex items-baseline justify-between gap-4">
+              <p className="text-sm text-gray-600">
+                <span className="font-semibold text-gray-900">
+                  {unreviewedCount}
+                </span>{" "}
+                {unreviewedCount === 1 ? "posting" : "postings"} not yet reviewed
+              </p>
+              <Link href="/criteria" className="text-sm underline">
+                Edit your criteria
+              </Link>
+            </div>
 
-          <nav className="flex flex-wrap gap-2">
-            {FILTERS.map(({ key, label }) => {
-              const active =
-                key === "open" ? filter === undefined : filter === key;
-              return (
-                <Link
-                  key={key}
-                  href={key === "open" ? "/dashboard" : `/dashboard?status=${key}`}
-                  aria-current={active ? "page" : undefined}
-                  className={`rounded-full border px-3 py-1 text-sm ${
-                    active
-                      ? "border-gray-900 bg-gray-900 text-white"
-                      : "border-gray-300 text-gray-700"
-                  }`}
-                >
-                  {label}
-                </Link>
-              );
-            })}
-          </nav>
+            <nav className="flex flex-wrap gap-2">
+              {FILTERS.map(({ key, label }) => {
+                const active =
+                  key === "open" ? filter === undefined : filter === key;
+                return (
+                  <Link
+                    key={key}
+                    href={key === "open" ? "/dashboard" : `/dashboard?status=${key}`}
+                    aria-current={active ? "page" : undefined}
+                    className={`rounded-full border px-3 py-1 text-sm ${
+                      active
+                        ? "border-gray-900 bg-gray-900 text-white"
+                        : "border-gray-300 text-gray-700"
+                    }`}
+                  >
+                    {label}
+                  </Link>
+                );
+              })}
+            </nav>
 
-          {postings.length === 0 ? (
-            <p className="text-sm text-gray-600">
-              No postings under this filter.
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-4">
-              {postings.map((posting) => (
-                <PostingCard key={posting.id} posting={posting} />
-              ))}
-            </ul>
-          )}
-        </>
-      )}
-    </main>
+            {postings.length === 0 ? (
+              <p className="text-sm text-gray-600">
+                No postings under this filter.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-4">
+                {postings.map((posting) => (
+                  <PostingCard key={posting.id} posting={posting} />
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </main>
+    </>
   );
 }
 
