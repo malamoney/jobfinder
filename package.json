@@ -20,7 +20,8 @@
     "db:generate:test": "drizzle-kit generate --config drizzle.test.config.ts",
     "discover": "tsx --env-file-if-exists=.env.local scripts/discover-boards.ts",
     "seed:boards": "tsx --env-file-if-exists=.env.local scripts/seed-boards.ts",
-    "boards:status": "tsx --env-file-if-exists=.env.local scripts/board-health.ts"
+    "boards:status": "tsx --env-file-if-exists=.env.local scripts/board-health.ts",
+    "warm-geocodes": "tsx --env-file-if-exists=.env.local scripts/warm-geocodes.ts"
   },
   "dependencies": {
     "better-auth": "^1.7.2",

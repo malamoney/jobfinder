@@ -33,19 +33,50 @@ const USER_AGENT = "Jobfinder/0.1 (+https://github.com/malamoney/jobfinder)";
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 /**
+ * How many results to weigh. Nominatim ranks by a relevance score that can put
+ * a region above a same-named place — `Franklin County` before the town of
+ * Franklin, MA — so the top hit alone is not enough to pick from.
+ */
+const RESULT_LIMIT = 5;
+
+/**
+ * Address types that name a whole region rather than somewhere a person lives.
+ * A result of one of these is skipped when a later result names an actual
+ * place, so a commute radius is centred on the town the User typed and not on
+ * the county that outranked it.
+ */
+const REGION_TYPES = new Set([
+  "county",
+  "state",
+  "state_district",
+  "region",
+  "province",
+  "country",
+  "continent",
+]);
+
+/**
  * What the adapter depends on from a Nominatim result, and nothing more.
- * `lat`/`lon` arrive as strings.
+ * `lat`/`lon` arrive as strings; `addresstype` is jsonv2's label for what the
+ * result is — `city`, `town`, `county`, `state`.
  */
 const nominatimResults = z.array(
   z.object({
     lat: z.coerce.number(),
     lon: z.coerce.number(),
+    addresstype: z.string().nullish(),
   }),
 );
 
 /**
  * The coordinate Nominatim resolves `query` to, or null when it resolves to
  * nothing.
+ *
+ * Not simply the top hit: Nominatim's relevance score can rank a region above a
+ * same-named place (`franklin, ma` → Franklin County, ~90 miles from the town),
+ * so this weighs the first few and prefers one that names an actual place. It
+ * falls back to the top hit when every result is a region, or when there is
+ * only one.
  *
  * Null is a definite answer — Nominatim understood the request and found no
  * place — and it is safe to cache. A transport or parse failure throws instead,
@@ -59,7 +90,7 @@ export async function geocode(
   const url = new URL(NOMINATIM_SEARCH_URL);
   url.searchParams.set("q", query);
   url.searchParams.set("format", "jsonv2");
-  url.searchParams.set("limit", "1");
+  url.searchParams.set("limit", String(RESULT_LIMIT));
 
   const response = await fetch(url, {
     headers: { "User-Agent": USER_AGENT },
@@ -78,6 +109,8 @@ export async function geocode(
     );
   }
 
-  const [first] = parsed.data;
-  return first ? { latitude: first.lat, longitude: first.lon } : null;
+  const results = parsed.data;
+  const chosen =
+    results.find((r) => !REGION_TYPES.has(r.addresstype ?? "")) ?? results[0];
+  return chosen ? { latitude: chosen.lat, longitude: chosen.lon } : null;
 }

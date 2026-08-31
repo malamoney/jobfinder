@@ -61,11 +61,16 @@ const DEFAULT_BUDGET = 12;
  * too, so an unresolvable string is not retried on every Fetch. A geocoder
  * *failure* is not cached: the string is left without a row and tried again
  * next time.
+ *
+ * `onGeocoded` is called after each lookup, so the hand-run warm-up
+ * (`pnpm warm-geocodes`) — which passes an unbounded `budget` and can run for
+ * minutes — can show progress.
  */
 export async function ensureGeocoded(
   writer: Writer,
   locations: readonly string[],
   budget: number = DEFAULT_BUDGET,
+  onGeocoded?: (done: number, ofUncached: number) => void,
 ): Promise<void> {
   const wanted = [...new Set(locations)];
   if (wanted.length === 0) return;
@@ -75,12 +80,12 @@ export async function ensureGeocoded(
     .from(geocodes)
     .where(inArray(geocodes.location, wanted));
   const known = new Set(cached.map((row) => row.location));
+  const uncached = wanted.filter((location) => !known.has(location));
 
   const interval = minIntervalMs();
   let calls = 0;
 
-  for (const location of wanted) {
-    if (known.has(location)) continue;
+  for (const location of uncached) {
     if (calls >= budget) break;
     if (calls > 0) await sleep(interval);
     calls++;
@@ -92,6 +97,7 @@ export async function ensureGeocoded(
       // A geocoder outage: leave the string uncached so it is retried, rather
       // than remembering it as unresolvable. Still counts against the budget,
       // so a geocoder that is down cannot make this loop unbounded.
+      onGeocoded?.(calls, uncached.length);
       continue;
     }
 
@@ -104,6 +110,8 @@ export async function ensureGeocoded(
       })
       // Another match run may have cached the same string in the meantime.
       .onConflictDoNothing();
+
+    onGeocoded?.(calls, uncached.length);
   }
 }
 
