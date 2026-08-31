@@ -144,6 +144,27 @@ const minimumSalary: FunnelStage = {
 };
 
 /**
+ * United States only, over the country Extraction derived from the location
+ * text (ADR 0009).
+ *
+ * The one funnel stage that excludes on a *silent* signal. Every other stage
+ * leaves a Posting alone when its text says nothing on the axis — an absent
+ * salary passes a floor, an unstated Arrangement is not rejected. This one
+ * keeps only `country = 'us'`, so a role placed abroad, a remote role, and a
+ * role that names no place are all dropped together. That is the point: a User
+ * who ticks "United States only" is saying "not the ones I cannot tell", and
+ * `unknown` is overwhelmingly a bare "Remote" — exactly the case the tick is
+ * for.
+ */
+const unitedStatesOnly: FunnelStage = {
+  name: "united states only over extracted country",
+  derived: true,
+  narrow({ usOnly }) {
+    return usOnly ? eq(postings.country, "us") : undefined;
+  },
+};
+
+/**
  * Accepted Arrangements, over the structure Extraction derived.
  *
  * "Never see roles structured in a way I cannot take" (#2, user story 11).
@@ -244,6 +265,7 @@ const FUNNEL: FunnelStage[] = [
   titleAndKeywordMatch,
   minimumSalary,
   acceptedArrangements,
+  unitedStatesOnly,
   withinCommuteRadius,
 ];
 

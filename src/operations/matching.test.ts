@@ -592,6 +592,81 @@ describe("accepted Arrangements", () => {
   });
 });
 
+describe("United States only", () => {
+  /** A role at `location`, titled to match and with every Arrangement accepted. */
+  function roleAt(id: number, location: string): Record<string, unknown> {
+    return greenhouseJob({
+      id,
+      title: "Staff Engineer",
+      company_name: `Company ${id}`,
+      location: { name: location },
+      content: "&lt;p&gt;Build the thing.&lt;/p&gt;",
+    });
+  }
+
+  /**
+   * Criteria that filter on nothing but the US toggle. `roleAt`'s Postings name
+   * no Arrangement, so a `remote`-only location axis never excludes them — and
+   * accepting only `remote` keeps the form from demanding a home location.
+   */
+  function usOnlyCriteria(usOnly = true): CriteriaInput {
+    return statedCriteria({
+      titles: ["Staff Engineer"],
+      arrangements: ["full-time", "remote"],
+      usOnly,
+    });
+  }
+
+  it("keeps a US role and drops a foreign one, a remote one, and a placeless one", async () => {
+    await corpusHas([
+      roleAt(1, "Boston, MA"),
+      roleAt(2, "London, UK"),
+      roleAt(3, "Remote"),
+      roleAt(4, "Multiple locations"),
+      roleAt(5, "Remote - US"),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(userId, usOnlyCriteria());
+
+    const companies = (await readDashboard(userId)).postings
+      .map((posting) => posting.company)
+      .sort();
+    expect(companies).toEqual(["Company 1", "Company 5"]);
+  });
+
+  it("filters nothing on location when the box is not ticked", async () => {
+    await corpusHas([
+      roleAt(1, "Boston, MA"),
+      roleAt(2, "London, UK"),
+      roleAt(3, "Remote"),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(userId, usOnlyCriteria(false));
+
+    expect((await readDashboard(userId)).postings).toHaveLength(3);
+  });
+
+  it("re-derives country for a Posting extracted before the field existed", async () => {
+    await corpusHas([roleAt(1, "Austin, TX")]);
+    const userId = await givenAUser();
+    await saveCriteria(userId, usOnlyCriteria(false)); // extracts, sets country
+
+    // The pre-feature state: Extraction has run, but country was never written.
+    await getDb()
+      .update(postings)
+      .set({ country: null })
+      .where(eq(postings.company, "Company 1"));
+
+    await saveCriteria(userId, usOnlyCriteria()); // re-match with the box ticked
+
+    expect((await readDashboard(userId)).postings.map((p) => p.company)).toEqual([
+      "Company 1",
+    ]);
+  });
+});
+
 describe("the commute radius", () => {
   const BOSTON: Coordinate = { latitude: 42.3601, longitude: -71.0589 };
   const CAMBRIDGE: Coordinate = { latitude: 42.3736, longitude: -71.1097 };

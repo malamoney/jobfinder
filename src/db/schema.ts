@@ -11,6 +11,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import type { Arrangement } from "@/criteria/schema";
+import type { Country } from "@/postings/country";
 import type { ReviewStatus } from "@/review/schema";
 import type { SalaryPeriod } from "@/postings/salary";
 import { user } from "./auth-schema";
@@ -159,6 +160,12 @@ export const postings = pgTable(
       .$type<Arrangement[]>()
       .notNull()
       .default([]),
+    // Whether the location text places this role in the United States — `us`,
+    // `non-us`, or `unknown` (`@/postings/country`). Read by the "United States
+    // only" funnel stage, which — unlike every other derived stage — excludes
+    // on `unknown` too (ADR 0009). Null until Extraction has run; a re-Fetch
+    // clears it with the other derived fields.
+    country: text("country").$type<Country>(),
     extractedAt: timestamp("extracted_at", { withTimezone: true }),
   },
   (table) => [
@@ -357,6 +364,9 @@ export const criteria = pgTable("criteria", {
   homeLocation: text("home_location"),
   radiusMiles: integer("radius_miles"),
   minSalary: integer("min_salary"),
+  // "United States only": drop every role the location text does not place in
+  // the US — a foreign one, and a remote or unplaced one alike (ADR 0009).
+  usOnly: boolean("us_only").notNull().default(false),
 
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
