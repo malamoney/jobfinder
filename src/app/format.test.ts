@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatSalary, SALARY_NOT_LISTED } from "./format";
+import { formatSalary, SALARY_NOT_LISTED, workplaceLabels } from "./format";
 
 /**
  * How a Posting's salary reads on the Dashboard and the details page.
@@ -47,5 +47,33 @@ describe("writing a Posting's salary", () => {
     expect(
       formatSalary({ salaryMin: 60, salaryMax: 75, salaryPeriod: "hour" }),
     ).toBe("$60–$75/hr");
+  });
+});
+
+/**
+ * The workplace tag on a card. It answers "why is a role in Virginia matching
+ * my Massachusetts radius" — because it is remote, and the radius does not
+ * apply to a remote role.
+ */
+describe("the workplace Arrangement tag", () => {
+  it("names the where-you-work Arrangement the text stated", () => {
+    expect(workplaceLabels({ arrangements: ["full-time", "remote"] })).toEqual([
+      "Remote",
+    ]);
+    expect(workplaceLabels({ arrangements: ["hybrid"] })).toEqual(["Hybrid"]);
+    expect(workplaceLabels({ arrangements: ["onsite", "part-time"] })).toEqual([
+      "Onsite",
+    ]);
+  });
+
+  it("shows every workplace Arrangement when the text named more than one", () => {
+    expect(
+      workplaceLabels({ arrangements: ["remote", "hybrid"] }),
+    ).toEqual(["Remote", "Hybrid"]);
+  });
+
+  it("is empty when the text named no workplace — the funnel's 'silent' case", () => {
+    expect(workplaceLabels({ arrangements: [] })).toEqual([]);
+    expect(workplaceLabels({ arrangements: ["full-time"] })).toEqual([]);
   });
 });

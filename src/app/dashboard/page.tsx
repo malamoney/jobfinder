@@ -13,7 +13,12 @@ import {
 } from "@/operations";
 import { REVIEW_STATUSES, STATUS_LABELS } from "@/review/schema";
 import { AppNav } from "../app-nav";
-import { formatDateTime, formatDay, formatSalary } from "../format";
+import {
+  formatDateTime,
+  formatDay,
+  formatSalary,
+  workplaceLabels,
+} from "../format";
 import { DashboardControls } from "./dashboard-controls";
 
 export const metadata: Metadata = { title: "Dashboard · Jobfinder" };
@@ -225,9 +230,17 @@ function PostingCard({ posting }: { posting: DashboardPosting }) {
           </Link>
           <span className="text-sm text-gray-600">{posting.company}</span>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {workplaceLabels(posting).map((label) => (
+            <span
+              key={label}
+              className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700"
+            >
+              {label}
+            </span>
+          ))}
           {posting.status !== "new" && (
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+            <span className="rounded-full bg-gray-900 px-2 py-0.5 text-xs font-medium text-white">
               {STATUS_LABELS[posting.status]}
             </span>
           )}
