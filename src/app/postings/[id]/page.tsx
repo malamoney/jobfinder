@@ -6,7 +6,7 @@ import { currentUser } from "@/auth";
 import { readPosting } from "@/operations";
 import { sanitizeDescription } from "@/postings/description";
 import { AppNav } from "../../app-nav";
-import { formatDay, formatSalary } from "../../format";
+import { formatDay, formatSalary, workplaceLabels } from "../../format";
 import { ReviewControls } from "./review-controls";
 
 export const metadata: Metadata = { title: "Posting · Jobfinder" };
@@ -47,7 +47,15 @@ export default async function PostingPage({
               </h1>
               <p className="text-sm text-gray-600">{posting.company}</p>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              {workplaceLabels(posting).map((label) => (
+                <span
+                  key={label}
+                  className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700"
+                >
+                  {label}
+                </span>
+              ))}
               {posting.expired && (
                 <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
                   Expired

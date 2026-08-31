@@ -1,3 +1,4 @@
+import { LOCATION_ARRANGEMENTS } from "@/criteria/schema";
 import type { Posting } from "@/db/schema";
 
 /**
@@ -60,4 +61,31 @@ export function formatSalary(
 /** A dollar figure with thousands separators. */
 function money(amount: number): string {
   return `$${amount.toLocaleString("en-US")}`;
+}
+
+/** How each workplace Arrangement reads on a tag. */
+const WORKPLACE_LABELS: Record<
+  (typeof LOCATION_ARRANGEMENTS)[number],
+  string
+> = {
+  remote: "Remote",
+  onsite: "Onsite",
+  hybrid: "Hybrid",
+};
+
+/**
+ * The workplace Arrangement(s) a Posting's text named — `["Remote"]`,
+ * `["Hybrid"]`, occasionally two, and empty when the text said nothing.
+ *
+ * Only the where-you-work axis: `full-time` / `part-time` are not a place.
+ * Shown as a tag so a role a User's radius did not filter out is legible at a
+ * glance — a remote role is HQ'd somewhere, and its address on the card is not
+ * where the work is.
+ */
+export function workplaceLabels(
+  posting: Pick<Posting, "arrangements">,
+): string[] {
+  return LOCATION_ARRANGEMENTS.filter((arrangement) =>
+    posting.arrangements.includes(arrangement),
+  ).map((arrangement) => WORKPLACE_LABELS[arrangement]);
 }
