@@ -1,7 +1,8 @@
-import { and, eq, isNull, type SQL } from "drizzle-orm";
+import { and, eq, isNull, or, type SQL } from "drizzle-orm";
 import type { Writer } from "@/db";
 import { postings } from "@/db/schema";
 import { extractArrangements } from "@/postings/arrangement";
+import { extractCountry } from "@/postings/country";
 import { normalizeLocation } from "@/postings/location";
 import {
   extractSalary,
@@ -51,7 +52,11 @@ export async function extractPostings(
       salaryPeriod: postings.salaryPeriod,
     })
     .from(postings)
-    .where(and(scope, isNull(postings.extractedAt)));
+    // `country is null` alongside the usual `extracted_at is null` so a Posting
+    // extracted before that field existed (ADR 0009) is picked up on the next
+    // match run rather than only on its next re-Fetch. Re-deriving the rest
+    // from the same text is idempotent, and a salary already on record is kept.
+    .where(and(scope, or(isNull(postings.extractedAt), isNull(postings.country))));
   if (pending.length === 0) return;
 
   const extractedAt = new Date();
@@ -73,10 +78,11 @@ export async function extractPostings(
         salaryMax: salary ? Math.round(salary.max) : null,
         salaryPeriod: salary?.period ?? null,
         arrangements: extractArrangements(text),
-        // The geocode cache key (#12), from the location string alone rather
-        // than the joined text — a place named in the description is not where
-        // the role is.
+        // The geocode cache key (#12) and the country (ADR 0009), both from the
+        // location string alone rather than the joined text — a place named in
+        // the description is not where the role is.
         normalizedLocation: normalizeLocation(posting.location),
+        country: extractCountry(posting.location),
         extractedAt,
       })
       .where(eq(postings.id, posting.id));

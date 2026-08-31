@@ -28,6 +28,7 @@ function fromRow(row: CriteriaRow): Criteria {
     homeLocation: row.homeLocation,
     radiusMiles: row.radiusMiles,
     minSalary: row.minSalary,
+    usOnly: row.usOnly,
   };
 }
 

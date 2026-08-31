@@ -51,6 +51,7 @@ describe("stating Criteria", () => {
         homeLocation: null,
         radiusMiles: null,
         minSalary: null,
+        usOnly: false,
       },
     });
     expect(await readCriteria(userId)).toEqual(
@@ -280,5 +281,27 @@ describe("minimum salary", () => {
     );
 
     expect(outcome.ok && outcome.criteria.minSalary).toBe(180000);
+  });
+});
+
+describe("United States only", () => {
+  it("defaults to off when the form does not send it", async () => {
+    const userId = await givenAUser();
+
+    const outcome = await saveCriteria(userId, statedCriteria());
+
+    expect(outcome.ok && outcome.criteria.usOnly).toBe(false);
+  });
+
+  it("is kept when the box is ticked, and read back", async () => {
+    const userId = await givenAUser();
+
+    const outcome = await saveCriteria(
+      userId,
+      statedCriteria({ usOnly: true }),
+    );
+
+    expect(outcome.ok && outcome.criteria.usOnly).toBe(true);
+    expect((await readCriteria(userId))?.usOnly).toBe(true);
   });
 });

@@ -99,6 +99,13 @@
       "when": 1788034855867,
       "tag": "0013_open_marten_broadcloak",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788185563085,
+      "tag": "0014_bent_thor",
+      "breakpoints": true
     }
   ]
 }
