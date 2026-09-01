@@ -43,7 +43,7 @@ export function DashboardControls() {
           type="button"
           onClick={() => run(runMatchingAction)}
           disabled={pending}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium disabled:opacity-60"
+          className="rounded-md border border-border px-3 py-1.5 text-sm font-medium disabled:opacity-60"
         >
           Run matching now
         </button>
@@ -51,7 +51,7 @@ export function DashboardControls() {
           type="button"
           onClick={() => run(fetchNowAction)}
           disabled={pending}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium disabled:opacity-60"
+          className="rounded-md border border-border px-3 py-1.5 text-sm font-medium disabled:opacity-60"
         >
           Fetch new postings
         </button>
@@ -60,7 +60,7 @@ export function DashboardControls() {
         <p
           role="status"
           aria-live="polite"
-          className={`text-sm ${result.ok ? "text-green-700" : "text-red-700"}`}
+          className={`text-sm ${result.ok ? "text-ok" : "text-danger"}`}
         >
           {result.message}
         </p>

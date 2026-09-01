@@ -82,12 +82,12 @@ export default async function DashboardPage({
       <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 pb-16 pt-24">
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-text-body">
             Signed in as {signedIn.email}.
           </p>
         </header>
 
-        <section className="flex flex-col gap-3 rounded-lg border border-gray-200 p-4">
+        <section className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4">
           <LastFetchLine fetch={lastFetch} />
           <DashboardControls />
         </section>
@@ -105,8 +105,8 @@ export default async function DashboardPage({
         ) : (
           <>
             <div className="flex items-baseline justify-between gap-4">
-              <p className="text-sm text-gray-600">
-                <span className="font-semibold text-gray-900">
+              <p className="text-sm text-text-body">
+                <span className="font-mono font-semibold text-text">
                   {unreviewedCount}
                 </span>{" "}
                 {unreviewedCount === 1 ? "posting" : "postings"} not yet reviewed
@@ -127,8 +127,8 @@ export default async function DashboardPage({
                     aria-current={active ? "page" : undefined}
                     className={`rounded-full border px-3 py-1 text-sm ${
                       active
-                        ? "border-gray-900 bg-gray-900 text-white"
-                        : "border-gray-300 text-gray-700"
+                        ? "border-accent-edge bg-accent-wash text-accent-text"
+                        : "border-border text-text-body"
                     }`}
                   >
                     {label}
@@ -138,7 +138,7 @@ export default async function DashboardPage({
             </nav>
 
             {postings.length === 0 ? (
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-text-body">
                 No postings under this filter.
               </p>
             ) : (
@@ -153,11 +153,11 @@ export default async function DashboardPage({
 
         {/* Logo.dev's free tier asks for a link back where its logos are shown
             (ADR 0011). */}
-        <footer className="mt-auto pt-4 text-xs text-gray-400">
+        <footer className="mt-auto pt-4 text-xs text-label">
           Logos by{" "}
           <a
             href="https://logo.dev"
-            className="underline hover:text-gray-600"
+            className="underline hover:text-text-body"
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -179,7 +179,7 @@ export default async function DashboardPage({
 function LastFetchLine({ fetch }: { fetch: FetchRunSummary | null }) {
   if (!fetch) {
     return (
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-text-body">
         No fetch has run yet. The nightly sweep collects new postings at 3am.
       </p>
     );
@@ -192,13 +192,13 @@ function LastFetchLine({ fetch }: { fetch: FetchRunSummary | null }) {
 
   return (
     <div className="flex flex-col gap-1.5 text-sm">
-      <p className="text-gray-600">
+      <p className="text-text-body">
         {finished}
         {fetch.failed > 0 && (
-          <span className="text-amber-700"> · {fetch.failed} failed</span>
+          <span className="text-warn"> · {fetch.failed} failed</span>
         )}
         {fetch.running && (
-          <span className="text-gray-500"> · another fetch is running</span>
+          <span className="text-label"> · another fetch is running</span>
         )}
       </p>
       {fetch.nonUsPruned > 0 && (
@@ -206,23 +206,23 @@ function LastFetchLine({ fetch }: { fetch: FetchRunSummary | null }) {
         // went US-only (ADR 0010) are being removed a batch per sweep. The
         // steady-state count of foreign roles the sources still list and this
         // sweep skipped is on the run record but not shown — it never changes.
-        <p className="text-gray-500">
+        <p className="text-label">
           Removed {fetch.nonUsPruned} non-US role
           {fetch.nonUsPruned === 1 ? "" : "s"} stored before the US-only change.
         </p>
       )}
       {fetch.failures.length > 0 && (
-        <details className="text-gray-600">
-          <summary className="cursor-pointer text-amber-700">
+        <details className="text-text-body">
+          <summary className="cursor-pointer text-warn">
             Boards that errored
           </summary>
           <ul className="mt-1 flex flex-col gap-1">
             {fetch.failures.map((failure) => (
               <li key={`${failure.source}/${failure.slug}`}>
-                <span className="font-medium text-gray-900">
+                <span className="font-mono font-medium text-text">
                   {failure.source}/{failure.slug}
                 </span>
-                <span className="text-gray-500"> — {failure.error}</span>
+                <span className="text-label"> — {failure.error}</span>
               </li>
             ))}
           </ul>
@@ -235,11 +235,11 @@ function LastFetchLine({ fetch }: { fetch: FetchRunSummary | null }) {
 /** Shown when there is no statement of Criteria, or nothing matched it. */
 function Empty({ message, cta }: { message: string; cta: string }) {
   return (
-    <div className="flex flex-col items-start gap-4 rounded-lg border border-dashed border-gray-300 p-6">
-      <p className="text-sm text-gray-600">{message}</p>
+    <div className="flex flex-col items-start gap-4 rounded-lg border border-dashed border-border p-6">
+      <p className="text-sm text-text-body">{message}</p>
       <Link
         href="/criteria"
-        className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white"
+        className="rounded-md border border-accent-edge bg-accent-wash px-4 py-2 text-sm font-medium text-accent-text"
       >
         {cta}
       </Link>
@@ -279,7 +279,7 @@ function PostingCard({ posting }: { posting: DashboardPosting }) {
   const savable = posting.status === "new" || posting.status === "interested";
 
   return (
-    <li className="flex min-h-80 flex-col gap-3 rounded-lg border border-gray-200 p-4">
+    <li className="flex min-h-80 flex-col gap-3 rounded-lg border border-border bg-surface p-4">
       <div className="flex items-start justify-between gap-3">
         <CompanyIcon company={posting.company} />
         {savable ? (
@@ -292,7 +292,7 @@ function PostingCard({ posting }: { posting: DashboardPosting }) {
             saved={posting.status === "interested"}
           />
         ) : (
-          <span className="rounded-md bg-gray-900 px-2.5 py-1 text-xs font-medium text-white">
+          <span className="rounded-md border border-accent-edge bg-accent-wash px-2.5 py-1 text-xs font-medium text-accent-text">
             {STATUS_LABELS[posting.status]}
           </span>
         )}
@@ -300,15 +300,15 @@ function PostingCard({ posting }: { posting: DashboardPosting }) {
 
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
-          <span className="text-gray-600">{posting.company}</span>
-          <span className="text-xs text-gray-500">
+          <span className="text-text-body">{posting.company}</span>
+          <span className="text-xs text-label">
             {formatAge(posting.postedAt)}
           </span>
         </div>
         <Link
           href={`/postings/${posting.id}`}
           title={posting.title}
-          className="line-clamp-2 text-lg font-semibold leading-snug tracking-tight text-gray-900 hover:underline"
+          className="line-clamp-2 text-lg font-semibold leading-snug tracking-tight text-text hover:underline"
         >
           {posting.title}
         </Link>
@@ -321,7 +321,7 @@ function PostingCard({ posting }: { posting: DashboardPosting }) {
           {posting.matchedKeywords.slice(0, MAX_CARD_KEYWORDS).map((keyword) => (
             <li
               key={keyword}
-              className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700"
+              className="rounded-full bg-tag px-2 py-0.5 text-xs text-text-body"
             >
               {keyword}
             </li>
@@ -329,7 +329,7 @@ function PostingCard({ posting }: { posting: DashboardPosting }) {
           {posting.matchedKeywords.length > MAX_CARD_KEYWORDS && (
             <li
               title={posting.matchedKeywords.join(", ")}
-              className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500"
+              className="rounded-full bg-tag px-2 py-0.5 font-mono text-xs text-label"
             >
               +{posting.matchedKeywords.length - MAX_CARD_KEYWORDS}
             </li>
@@ -337,11 +337,11 @@ function PostingCard({ posting }: { posting: DashboardPosting }) {
         </ul>
       )}
 
-      <div className="mt-auto flex items-end justify-between gap-3 border-t border-gray-200 pt-3">
+      <div className="mt-auto flex items-end justify-between gap-3 border-t border-hairline pt-3">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-sm">
           {/* Extraction (#11) fills salary where the Posting's text states one;
               an unknown reads as "not listed", never a number or a zero (#36). */}
-          <span className="font-medium text-gray-900">
+          <span className="font-mono font-medium text-text">
             {formatSalary(posting)}
           </span>
           {/* `truncate` (not a hard-coded character count) keeps this one line
@@ -350,14 +350,14 @@ function PostingCard({ posting }: { posting: DashboardPosting }) {
               or `;`-joined list of offices collapses to "Multiple locations"
               first (`cardLocation`) — spelling all of them out is what broke a
               card's height worst. The full string is still a hover away. */}
-          <span className="truncate text-gray-600" title={posting.location ?? undefined}>
+          <span className="truncate text-text-body" title={posting.location ?? undefined}>
             {cardLocation(posting.location)}
           </span>
         </div>
         {posting.expired ? (
           // Every listing of this opening has come down (#7): the apply URL
           // 404s, so the card states that instead of sending the User to it.
-          <span className="shrink-0 rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-400">
+          <span className="shrink-0 rounded-md border border-border px-4 py-2 text-sm font-medium text-disabled">
             Listing expired
           </span>
         ) : (
@@ -365,7 +365,7 @@ function PostingCard({ posting }: { posting: DashboardPosting }) {
             href={posting.applyUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="shrink-0 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white"
+            className="shrink-0 rounded-md border border-accent-edge bg-accent-wash px-4 py-2 text-sm font-medium text-accent-text"
           >
             Apply now
           </a>

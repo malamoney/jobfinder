@@ -217,6 +217,11 @@ describe("the Logo.dev icon URL for a company", () => {
     expect(url.searchParams.get("fallback")).toBe("404");
   });
 
+  it("asks for the dark-ground version of a monochrome mark — the disc it sits on is dark", () => {
+    const url = new URL(companyIconSrc("Acme", 40)!);
+    expect(url.searchParams.get("theme")).toBe("dark");
+  });
+
   it("passes the render size through, clamped to Logo.dev's maximum", () => {
     expect(new URL(companyIconSrc("Acme", 80)!).searchParams.get("size")).toBe(
       "80",

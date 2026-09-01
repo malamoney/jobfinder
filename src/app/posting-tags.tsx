@@ -42,7 +42,7 @@ export function PostingTags({
   );
 }
 
-/** One pill. `warn` is the amber the un-geocoded location has always worn. */
+/** One pill. `warn` is the caution tone the un-geocoded location wears. */
 function Tag({
   children,
   tone = "default",
@@ -51,9 +51,9 @@ function Tag({
   tone?: "default" | "muted" | "warn";
 }) {
   const tones = {
-    default: "bg-gray-100 text-gray-700",
-    muted: "bg-gray-100 text-gray-500",
-    warn: "bg-amber-100 text-amber-700",
+    default: "bg-tag text-text-body",
+    muted: "bg-tag text-label",
+    warn: "bg-warn/15 text-warn",
   } as const;
   return (
     <span

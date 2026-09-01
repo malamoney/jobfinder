@@ -65,7 +65,7 @@ export function CredentialsForm({
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 px-6">
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold tracking-tight">{heading}</h1>
-        <p className="text-sm text-gray-600">{blurb}</p>
+        <p className="text-sm text-text-body">{blurb}</p>
       </div>
 
       {/* `noValidate` because the messages below are ours, in our wording,
@@ -78,7 +78,7 @@ export function CredentialsForm({
             type="email"
             autoComplete="email"
             required
-            className="rounded-md border border-gray-300 px-3 py-2 text-base"
+            className="rounded-md border border-border bg-field px-3 py-2 text-base"
           />
         </label>
 
@@ -91,10 +91,10 @@ export function CredentialsForm({
             // to generate on signup and to fill on login.
             autoComplete={showPasswordRule ? "new-password" : "current-password"}
             required
-            className="rounded-md border border-gray-300 px-3 py-2 text-base"
+            className="rounded-md border border-border bg-field px-3 py-2 text-base"
           />
           {showPasswordRule && (
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-label">
               At least {MIN_PASSWORD_LENGTH} characters.
             </span>
           )}
@@ -105,20 +105,20 @@ export function CredentialsForm({
           finds out the submission failed at the moment it does, and the
           message is the same sentence the server decided on.
         */}
-        <p role="alert" aria-live="polite" className="text-sm text-red-700">
+        <p role="alert" aria-live="polite" className="text-sm text-danger">
           {problem}
         </p>
 
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+          className="rounded-md border border-accent-edge bg-accent-wash px-4 py-2 text-sm font-medium text-accent-text disabled:border-border disabled:bg-transparent disabled:text-label"
         >
           {pending ? "Working…" : submitLabel}
         </button>
       </form>
 
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-text-body">
         {footer.prompt}{" "}
         <Link href={footer.href} className="font-medium underline">
           {footer.linkLabel}

@@ -210,7 +210,7 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
         <h1 className="text-2xl font-semibold tracking-tight">
           What are you looking for?
         </h1>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-text-body">
           State it once. You can come back and change any of it whenever your
           search does.
         </p>
@@ -252,7 +252,7 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
             <p className="text-sm font-medium">Arrangements you accept</p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-label">
               Roles structured in a way you cannot take are never shown. A group
               you leave untouched is not used to filter — so leave one blank if
               you have no preference there.
@@ -260,14 +260,14 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
           </div>
           {ARRANGEMENT_GROUPS.map(({ legend, values }) => (
             <fieldset key={legend} className="flex flex-col gap-2">
-              <legend className="text-xs font-medium text-gray-700">
+              <legend className="text-xs font-medium text-text-body">
                 {legend}
               </legend>
               <div className="flex flex-wrap gap-3">
                 {values.map((arrangement) => (
                   <label
                     key={arrangement}
-                    className="flex items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+                    className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm"
                   >
                     <input
                       type="checkbox"
@@ -285,7 +285,7 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
         {wantsDistance && (
           <fieldset className="flex flex-col gap-4">
             <legend className="text-sm font-medium">Commute</legend>
-            <p className="-mt-1 text-xs text-gray-500">
+            <p className="-mt-1 text-xs text-label">
               Onsite and hybrid roles are limited to somewhere you could get
               to. Remote roles ignore this.
             </p>
@@ -296,7 +296,7 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
                 onChange={(event) => setHomeLocation(event.target.value)}
                 autoComplete="address-level2"
                 placeholder="Boston, MA"
-                className="rounded-md border border-gray-300 px-3 py-2 text-base"
+                className="rounded-md border border-border bg-field px-3 py-2 text-base"
               />
             </label>
             <label className="flex flex-col gap-1.5">
@@ -306,7 +306,7 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
                 onChange={(event) => setRadiusMiles(event.target.value)}
                 inputMode="numeric"
                 placeholder="30"
-                className="rounded-md border border-gray-300 px-3 py-2 text-base"
+                className="rounded-md border border-border bg-field px-3 py-2 font-mono text-base"
               />
             </label>
           </fieldset>
@@ -314,7 +314,7 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
 
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium">Minimum salary</span>
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-label">
             Leave blank to see every role. A posting that states no salary is
             always shown.
           </span>
@@ -323,15 +323,15 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
             onChange={(event) => setMinSalary(event.target.value)}
             inputMode="numeric"
             placeholder="150000"
-            className="mt-1 rounded-md border border-gray-300 px-3 py-2 text-base"
+            className="mt-1 rounded-md border border-border bg-field px-3 py-2 font-mono text-base"
           />
         </label>
 
-        <p role="alert" aria-live="polite" className="text-sm text-red-700">
+        <p role="alert" aria-live="polite" className="text-sm text-danger">
           {problem}
         </p>
         {saved && (
-          <p aria-live="polite" className="text-sm text-green-700">
+          <p aria-live="polite" className="text-sm text-ok">
             Saved.
           </p>
         )}
@@ -339,7 +339,7 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
         <button
           type="submit"
           disabled={pending}
-          className="self-start rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+          className="self-start rounded-md border border-accent-edge bg-accent-wash px-4 py-2 text-sm font-medium text-accent-text disabled:border-border disabled:bg-transparent disabled:text-label"
         >
           {pending ? "Saving…" : "Save criteria"}
         </button>
@@ -375,7 +375,7 @@ function ChipField({
   return (
     <fieldset className="flex flex-col gap-2">
       <legend className="text-sm font-medium">{legend}</legend>
-      <p className="text-xs text-gray-500">{hint}</p>
+      <p className="text-xs text-label">{hint}</p>
 
       <div className="mt-1 flex gap-2">
         <input
@@ -383,12 +383,12 @@ function ChipField({
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onDraftKeyDown}
           placeholder={placeholder}
-          className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-base"
+          className="flex-1 rounded-md border border-border bg-field px-3 py-2 text-base"
         />
         <button
           type="button"
           onClick={onAdd}
-          className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium"
+          className="rounded-md border border-border px-4 py-2 text-sm font-medium"
         >
           Add
         </button>
@@ -399,14 +399,14 @@ function ChipField({
           {items.map((item) => (
             <li
               key={item}
-              className="flex items-center gap-1.5 rounded-full bg-gray-100 py-1 pl-3 pr-1.5 text-sm"
+              className="flex items-center gap-1.5 rounded-full bg-tag py-1 pl-3 pr-1.5 text-sm"
             >
               {item}
               <button
                 type="button"
                 onClick={() => onRemove(item)}
                 aria-label={`Remove ${item}`}
-                className="flex h-5 w-5 items-center justify-center rounded-full text-gray-500 hover:bg-gray-200 hover:text-gray-900"
+                className="flex h-5 w-5 items-center justify-center rounded-full text-label hover:bg-border hover:text-text"
               >
                 ×
               </button>

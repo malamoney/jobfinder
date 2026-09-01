@@ -56,15 +56,15 @@ export function SavedToggle({
         aria-pressed={saved}
         className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium disabled:opacity-60 ${
           saved
-            ? "border-gray-900 bg-gray-900 text-white"
-            : "border-gray-300 text-gray-700"
+            ? "border-accent-edge bg-accent-wash text-accent-text"
+            : "border-border text-text-body"
         }`}
       >
         <BookmarkIcon filled={saved} />
         {saved ? "Saved" : "Save"}
       </button>
       {failed && (
-        <span role="alert" className="text-xs text-red-700">
+        <span role="alert" className="text-xs text-danger">
           Could not save that.
         </span>
       )}
