@@ -59,7 +59,11 @@ export {
 } from "./fetch-schedule";
 export { matchAllUsers, matchCriteria } from "./matching";
 export { isExpired, listPostings } from "./postings";
-export { pruneNonUsPostings, PRUNE_BATCH_SIZE } from "./prune";
+export {
+  pruneNonUsPostings,
+  reclassifyCountries,
+  PRUNE_BATCH_SIZE,
+} from "./prune";
 export {
   readPosting,
   setNotes,

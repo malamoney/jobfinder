@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull, ne, notExists, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { postings, reviewState } from "@/db/schema";
-import { extractCountry } from "@/postings/country";
+import { extractCountry, type Country } from "@/postings/country";
 
 /**
  * Removing the roles the Corpus should never have held: those the location text
@@ -89,4 +89,49 @@ export async function pruneNonUsPostings(
   if (nonUs.length === 0) return 0;
   await db.delete(postings).where(inArray(postings.id, nonUs));
   return nonUs.length;
+}
+
+/**
+ * Re-derives `country` for every Posting from its location text, and writes back
+ * the ones that changed. Returns how many rows moved.
+ *
+ * `country` is written once on ingestion (`storePostings`) and, for legacy rows,
+ * on the first match run that extracts them — after that nothing revisits it. So
+ * a fix to `extractCountry`'s heuristic (like #67, where `Berlin, DE` had been
+ * read as Delaware) does not reach the rows already stored under the old
+ * reading. This pass does: run nightly right before `pruneNonUsPostings`, it
+ * re-tags the misjudged rows, and the prune then removes the newly-`non-us` ones
+ * that no User has acted on.
+ *
+ * The work is a pure regex over a short string, so the whole Corpus is cheap to
+ * walk in one pass; only the changed rows are written, batched.
+ */
+export async function reclassifyCountries(): Promise<number> {
+  const db = getDb();
+
+  const rows = await db
+    .select({ id: postings.id, location: postings.location, country: postings.country })
+    .from(postings);
+
+  const moves = new Map<Country, string[]>();
+  for (const row of rows) {
+    const derived = extractCountry(row.location);
+    if (derived === row.country) continue;
+    const bucket = moves.get(derived);
+    if (bucket) bucket.push(row.id);
+    else moves.set(derived, [row.id]);
+  }
+
+  let moved = 0;
+  for (const [country, ids] of moves) {
+    for (let i = 0; i < ids.length; i += PRUNE_BATCH_SIZE) {
+      const batch = ids.slice(i, i + PRUNE_BATCH_SIZE);
+      await db
+        .update(postings)
+        .set({ country })
+        .where(inArray(postings.id, batch));
+      moved += batch.length;
+    }
+  }
+  return moved;
 }

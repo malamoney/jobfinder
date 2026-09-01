@@ -7,6 +7,7 @@ import {
   listPostings,
   pruneNonUsPostings,
   readLatestFetchRun,
+  reclassifyCountries,
   saveCriteria,
   setNotes,
   setStatus,
@@ -186,7 +187,58 @@ describe("pruning non-US roles", () => {
   });
 });
 
+describe("re-deriving country from the location text (#67)", () => {
+  it("re-tags a row the old classifier misjudged, from its location alone", async () => {
+    // How the pre-fix classifier stored these: `Berlin, DE` read as Delaware.
+    await storedRole({ sourceId: "1", country: "us", location: "Berlin, DE" });
+    await storedRole({ sourceId: "2", country: "us", location: "Bengaluru, IN" });
+    await storedRole({ sourceId: "3", country: "us", location: "Austin, TX" });
+
+    const moved = await reclassifyCountries();
+
+    expect(moved).toBe(2);
+    const byId = Object.fromEntries(
+      (await listPostings()).map((p) => [p.sourceId, p.country]),
+    );
+    expect(byId).toEqual({ "1": "non-us", "2": "non-us", "3": "us" });
+  });
+
+  it("leaves a Corpus that already agrees untouched", async () => {
+    await storedRole({ sourceId: "1", country: "us", location: "Austin, TX" });
+    await storedRole({ sourceId: "2", country: "non-us", location: "London, UK" });
+
+    expect(await reclassifyCountries()).toBe(0);
+  });
+
+  it("classifies legacy rows whose country was never derived", async () => {
+    await storedRole({ sourceId: "1", country: null, location: "Toronto, CA" });
+    await storedRole({ sourceId: "2", country: null, location: "Denver, CO" });
+
+    await reclassifyCountries();
+
+    const byId = Object.fromEntries(
+      (await listPostings()).map((p) => [p.sourceId, p.country]),
+    );
+    expect(byId).toEqual({ "1": "non-us", "2": "us" });
+  });
+});
+
 describe("the sweep's closing prune", () => {
+  it("re-classifies a misjudged row and then prunes it, in one sweep (#67)", async () => {
+    // Stored `us` under the old reading; no User has touched it.
+    await storedRole({ sourceId: "old-1", country: "us", location: "Berlin, DE" });
+
+    await addBoard({ source: "greenhouse", slug: "globex" });
+    boardReturns("globex", [
+      greenhouseJob({ id: 1, company_name: "Globex", location: { name: "Austin, TX" } }),
+    ]);
+    await startFetchRun();
+    await drainAndRematch();
+
+    expect(await remaining()).toEqual(["1"]);
+    expect((await readLatestFetchRun())?.nonUsPruned).toBe(1);
+  });
+
   it("runs once the queue is drained and records the count on the run summary", async () => {
     await storedRole({ sourceId: "old-1", country: "non-us", location: "London, UK" });
     await storedRole({ sourceId: "old-2", country: "unknown", location: "Remote" });

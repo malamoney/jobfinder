@@ -50,6 +50,22 @@ describe("US-only ingestion", () => {
     );
   });
 
+  it("drops a foreign role written as 'City, CC' with a two-letter code (#67)", async () => {
+    boardReturns("acme", [
+      roleAt(1, "San Francisco, CA"),
+      roleAt(2, "Berlin, DE"),
+      roleAt(3, "Bengaluru, IN"),
+      roleAt(4, "Toronto, CA"),
+      roleAt(5, "Amsterdam, NL"),
+    ]);
+
+    await fetchBoard(acme);
+
+    expect((await listPostings()).map((posting) => posting.sourceId).sort()).toEqual(
+      ["1"],
+    );
+  });
+
   it("writes country = 'us' on every stored role", async () => {
     boardReturns("acme", [roleAt(1, "Austin, TX")]);
 
