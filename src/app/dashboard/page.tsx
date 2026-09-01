@@ -14,7 +14,7 @@ import {
 import { REVIEW_STATUSES, STATUS_LABELS } from "@/review/schema";
 import { AppNav } from "../app-nav";
 import { CompanyIcon } from "../company-icon";
-import { formatAge, formatDateTime, formatSalary } from "../format";
+import { cardLocation, formatAge, formatDateTime, formatSalary } from "../format";
 import { PostingTags } from "../posting-tags";
 import { DashboardControls } from "./dashboard-controls";
 import { SavedToggle } from "./saved-toggle";
@@ -250,12 +250,22 @@ function Empty({ message, cta }: { message: string; cta: string }) {
  * matched Keywords sit above the divider, and a Status past `interested`
  * (`applied` / `not_interested`) replaces the Save toggle with its own pill so
  * the card is never ambiguous about where the Posting sits.
+ *
+ * A row of cards is uneven otherwise (#75): a short card's Apply button sits
+ * high, a long one's low, and the effect got worse as the redesign added rows
+ * (salary, location, keywords) a plain fact list didn't have. Two rules fix
+ * it — `min-h-80` gives every card a floor (a grid row still stretches every
+ * `<li>` in it to the tallest one, so a genuinely longer card, and its row,
+ * simply grows past the floor rather than clipping), and the footer's
+ * `mt-auto` pushes it to the card's bottom, so whatever slack a short card has
+ * collects in the one place it reads as intentional — between the tags/
+ * keywords and the divider — rather than trailing below the Apply button.
  */
 function PostingCard({ posting }: { posting: DashboardPosting }) {
   const savable = posting.status === "new" || posting.status === "interested";
 
   return (
-    <li className="flex flex-col gap-3 rounded-lg border border-gray-200 p-4">
+    <li className="flex min-h-80 flex-col gap-3 rounded-lg border border-gray-200 p-4">
       <div className="flex items-start justify-between gap-3">
         <CompanyIcon company={posting.company} />
         {savable ? (
@@ -304,15 +314,21 @@ function PostingCard({ posting }: { posting: DashboardPosting }) {
         </ul>
       )}
 
-      <div className="mt-1 flex items-end justify-between gap-3 border-t border-gray-200 pt-3">
-        <div className="flex flex-col gap-0.5 text-sm">
+      <div className="mt-auto flex items-end justify-between gap-3 border-t border-gray-200 pt-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-sm">
           {/* Extraction (#11) fills salary where the Posting's text states one;
               an unknown reads as "not listed", never a number or a zero (#36). */}
           <span className="font-medium text-gray-900">
             {formatSalary(posting)}
           </span>
-          <span className="text-gray-600">
-            {posting.location ?? "Location not given"}
+          {/* `truncate` (not a hard-coded character count) keeps this one line
+              at every grid width; `min-w-0` on the flex column above is what
+              lets it actually shrink instead of pushing the card wider. A `/`-
+              or `;`-joined list of offices collapses to "Multiple locations"
+              first (`cardLocation`) — spelling all of them out is what broke a
+              card's height worst. The full string is still a hover away. */}
+          <span className="truncate text-gray-600" title={posting.location ?? undefined}>
+            {cardLocation(posting.location)}
           </span>
         </div>
         {posting.expired ? (

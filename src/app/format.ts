@@ -111,6 +111,47 @@ function money(amount: number): string {
   return `$${amount.toLocaleString("en-US")}`;
 }
 
+/** The text shown on a card when a Posting states no location at all. */
+export const LOCATION_NOT_GIVEN = "Location not given";
+
+/** The text shown when a location string names more than one place. */
+export const MULTIPLE_LOCATIONS = "Multiple locations";
+
+/**
+ * A Source joins several offices into one location string with `/` or `;` — an
+ * aggregator's own delimiter, not part of any single place's name — so
+ * splitting on either is enough to tell "one place, plainly written" from "a
+ * list", without a gazetteer.
+ */
+const LOCATION_LIST_SEPARATOR_RE = /\s*[;/]\s*/;
+
+/**
+ * How a Posting's location reads on a Dashboard card (#75).
+ *
+ * Some Sources state one location string per role ("Cambridge, MA USA"),
+ * others state several offices in one field, `/`- or `;`-joined
+ * ("Fort Lauderdale, Florida, United States / Miami, Florida, United
+ * States / …"). Spelling all of them out is what was breaking the card's
+ * uniform height (#75) — `Multiple locations` says the same thing in a
+ * predictable width, and the full string is still one hover away (the caller
+ * puts it in a `title`).
+ *
+ * A single long location is returned as-is: the card truncates it visually
+ * with a one-line CSS ellipsis (`.truncate`) rather than a hard-coded
+ * character count, so it stays correct at every grid width instead of at only
+ * the one width a fixed count was tuned for.
+ */
+export function cardLocation(location: string | null): string {
+  if (!location) return LOCATION_NOT_GIVEN;
+
+  const places = location
+    .split(LOCATION_LIST_SEPARATOR_RE)
+    .map((place) => place.trim())
+    .filter(Boolean);
+
+  return places.length > 1 ? MULTIPLE_LOCATIONS : location;
+}
+
 /** How each workplace Arrangement reads on a tag. */
 const WORKPLACE_LABELS: Record<
   (typeof LOCATION_ARRANGEMENTS)[number],
