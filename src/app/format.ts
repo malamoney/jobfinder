@@ -1,4 +1,7 @@
-import { LOCATION_ARRANGEMENTS } from "@/criteria/schema";
+import {
+  EMPLOYMENT_ARRANGEMENTS,
+  LOCATION_ARRANGEMENTS,
+} from "@/criteria/schema";
 import type { Posting } from "@/db/schema";
 
 /**
@@ -29,6 +32,51 @@ export function formatDateTime(date: Date | null, fallback = "Never"): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+/** One place to phrase a relative age, so every card reads it the same way. */
+const RELATIVE_AGE = new Intl.RelativeTimeFormat("en-US", { numeric: "always" });
+
+/**
+ * How old a Posting is, in words — "5 days ago", "3 months ago" — for the
+ * Dashboard card, where an exact date is noise and "is this fresh?" is the
+ * question.
+ *
+ * `null` is a date the Source never published; it falls back to `formatDay`'s
+ * wording ("Date not given") rather than a guess at the age. Anything under a
+ * minute old reads as "just now"; everything else is bucketed to the largest
+ * whole unit that fits, rounded down, so a Posting is never aged up.
+ */
+export function formatAge(
+  date: Date | null,
+  fallback = "Date not given",
+): string {
+  if (!date) return fallback;
+
+  const elapsed = Math.max(0, Date.now() - new Date(date).getTime());
+  const MINUTE = 60_000;
+  const HOUR = 60 * MINUTE;
+  const DAY = 24 * HOUR;
+  const WEEK = 7 * DAY;
+  const MONTH = 30 * DAY;
+  const YEAR = 365 * DAY;
+
+  if (elapsed < MINUTE) return "just now";
+
+  const [amount, unit]: [number, Intl.RelativeTimeFormatUnit] =
+    elapsed < HOUR
+      ? [elapsed / MINUTE, "minute"]
+      : elapsed < DAY
+        ? [elapsed / HOUR, "hour"]
+        : elapsed < WEEK
+          ? [elapsed / DAY, "day"]
+          : elapsed < MONTH
+            ? [elapsed / WEEK, "week"]
+            : elapsed < YEAR
+              ? [elapsed / MONTH, "month"]
+              : [elapsed / YEAR, "year"];
+
+  return RELATIVE_AGE.format(-Math.floor(amount), unit);
 }
 
 /** The salary text shown when Extraction found no salary in a Posting. */
@@ -88,6 +136,31 @@ export function workplaceLabels(
   return LOCATION_ARRANGEMENTS.filter((arrangement) =>
     posting.arrangements.includes(arrangement),
   ).map((arrangement) => WORKPLACE_LABELS[arrangement]);
+}
+
+/** How each employment Arrangement reads on a tag. */
+const EMPLOYMENT_LABELS: Record<
+  (typeof EMPLOYMENT_ARRANGEMENTS)[number],
+  string
+> = {
+  "full-time": "Full-time",
+  "part-time": "Part-time",
+};
+
+/**
+ * The employment Arrangement(s) a Posting's text named — `["Full-time"]`,
+ * `["Part-time"]`, and empty when the text said nothing.
+ *
+ * The commitment axis, the counterpart to `workplaceLabels`. The card shows
+ * both so a role's shape is legible without opening it; the definition lists
+ * that came before showed neither.
+ */
+export function employmentLabels(
+  posting: Pick<Posting, "arrangements">,
+): string[] {
+  return EMPLOYMENT_ARRANGEMENTS.filter((arrangement) =>
+    posting.arrangements.includes(arrangement),
+  ).map((arrangement) => EMPLOYMENT_LABELS[arrangement]);
 }
 
 /**

@@ -23,7 +23,7 @@ type NavKey = (typeof LINKS)[number]["key"];
 export function AppNav({ active }: { active?: NavKey }) {
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-gray-200 bg-white/85 backdrop-blur">
-      <nav className="mx-auto flex h-14 max-w-2xl items-center justify-between gap-4 px-6">
+      <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-6">
         <Link href="/dashboard" className="font-semibold tracking-tight">
           Jobfinder
         </Link>

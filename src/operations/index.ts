@@ -63,6 +63,7 @@ export { pruneNonUsPostings, PRUNE_BATCH_SIZE } from "./prune";
 export {
   readPosting,
   setNotes,
+  setSaved,
   setStatus,
   type PostingDetails,
 } from "./review";

@@ -14,13 +14,10 @@ import {
 import { REVIEW_STATUSES, STATUS_LABELS } from "@/review/schema";
 import { AppNav } from "../app-nav";
 import { CompanyIcon } from "../company-icon";
-import {
-  formatDateTime,
-  formatDay,
-  formatSalary,
-  workplaceLabels,
-} from "../format";
+import { formatAge, formatDateTime, formatSalary } from "../format";
+import { PostingTags } from "../posting-tags";
 import { DashboardControls } from "./dashboard-controls";
+import { SavedToggle } from "./saved-toggle";
 
 export const metadata: Metadata = { title: "Dashboard · Jobfinder" };
 
@@ -74,7 +71,7 @@ export default async function DashboardPage({
   return (
     <>
       <AppNav active="dashboard" />
-      <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-8 px-6 pb-16 pt-24">
+      <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 pb-16 pt-24">
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
           <p className="text-sm text-gray-600">
@@ -137,7 +134,7 @@ export default async function DashboardPage({
                 No postings under this filter.
               </p>
             ) : (
-              <ul className="flex flex-col gap-4">
+              <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {postings.map((posting) => (
                   <PostingCard key={posting.id} posting={posting} />
                 ))}
@@ -242,60 +239,57 @@ function Empty({ message, cta }: { message: string; cta: string }) {
   );
 }
 
-/** One matched Posting, triageable at a glance and a link to the full page. */
+/**
+ * One matched Posting (#63): company mark and the Save toggle on top, the
+ * company and how long ago it was posted, a large title linking to the full
+ * review page, the Arrangement pills, then a divider and a footer — salary and
+ * location on the left, Apply now on the right.
+ *
+ * The Jobfinder-only signals the generic design has no slot for still show:
+ * Expired and an unresolved location sit among the pills (`PostingTags`), the
+ * matched Keywords sit above the divider, and a Status past `interested`
+ * (`applied` / `not_interested`) replaces the Save toggle with its own pill so
+ * the card is never ambiguous about where the Posting sits.
+ */
 function PostingCard({ posting }: { posting: DashboardPosting }) {
+  const savable = posting.status === "new" || posting.status === "interested";
+
   return (
     <li className="flex flex-col gap-3 rounded-lg border border-gray-200 p-4">
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <CompanyIcon company={posting.company} />
-          <div className="flex flex-col gap-0.5">
-            <Link
-              href={`/postings/${posting.id}`}
-              className="font-medium text-gray-900 underline"
-            >
-              {posting.title}
-            </Link>
-            <span className="text-sm text-gray-600">{posting.company}</span>
-          </div>
-        </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          {workplaceLabels(posting).map((label) => (
-            <span
-              key={label}
-              className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700"
-            >
-              {label}
-            </span>
-          ))}
-          {posting.status !== "new" && (
-            <span className="rounded-full bg-gray-900 px-2 py-0.5 text-xs font-medium text-white">
-              {STATUS_LABELS[posting.status]}
-            </span>
-          )}
-          {posting.expired && (
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
-              Expired
-            </span>
-          )}
-          {posting.unresolvedLocation && (
-            // The radius could not be applied to this Posting — its location did
-            // not geocode. Shown, not dropped, and marked so it is clear why
-            // (#12).
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-              Location unresolved
-            </span>
-          )}
-        </div>
+        <CompanyIcon company={posting.company} />
+        {savable ? (
+          <SavedToggle
+            // Keyed on the Status so a change reconciled in place (this card, or
+            // another island's refresh) remounts the toggle against the server's
+            // value rather than keeping a stale label.
+            key={posting.status}
+            postingId={posting.id}
+            saved={posting.status === "interested"}
+          />
+        ) : (
+          <span className="rounded-md bg-gray-900 px-2.5 py-1 text-xs font-medium text-white">
+            {STATUS_LABELS[posting.status]}
+          </span>
+        )}
       </div>
 
-      <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-600">
-        <Fact label="Location" value={posting.location ?? "Not given"} />
-        {/* Extraction (#11) fills salary where the Posting's text states one; an
-            unknown reads as "not listed", never a number or a zero (#36). */}
-        <Fact label="Salary" value={formatSalary(posting)} />
-        <Fact label="Posted" value={formatDay(posting.postedAt, "Date not given")} />
-      </dl>
+      <div className="flex flex-col gap-1">
+        <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
+          <span className="text-gray-600">{posting.company}</span>
+          <span className="text-xs text-gray-500">
+            {formatAge(posting.postedAt)}
+          </span>
+        </div>
+        <Link
+          href={`/postings/${posting.id}`}
+          className="text-lg font-semibold leading-snug tracking-tight text-gray-900 hover:underline"
+        >
+          {posting.title}
+        </Link>
+      </div>
+
+      <PostingTags posting={posting} />
 
       {posting.matchedKeywords.length > 0 && (
         <ul className="flex flex-wrap gap-1.5">
@@ -309,15 +303,35 @@ function PostingCard({ posting }: { posting: DashboardPosting }) {
           ))}
         </ul>
       )}
-    </li>
-  );
-}
 
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex gap-1.5">
-      <dt className="text-gray-400">{label}</dt>
-      <dd>{value}</dd>
-    </div>
+      <div className="mt-1 flex items-end justify-between gap-3 border-t border-gray-200 pt-3">
+        <div className="flex flex-col gap-0.5 text-sm">
+          {/* Extraction (#11) fills salary where the Posting's text states one;
+              an unknown reads as "not listed", never a number or a zero (#36). */}
+          <span className="font-medium text-gray-900">
+            {formatSalary(posting)}
+          </span>
+          <span className="text-gray-600">
+            {posting.location ?? "Location not given"}
+          </span>
+        </div>
+        {posting.expired ? (
+          // Every listing of this opening has come down (#7): the apply URL
+          // 404s, so the card states that instead of sending the User to it.
+          <span className="shrink-0 rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-400">
+            Listing expired
+          </span>
+        ) : (
+          <a
+            href={posting.applyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white"
+          >
+            Apply now
+          </a>
+        )}
+      </div>
+    </li>
   );
 }

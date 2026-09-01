@@ -15,6 +15,7 @@ import {
   settableStatusInput,
   type PostingReview,
   type ReviewOutcome,
+  type ReviewStatus,
 } from "@/review/schema";
 import { latestGroupReview } from "./dedup";
 import { hasUnresolvedLocation, isExpired } from "./postings";
@@ -162,28 +163,124 @@ export async function setStatus(
   const now = new Date();
   const appliedAt = value === "applied" ? now : undefined;
 
+  await writeReviewState(userId, postingId, {
+    status: value,
+    statusChangedAt: now,
+    appliedAt,
+  });
+
+  return { ok: true };
+}
+
+/**
+ * The Save toggle on a Dashboard card: the one quick verb a card offers, mapped
+ * onto the `interested` Status.
+ *
+ * Saved is `status === "interested"`. Saving sets it; un-saving returns the
+ * Posting to `new` — the "changed my mind" path the review buttons deliberately
+ * do not offer, because on the detail page a User picks another Status instead.
+ * From a card there is nowhere else to land, so `new` has to be reachable here.
+ *
+ * `statusChangedAt` tracks the toggle both ways: a timestamp when saved, back to
+ * null when un-saved, so a Posting returned to `new` reads as untouched again.
+ *
+ * The toggle only acts on a Posting that is genuinely `new` or was saved from a
+ * card (`interested` with no `applied` date). A Posting the User has moved
+ * further down the pipeline — `applied`, `not_interested`, or `interested` after
+ * having applied — is refused: the card shows a Status pill rather than the
+ * toggle for exactly these, and a stray write from a stale tab or a direct POST
+ * must not quietly undo a decision or strand its `applied` date.
+ */
+export async function setSaved(
+  userId: string,
+  postingId: string,
+  saved: unknown,
+): Promise<ReviewOutcome> {
+  if (typeof saved !== "boolean") {
+    return { ok: false, message: "That is not a value Save can be set to." };
+  }
+
+  const missing = await postingMissing(postingId);
+  if (missing) return missing;
+
+  const existing = await currentReview(userId, postingId);
+  const togglable =
+    !existing ||
+    existing.status === "new" ||
+    (existing.status === "interested" && existing.appliedAt === null);
+  if (!togglable) {
+    return {
+      ok: false,
+      message: "That posting already has a review status. Open it to change it.",
+    };
+  }
+
+  const now = new Date();
+  await writeReviewState(
+    userId,
+    postingId,
+    saved
+      ? { status: "interested", statusChangedAt: now }
+      : { status: DEFAULT_STATUS, statusChangedAt: null },
+  );
+
+  return { ok: true };
+}
+
+/** The signed-in User's own Review State row for one Posting, or null. */
+async function currentReview(
+  userId: string,
+  postingId: string,
+): Promise<{ status: ReviewStatus; appliedAt: Date | null } | null> {
+  const [row] = await getDb()
+    .select({ status: reviewState.status, appliedAt: reviewState.appliedAt })
+    .from(reviewState)
+    .where(
+      and(
+        eq(reviewState.userId, userId),
+        eq(reviewState.postingId, postingId),
+      ),
+    );
+  return row ?? null;
+}
+
+/**
+ * The one write path for a Review State row's Status.
+ *
+ * `setStatus` and `setSaved` both land here so a change to how these rows are
+ * stored is made once. `appliedAt` is only ever written on the way into
+ * `applied` — passed then, left out otherwise — so the date a User is waiting
+ * from survives every later move, including back to `new`.
+ */
+async function writeReviewState(
+  userId: string,
+  postingId: string,
+  set: {
+    status: ReviewStatus;
+    statusChangedAt: Date | null;
+    appliedAt?: Date;
+  },
+): Promise<void> {
+  const { status, statusChangedAt, appliedAt } = set;
+
   await getDb()
     .insert(reviewState)
     .values({
       userId,
       postingId,
-      status: value,
-      statusChangedAt: now,
+      status,
+      statusChangedAt,
       appliedAt: appliedAt ?? null,
     })
     .onConflictDoUpdate({
       target: [reviewState.userId, reviewState.postingId],
       set: {
-        status: value,
-        statusChangedAt: now,
-        updatedAt: now,
-        // Only touched on the way into `applied`, so the date survives a later
-        // move away from it.
+        status,
+        statusChangedAt,
+        updatedAt: new Date(),
         ...(appliedAt ? { appliedAt } : {}),
       },
     });
-
-  return { ok: true };
 }
 
 /**
