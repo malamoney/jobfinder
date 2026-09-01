@@ -155,8 +155,11 @@ discarded and recomputed when Criteria change.
 _Avoid_: Result, hit, recommendation
 
 **Arrangement**:
-How the work is performed: full-time, part-time, remote, onsite, or hybrid. Distance bounds apply to
-onsite and hybrid Postings; remote Postings ignore them.
+How the work is performed: full-time, part-time, remote, onsite, or hybrid. Distance bounds apply
+per the User's stance on remote (ADR 0013): a User who accepts remote has the radius measure only
+Postings whose text places them onsite or hybrid; a User who does not has it measure every Posting
+with a resolved location, because a role they cannot do from home is a place they must get to,
+whatever its text does or does not say.
 _Avoid_: Type, mode, work style, job type
 
 ### Review

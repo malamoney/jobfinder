@@ -661,7 +661,7 @@ describe("the commute radius", () => {
     expect((await readDashboard(userId)).postings).toHaveLength(0);
   });
 
-  it("leaves a remote Posting alone wherever it is based", async () => {
+  it("leaves a remote Posting alone wherever it is based, for a User who accepts remote", async () => {
     geocoderKnows({ "boston, ma": BOSTON });
     await corpusHas([
       jobAt(1, "Platform Engineer", "San Francisco, CA", "fully remote"),
@@ -678,6 +678,80 @@ describe("the commute radius", () => {
     expect((await readDashboard(userId)).postings.map((p) => p.title)).toEqual([
       "Platform Engineer",
     ]);
+  });
+
+  // The bug in the report on #73: a User who wants onsite/hybrid
+  // work near Franklin, MA was seeing roles in Austin and Costa Mesa, because a
+  // Posting whose text never named a location mode bypassed the radius
+  // entirely. A User who does not accept remote is asking for work they can get
+  // to — every resolved location is measured.
+  describe("a User who does not accept remote", () => {
+    it("excludes a Posting outside the radius even when its text names no location mode", async () => {
+      geocoderKnows({ "boston, ma": BOSTON, "austin, tx": { latitude: 30.2672, longitude: -97.7431 } });
+      await corpusHas([
+        greenhouseJob({
+          id: 1,
+          title: "Platform Engineer",
+          location: { name: "Austin, TX" },
+          content: "&lt;p&gt;Join our team.&lt;/p&gt;", // says nothing about onsite/hybrid/remote
+        }),
+      ]);
+      const userId = await givenAUser();
+
+      await saveCriteria(userId, commuteCriteria());
+
+      expect((await readDashboard(userId)).postings).toHaveLength(0);
+    });
+
+    it("keeps a silent-on-arrangement Posting inside the radius", async () => {
+      geocoderKnows({ "boston, ma": BOSTON, "cambridge, ma": CAMBRIDGE });
+      await corpusHas([
+        greenhouseJob({
+          id: 1,
+          title: "Platform Engineer",
+          location: { name: "Cambridge, MA" },
+          content: "&lt;p&gt;Join our team.&lt;/p&gt;",
+        }),
+      ]);
+      const userId = await givenAUser();
+
+      await saveCriteria(userId, commuteCriteria());
+
+      expect((await readDashboard(userId)).postings.map((p) => p.title)).toEqual([
+        "Platform Engineer",
+      ]);
+    });
+
+    it("excludes a far Posting that offers remote — the User did not ask for remote", async () => {
+      geocoderKnows({ "boston, ma": BOSTON, "new york, ny": NEW_YORK });
+      await corpusHas([
+        jobAt(1, "Platform Engineer", "New York, NY", "remote or onsite"),
+      ]);
+      const userId = await givenAUser();
+
+      await saveCriteria(userId, commuteCriteria());
+
+      expect((await readDashboard(userId)).postings).toHaveLength(0);
+    });
+
+    it("still surfaces a silent-on-arrangement Posting whose location will not geocode", async () => {
+      geocoderKnows({ "boston, ma": BOSTON });
+      await corpusHas([
+        greenhouseJob({
+          id: 1,
+          title: "Platform Engineer",
+          location: { name: "Undisclosed location, USA" },
+          content: "&lt;p&gt;Join our team.&lt;/p&gt;",
+        }),
+      ]);
+      const userId = await givenAUser();
+
+      await saveCriteria(userId, commuteCriteria());
+
+      expect((await readDashboard(userId)).postings.map((p) => p.title)).toEqual([
+        "Platform Engineer",
+      ]);
+    });
   });
 
   it("surfaces an onsite Posting whose location will not geocode, flagged unresolved", async () => {
