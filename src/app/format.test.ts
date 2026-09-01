@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { formatSalary, SALARY_NOT_LISTED, workplaceLabels } from "./format";
+import {
+  companyLogoSrc,
+  companyMonogram,
+  formatSalary,
+  SALARY_NOT_LISTED,
+  workplaceLabels,
+} from "./format";
 
 /**
  * How a Posting's salary reads on the Dashboard and the details page.
@@ -75,5 +81,64 @@ describe("the workplace Arrangement tag", () => {
   it("is empty when the text named no workplace — the funnel's 'silent' case", () => {
     expect(workplaceLabels({ arrangements: [] })).toEqual([]);
     expect(workplaceLabels({ arrangements: ["full-time"] })).toEqual([]);
+  });
+});
+
+/**
+ * The company mark on a Dashboard card (#62).
+ *
+ * The logo is looked up by company name from Logo.dev's CDN (ADR 0011); a
+ * company it cannot place falls back to a monogram. `.env.test` sets a fake
+ * `NEXT_PUBLIC_LOGODEV_TOKEN` so the URL is deterministic here.
+ */
+describe("the Logo.dev logo URL for a company", () => {
+  it("looks the company up by name against Logo.dev's CDN", () => {
+    const src = companyLogoSrc("Stripe", 40);
+    expect(src).not.toBeNull();
+    const url = new URL(src!);
+    expect(url.origin).toBe("https://img.logo.dev");
+    expect(url.pathname).toBe("/name/Stripe");
+    expect(url.searchParams.get("token")).toBe("pk_test_logodev");
+  });
+
+  it("ranks by exact match and asks for a 404 on a miss, so the card shows its own monogram", () => {
+    const url = new URL(companyLogoSrc("Acme", 40)!);
+    expect(url.searchParams.get("strategy")).toBe("match");
+    expect(url.searchParams.get("fallback")).toBe("404");
+  });
+
+  it("passes the render size through, clamped to Logo.dev's maximum", () => {
+    expect(new URL(companyLogoSrc("Acme", 80)!).searchParams.get("size")).toBe(
+      "80",
+    );
+    expect(
+      new URL(companyLogoSrc("Acme", 2400)!).searchParams.get("size"),
+    ).toBe("800");
+  });
+
+  it("encodes a company name with spaces and symbols", () => {
+    const url = new URL(companyLogoSrc("Ben & Jerry's", 40)!);
+    expect(url.pathname).toBe("/name/Ben%20%26%20Jerry's");
+  });
+
+  it("is null when there is no name to look up", () => {
+    expect(companyLogoSrc("", 40)).toBeNull();
+    expect(companyLogoSrc("   ", 40)).toBeNull();
+  });
+});
+
+/**
+ * The monogram shown when there is no logo — the company's first initial on a
+ * neutral disc, so a card never shows a broken image or an empty corner.
+ */
+describe("a company's monogram", () => {
+  it("is the first letter of the name, upper-cased", () => {
+    expect(companyMonogram("stripe")).toBe("S");
+    expect(companyMonogram("  acme corp")).toBe("A");
+  });
+
+  it("is a question mark when the name has no first character", () => {
+    expect(companyMonogram("")).toBe("?");
+    expect(companyMonogram("   ")).toBe("?");
   });
 });

@@ -89,3 +89,55 @@ export function workplaceLabels(
     posting.arrangements.includes(arrangement),
   ).map((arrangement) => WORKPLACE_LABELS[arrangement]);
 }
+
+/**
+ * The publishable Logo.dev token. `NEXT_PUBLIC_` so it is inlined into the
+ * client bundle — it is meant to be sent to the browser (ADR 0011). Unset in an
+ * environment that has not provisioned it, in which case every card shows a
+ * monogram rather than a logo.
+ */
+const LOGODEV_TOKEN = process.env.NEXT_PUBLIC_LOGODEV_TOKEN;
+
+/** The largest icon Logo.dev's CDN will render, from its `size` parameter docs. */
+const LOGODEV_MAX_SIZE = 800;
+
+/**
+ * The Logo.dev CDN URL for a company's logo, looked up by name (ADR 0011).
+ *
+ * The apply URL a Posting carries is on its applicant-tracking host
+ * (`job-boards.greenhouse.io`, `jobs.lever.co`), whose favicon is the ATS's
+ * mark and not the company's, and the Corpus stores no company website — so the
+ * name is what there is to look up by.
+ *
+ * `strategy=match` asks Logo.dev to rank by exact match rather than its default
+ * popular-prefix typeahead, which fuzzy-matches an unknown company onto a
+ * well-known one. `fallback=404` then turns a name it still cannot place into a
+ * load error rather than a generated monogram, so `CompanyIcon`'s `onError`
+ * shows the app's own monogram instead.
+ *
+ * `size` is the pixel box the icon renders in, clamped to what the CDN allows.
+ * Null when there is no name to look up or no token configured — the caller
+ * shows a monogram.
+ */
+export function companyLogoSrc(company: string, size: number): string | null {
+  const name = company.trim();
+  if (!name || !LOGODEV_TOKEN) return null;
+
+  const params = new URLSearchParams({
+    token: LOGODEV_TOKEN,
+    size: String(Math.min(Math.max(Math.round(size), 1), LOGODEV_MAX_SIZE)),
+    format: "png",
+    strategy: "match",
+    fallback: "404",
+  });
+  return `https://img.logo.dev/name/${encodeURIComponent(name)}?${params}`;
+}
+
+/**
+ * The letter on the neutral disc shown when a company has no logo — its first
+ * character, upper-cased, or "?" when the name has none to take.
+ */
+export function companyMonogram(company: string): string {
+  const first = company.trim()[0];
+  return first ? first.toUpperCase() : "?";
+}
