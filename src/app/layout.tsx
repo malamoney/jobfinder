@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { readTheme } from "./theme-server";
 
 // Self-hosted at build time by `next/font` (no request to Google from the
 // browser). Inter is the prose face; JetBrains Mono carries anything numeric or
@@ -25,16 +26,20 @@ export const metadata: Metadata = {
     "Fetches job openings on a schedule, filters them against your stated criteria, and presents the matches for review.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  // Read the theme cookie and set `data-theme` here, server-side, so the first
+  // paint is already in the visitor's palette — no white flash (#79). A visitor
+  // who has never touched the toggle gets dark. This opts the app out of static
+  // prerendering, which costs nothing here: every page is already dynamic
+  // (auth, headers, the database).
+  const theme = await readTheme();
+
   return (
-    // `data-theme="dark"` is static here — dark is the default and the only
-    // theme until #79 adds the cookie-driven toggle. Setting the light values
-    // by hand on this attribute is enough to preview them.
     <html
       lang="en"
-      data-theme="dark"
+      data-theme={theme}
       className={`${inter.variable} ${jetbrainsMono.variable}`}
     >
       <body className="bg-bg font-sans text-text antialiased">{children}</body>

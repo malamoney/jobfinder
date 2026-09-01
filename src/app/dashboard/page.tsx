@@ -16,6 +16,8 @@ import { AppNav } from "../app-nav";
 import { CompanyIcon } from "../company-icon";
 import { cardLocation, formatAge, formatDateTime, formatSalary } from "../format";
 import { PostingTags } from "../posting-tags";
+import { readTheme } from "../theme-server";
+import type { Theme } from "../theme";
 import { DashboardControls } from "./dashboard-controls";
 import { SavedToggle } from "./saved-toggle";
 
@@ -68,6 +70,7 @@ export default async function DashboardPage({
   if (!signedIn) redirect("/login");
 
   const filter = parseFilter((await searchParams).status);
+  const theme = await readTheme();
 
   const stated = await readCriteria(signedIn.id);
   const { postings, matchedCount, unreviewedCount } = stated
@@ -144,7 +147,11 @@ export default async function DashboardPage({
             ) : (
               <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {postings.map((posting) => (
-                  <PostingCard key={posting.id} posting={posting} />
+                  <PostingCard
+                    key={posting.id}
+                    posting={posting}
+                    theme={theme}
+                  />
                 ))}
               </ul>
             )}
@@ -275,13 +282,26 @@ function Empty({ message, cta }: { message: string; cta: string }) {
  * exceed the floor — many Arrangement tags, mostly — grows its row uniformly
  * rather than clipping.
  */
-function PostingCard({ posting }: { posting: DashboardPosting }) {
+function PostingCard({
+  posting,
+  theme,
+}: {
+  posting: DashboardPosting;
+  theme: Theme;
+}) {
   const savable = posting.status === "new" || posting.status === "interested";
 
   return (
     <li className="flex min-h-80 flex-col gap-3 rounded-lg border border-border bg-surface p-4">
       <div className="flex items-start justify-between gap-3">
-        <CompanyIcon company={posting.company} />
+        <CompanyIcon
+          // Keyed on the theme so a mark that hit `onError` in one palette gets
+          // a fresh attempt at the other palette's URL rather than staying
+          // collapsed to the monogram until a hard reload.
+          key={theme}
+          company={posting.company}
+          theme={theme}
+        />
         {savable ? (
           <SavedToggle
             // Keyed on the Status so a change reconciled in place (this card, or

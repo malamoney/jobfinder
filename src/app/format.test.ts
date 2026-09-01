@@ -203,7 +203,7 @@ describe("a Posting's location on a Dashboard card", () => {
  */
 describe("the Logo.dev icon URL for a company", () => {
   it("looks the company up by name against Logo.dev's CDN", () => {
-    const src = companyIconSrc("Stripe", 40);
+    const src = companyIconSrc("Stripe", 40, "dark");
     expect(src).not.toBeNull();
     const url = new URL(src!);
     expect(url.origin).toBe("https://img.logo.dev");
@@ -212,33 +212,37 @@ describe("the Logo.dev icon URL for a company", () => {
   });
 
   it("ranks by exact match and asks for a 404 on a miss, so the card shows its own monogram", () => {
-    const url = new URL(companyIconSrc("Acme", 40)!);
+    const url = new URL(companyIconSrc("Acme", 40, "dark")!);
     expect(url.searchParams.get("strategy")).toBe("match");
     expect(url.searchParams.get("fallback")).toBe("404");
   });
 
-  it("asks for the dark-ground version of a monochrome mark — the disc it sits on is dark", () => {
-    const url = new URL(companyIconSrc("Acme", 40)!);
-    expect(url.searchParams.get("theme")).toBe("dark");
+  it("tracks the theme so a monochrome mark reads on the disc, dark or light", () => {
+    expect(
+      new URL(companyIconSrc("Acme", 40, "dark")!).searchParams.get("theme"),
+    ).toBe("dark");
+    expect(
+      new URL(companyIconSrc("Acme", 40, "light")!).searchParams.get("theme"),
+    ).toBe("light");
   });
 
   it("passes the render size through, clamped to Logo.dev's maximum", () => {
-    expect(new URL(companyIconSrc("Acme", 80)!).searchParams.get("size")).toBe(
-      "80",
-    );
     expect(
-      new URL(companyIconSrc("Acme", 2400)!).searchParams.get("size"),
+      new URL(companyIconSrc("Acme", 80, "dark")!).searchParams.get("size"),
+    ).toBe("80");
+    expect(
+      new URL(companyIconSrc("Acme", 2400, "dark")!).searchParams.get("size"),
     ).toBe("800");
   });
 
   it("encodes a company name with spaces and symbols", () => {
-    const url = new URL(companyIconSrc("Ben & Jerry's", 40)!);
+    const url = new URL(companyIconSrc("Ben & Jerry's", 40, "dark")!);
     expect(url.pathname).toBe("/name/Ben%20%26%20Jerry's");
   });
 
   it("is null when there is no name to look up", () => {
-    expect(companyIconSrc("", 40)).toBeNull();
-    expect(companyIconSrc("   ", 40)).toBeNull();
+    expect(companyIconSrc("", 40, "dark")).toBeNull();
+    expect(companyIconSrc("   ", 40, "dark")).toBeNull();
   });
 });
 

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import { companyIconSrc, companyMonogram } from "./format";
+import type { Theme } from "./theme";
 
 /** The rendered box, in CSS pixels — the one source of truth for the size. */
 const SIZE = 36;
@@ -30,10 +31,20 @@ const DISC = "rounded-lg border border-border bg-field";
  *
  * `next/image` with a fixed width and height reserves the box before anything
  * loads, so a slow or failed logo never shifts the card's layout.
+ *
+ * `theme` comes from the server (the theme cookie, #79) so a monochrome mark is
+ * asked for on the ground the `--field` disc actually has; a toggle flip
+ * re-renders the card with the new value via `router.refresh()`.
  */
-export function CompanyIcon({ company }: { company: string }) {
+export function CompanyIcon({
+  company,
+  theme,
+}: {
+  company: string;
+  theme: Theme;
+}) {
   const [failed, setFailed] = useState(false);
-  const src = companyIconSrc(company, SIZE);
+  const src = companyIconSrc(company, SIZE, theme);
 
   return (
     <span
@@ -46,7 +57,7 @@ export function CompanyIcon({ company }: { company: string }) {
 
       {src && !failed && (
         <Image
-          loader={({ width }) => companyIconSrc(company, width) ?? src}
+          loader={({ width }) => companyIconSrc(company, width, theme) ?? src}
           src={company}
           alt=""
           width={SIZE}
