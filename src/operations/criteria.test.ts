@@ -51,7 +51,6 @@ describe("stating Criteria", () => {
         homeLocation: null,
         radiusMiles: null,
         minSalary: null,
-        usOnly: false,
       },
     });
     expect(await readCriteria(userId)).toEqual(
@@ -284,24 +283,7 @@ describe("minimum salary", () => {
   });
 });
 
-describe("United States only", () => {
-  it("defaults to off when the form does not send it", async () => {
-    const userId = await givenAUser();
-
-    const outcome = await saveCriteria(userId, statedCriteria());
-
-    expect(outcome.ok && outcome.criteria.usOnly).toBe(false);
-  });
-
-  it("is kept when the box is ticked, and read back", async () => {
-    const userId = await givenAUser();
-
-    const outcome = await saveCriteria(
-      userId,
-      statedCriteria({ usOnly: true }),
-    );
-
-    expect(outcome.ok && outcome.criteria.usOnly).toBe(true);
-    expect((await readCriteria(userId))?.usOnly).toBe(true);
-  });
-});
+// "United States only" was removed as a Criterion: the Corpus holds only
+// US-based roles by ingestion policy now (ADR 0010, superseding ADR 0009), so
+// there is nothing for a per-User toggle to do. `us-only-corpus.test.ts` covers
+// the ingestion gate and `prune.test.ts` the removal of roles stored before it.

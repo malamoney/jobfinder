@@ -106,11 +106,12 @@ export function greenhouseJob(
     title: "Staff Engineer, Infrastructure",
     company_name: "Acme",
     absolute_url: "https://job-boards.greenhouse.io/acme/jobs/6136160004",
-    // "Remote" rather than an Arrangement-laden string: the matching funnel now
-    // reads Arrangements out of the location (#11), so a neutral default keeps
-    // tests that don't care about Arrangement from tripping the filter. Tests
-    // that do care set their own location or description.
-    location: { name: "Remote" },
+    // "Remote - US" rather than a bare "Remote": the matching funnel reads
+    // Arrangements out of the location (#11) — so this still says "remote" — and
+    // ingestion now stores only US-based roles (ADR 0010), so a location with no
+    // country cue would be dropped before it reached the Corpus. Tests that care
+    // about a foreign or placeless role set their own location.
+    location: { name: "Remote - US" },
     first_published: "2026-08-06T12:50:10-04:00",
     updated_at: "2026-08-18T18:06:19-04:00",
     requisition_id: "1311",

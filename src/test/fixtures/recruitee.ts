@@ -61,10 +61,11 @@ export function recruiteeOffer(
     careers_url: "https://jobs.acme.com/o/staff-engineer-infrastructure",
     careers_apply_url:
       "https://jobs.acme.com/o/staff-engineer-infrastructure/c/new",
-    // Remote by default: the matching funnel reads Arrangements out of the
-    // location (#11), so a neutral default keeps tests that don't care about
-    // Arrangement from tripping the filter.
-    location: null,
+    // "Remote - US" by default: the matching funnel reads Arrangements out of
+    // the location (#11), so this still says "remote", and ingestion stores only
+    // US-based roles (ADR 0010), so a location with no country cue would be
+    // dropped before it reached the Corpus.
+    location: "Remote - US",
     city: null,
     country: null,
     remote: true,

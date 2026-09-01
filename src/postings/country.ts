@@ -1,12 +1,12 @@
 /**
- * Country Extraction: deciding whether a Posting is based in the United States
- * from its location text (#feature: "United States only" Criteria).
+ * Country classification: deciding whether a Posting is based in the United
+ * States from its location text (ADR 0010, superseding ADR 0009).
  *
- * A pure function, tested directly (`country.test.ts`). It runs in the matching
- * funnel over the Postings a User's cheap stages let through, the same as
- * `extractArrangements` and `normalizeLocation`, and against the location
- * string alone — a country named in a description is where a company is, not
- * where the role is.
+ * A pure function, tested directly (`country.test.ts`). It runs on ingestion,
+ * over the location string alone — `reconcileBoard` stores only the roles it
+ * calls `us` — and again in Extraction, which re-derives the same value
+ * idempotently. A country named in a description is where a company is, not
+ * where the role is, so only the location string is read.
  *
  * No Source publishes a country field, and the strings are as messy as every
  * other location signal — `San Francisco, CA`, `Remote - US`, `London, UK`,
@@ -18,9 +18,9 @@
  *   it.
  * - `unknown` — nothing either way, most often a bare `Remote`.
  *
- * The "United States only" filter keeps `us` and drops the other two: a User
- * who asks for US-only roles is asking to be shown nothing they cannot place,
- * not just the ones placed abroad (ADR 0009).
+ * The Corpus keeps `us` and drops the other two: `unknown` is overwhelmingly a
+ * bare `Remote`, and a Corpus meant to hold only US roles has no more use for
+ * "might be American" than for "definitely abroad" (ADR 0010).
  */
 
 /** Whether a Posting is based in the United States, as far as its text says. */

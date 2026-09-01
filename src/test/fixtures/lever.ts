@@ -72,11 +72,12 @@ export function leverPosting(
     categories: {
       commitment: "Regular Full Time (Salary)",
       department: "Engineering",
-      // "Remote" rather than a city: the matching funnel reads Arrangements out
-      // of the location (#11), so a neutral default keeps tests that don't care
-      // about Arrangement from tripping the filter.
-      location: "Remote",
-      allLocations: ["Remote"],
+      // "Remote - US" rather than a bare "Remote": the matching funnel reads
+      // Arrangements out of the location (#11), so this still says "remote", and
+      // ingestion stores only US-based roles (ADR 0010), so a location with no
+      // country cue would be dropped before it reached the Corpus.
+      location: "Remote - US",
+      allLocations: ["Remote - US"],
       team: "Infrastructure",
     },
     country: "US",

@@ -9,6 +9,7 @@ import {
 } from "drizzle-orm";
 import { getDb, type Transaction } from "@/db";
 import { postings, type SourceName } from "@/db/schema";
+import { extractCountry } from "@/postings/country";
 import { dedupKey } from "@/postings/dedup-key";
 import { fetchAshbyBoard } from "@/sources/ashby";
 import { fetchGreenhouseBoard } from "@/sources/greenhouse";
@@ -145,7 +146,9 @@ export async function fetchBoard(
   options: BoardFetchOptions = {},
 ): Promise<void> {
   const fetched = await readBoard(board, options);
-  await getDb().transaction((tx) => reconcileBoard(tx, board, fetched));
+  await getDb().transaction(async (tx) => {
+    await reconcileBoard(tx, board, fetched);
+  });
 }
 
 /**
@@ -211,16 +214,33 @@ function isTimeout(error: unknown): boolean {
  * statement about the Board and the caller may have more to say in the same
  * breath. A Fetch half-applied would have moved some Postings towards expiry
  * without recording that the others were seen.
+ *
+ * Returns how many roles it dropped for being non-US (see below), so the caller
+ * can tally them onto the run.
  */
 export async function reconcileBoard(
   tx: Transaction,
   board: Board,
   fetched: SourcePosting[],
-): Promise<void> {
-  await storePostings(tx, board, fetched);
+): Promise<number> {
+  // The Corpus holds only roles the location text places in the United States
+  // (ADR 0010). A foreign role, and one whose text names no place, are dropped
+  // here — never written, so they cost the Corpus nothing and there is no row to
+  // prune later.
+  const usRoles = fetched.filter(
+    (role) => extractCountry(role.location) === "us",
+  );
+  await storePostings(tx, board, usRoles);
   if (ADAPTERS[board.source].expiry === "absence") {
-    await countAbsences(tx, board, fetched);
+    // Absence is counted against the US roles the Board returned, not the whole
+    // response: a role the Board dropped, and one whose company edited its
+    // location to somewhere abroad, are both absent from `usRoles` and so both
+    // trend towards Expired (ADR 0004) — which hides the edited role from the
+    // Dashboard while leaving any Review State on it intact, rather than
+    // stranding it in the Corpus with a stale US location forever.
+    await countAbsences(tx, board, usRoles);
   }
+  return fetched.length - usRoles.length;
 }
 
 /**
@@ -291,6 +311,12 @@ async function storePostings(
         // written on first sight and — since `dedup_key` is not in
         // `PRESERVED_ON_REFETCH` — refreshed from `excluded` on every re-Fetch.
         dedupKey: dedupKey(posting),
+        // `reconcileBoard` has already dropped every role the location text does
+        // not place in the US (ADR 0010), so a stored row is `us` by
+        // construction. Written explicitly — rather than left null for
+        // Extraction — so the column is right the moment the row exists, and so
+        // a re-Fetch refreshes it from `excluded` like every other field.
+        country: "us" as const,
         // A salary the Source published in a field of its own (#14) lands in
         // the same columns Extraction writes, and `extractPostings` leaves a
         // Posting that already has one alone. Null where the Source published

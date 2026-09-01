@@ -44,7 +44,6 @@ const BLANK: Criteria = {
   homeLocation: null,
   radiusMiles: null,
   minSalary: null,
-  usOnly: false,
 };
 
 type CriteriaFormProps = {
@@ -89,7 +88,6 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
     stated.radiusMiles?.toString() ?? "",
   );
   const [minSalary, setMinSalary] = useState(stated.minSalary?.toString() ?? "");
-  const [usOnly, setUsOnly] = useState(stated.usOnly);
 
   const [pending, startTransition] = useTransition();
   const [outcome, setOutcome] = useState<CriteriaOutcome | null>(null);
@@ -105,7 +103,6 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
     setHomeLocation(saved.homeLocation ?? "");
     setRadiusMiles(saved.radiusMiles?.toString() ?? "");
     setMinSalary(saved.minSalary?.toString() ?? "");
-    setUsOnly(saved.usOnly);
     setRefused(null);
   }
 
@@ -126,7 +123,6 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
       homeLocation: wantsDistance ? homeLocation.trim() || null : null,
       radiusMiles: wantsDistance ? typedNumber(radiusMiles) : null,
       minSalary: typedNumber(minSalary),
-      usOnly,
     };
   }
 
@@ -281,25 +277,6 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
             </fieldset>
           ))}
         </div>
-
-        <label className="flex items-start gap-2.5">
-          <input
-            type="checkbox"
-            checked={usOnly}
-            onChange={() => {
-              setUsOnly((current) => !current);
-              edited();
-            }}
-            className="mt-0.5"
-          />
-          <span className="flex flex-col gap-0.5">
-            <span className="text-sm font-medium">United States only</span>
-            <span className="text-xs text-gray-500">
-              Hide roles not based in the US — including remote roles, and ones
-              whose posting does not say where they are.
-            </span>
-          </span>
-        </label>
 
         {wantsDistance && (
           <fieldset className="flex flex-col gap-4">
