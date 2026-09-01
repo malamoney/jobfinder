@@ -56,4 +56,63 @@ describe("reading a Posting's country from its location text", () => {
   it("does not mistake a city name that contains 'us' for a country marker", () => {
     expect(extractCountry("Columbus, OH")).toBe("us");
   });
+
+  /**
+   * The shape that leaked non-US roles onto the Dashboard (#67): an ATS Board
+   * writes `City, CC` with a two-letter country code as often as it spells the
+   * country out, and every code that doubles as a USPS state code — `CA`, `DE`,
+   * `IN`, … — was being read as that state.
+   */
+  describe("a two-letter country code after the city", () => {
+    it.each([
+      // Codes that are not also a USPS state code.
+      ["Amsterdam, NL", "non-us"],
+      ["Paris, FR", "non-us"],
+      ["Madrid, ES", "non-us"],
+      ["Milan, IT", "non-us"],
+      ["Tokyo, JP", "non-us"],
+      ["London, GB", "non-us"],
+      ["Dublin, IE", "non-us"],
+      ["São Paulo, BR", "non-us"],
+      ["Singapore, SG", "non-us"],
+      ["Sydney, AU", "non-us"],
+      // Codes that collide with a USPS state code — resolved by the city.
+      ["Toronto, CA", "non-us"],
+      ["Vancouver, CA", "non-us"],
+      ["Montréal, CA", "non-us"],
+      ["Berlin, DE", "non-us"],
+      ["Munich, DE", "non-us"],
+      ["Bangalore, IN", "non-us"],
+      ["Bengaluru, IN", "non-us"],
+      ["Mumbai, IN", "non-us"],
+      ["Bogotá, CO", "non-us"],
+      ["Buenos Aires, AR", "non-us"],
+      ["Tel Aviv, IL", "non-us"],
+    ])("reads %j as %s", (location, country) => {
+      expect(extractCountry(location)).toBe(country);
+    });
+
+    it("keeps the US reading of a colliding code next to a US city", () => {
+      expect(extractCountry("San Francisco, CA")).toBe("us");
+      expect(extractCountry("Sacramento, CA")).toBe("us");
+      expect(extractCountry("Wilmington, DE")).toBe("us");
+      expect(extractCountry("Indianapolis, IN")).toBe("us");
+      expect(extractCountry("Denver, CO")).toBe("us");
+    });
+
+    it("keeps a US reading when a colliding code sits on an unknown city", () => {
+      // ADR 0010's rule: never silently drop a role that might be American. An
+      // unrecognised `City, DE` stays US rather than becoming a dropped unknown.
+      expect(extractCountry("Millsboro, DE")).toBe("us");
+    });
+
+    it("is not fooled by a lowercase code buried in prose", () => {
+      expect(extractCountry("Open to anyone, in office optional")).toBe("unknown");
+      expect(extractCountry("This role, is fully remote")).toBe("unknown");
+    });
+
+    it("still lets an explicit US signal win over a foreign code", () => {
+      expect(extractCountry("Remote - US; team also in Berlin, DE")).toBe("us");
+    });
+  });
 });

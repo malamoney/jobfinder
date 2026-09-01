@@ -10,12 +10,13 @@
  *
  * No Source publishes a country field, and the strings are as messy as every
  * other location signal — `San Francisco, CA`, `Remote - US`, `London, UK`,
- * `Remote`. So the answer is one of three:
+ * `Berlin, DE`, `Bangalore, IN`, `Remote`. So the answer is one of three:
  *
  * - `us` — a US state (named or abbreviated), an explicit US marker, or a
  *   "remote, US" phrasing.
- * - `non-us` — a country or region that is not the US, and no US signal beside
- *   it.
+ * - `non-us` — a country or region that is not the US, spelled out or as an ISO
+ *   code, and no US signal beside it. A code that doubles as a USPS state code
+ *   (`CA`, `DE`, `IN`, …) counts only next to a known metro of that country.
  * - `unknown` — nothing either way, most often a bare `Remote`.
  *
  * The Corpus keeps `us` and drops the other two: `unknown` is overwhelmingly a
@@ -101,6 +102,127 @@ const US_STATE_ABBR_RE =
 /** A Canadian province or territory code, same shape as the US one. */
 const CA_PROVINCE_ABBR_RE = /,\s*(AB|BC|MB|NB|NL|NS|NT|NU|ON|PE|QC|SK|YT)\b/;
 
+/**
+ * An ISO 3166-1 alpha-2 country code straight after a comma (`Amsterdam, NL`,
+ * `Tokyo, JP`) — the shape an ATS Board's location line takes as often as it
+ * spells the country out.
+ *
+ * Case-sensitive and uppercase-only, exactly like `US_STATE_ABBR_RE` and for
+ * the same reason: `,\s*is` would fire on "…, is remote", `,\s*it` on "…, IT
+ * support". A country code in a location line is written `IT`, `NL`, `JP`.
+ *
+ * Only codes that are *not* also a USPS state code are here. The ambiguous ones
+ * — `CA`, `DE`, `IN`, `CO`, `AR`, `IL`, `GA`, `LA`, `MD`, `ME`, `PA` — are left
+ * to `NON_US_METROS`, because `San Francisco, CA` is not Canada.
+ */
+const NON_US_COUNTRY_ABBR_RE =
+  /,\s*(GB|IE|FR|ES|PT|IT|NL|BE|LU|CH|AT|DK|SE|NO|FI|IS|PL|CZ|SK|HU|RO|BG|GR|HR|SI|EE|LV|LT|UA|RU|TR|BR|MX|CL|PE|UY|EC|BO|PY|VE|CR|GT|DO|ZA|KE|EG|NG|DZ|GH|AE|QA|KW|BH|OM|SA|JO|LB|SG|HK|TW|JP|KR|CN|PH|TH|VN|MY|MM|KH|LK|NP|BD|PK|AU|NZ|FJ)\b/;
+
+/**
+ * Well-known metros of the countries whose ISO code collides with a USPS state
+ * code, so `Toronto, CA` reads as Canada while `Sacramento, CA` stays US. Keyed
+ * by the colliding code, lower-case; matched as a whole word before that code.
+ *
+ * Deliberately not a gazetteer — just the handful of cities that actually show
+ * up on remote job listings. A city not on the list keeps the US reading of its
+ * code (ADR 0010's rule: never silently drop a role that might be American).
+ */
+const NON_US_METROS: Record<string, readonly string[]> = {
+  ca: [
+    "toronto",
+    "vancouver",
+    "montreal",
+    "montréal",
+    "calgary",
+    "ottawa",
+    "edmonton",
+    "winnipeg",
+    "halifax",
+    "waterloo",
+    "kitchener",
+    "mississauga",
+    "brampton",
+    "markham",
+    "burnaby",
+    "saskatoon",
+    "regina",
+    "quebec city",
+    "québec city",
+  ],
+  de: [
+    "berlin",
+    "munich",
+    "münchen",
+    "muenchen",
+    "hamburg",
+    "frankfurt",
+    "cologne",
+    "köln",
+    "koeln",
+    "düsseldorf",
+    "dusseldorf",
+    "stuttgart",
+    "leipzig",
+    "dortmund",
+    "dresden",
+    "hannover",
+    "hanover",
+    "nuremberg",
+    "nürnberg",
+  ],
+  in: [
+    "bangalore",
+    "bengaluru",
+    "mumbai",
+    "delhi",
+    "new delhi",
+    "hyderabad",
+    "pune",
+    "chennai",
+    "kolkata",
+    "gurgaon",
+    "gurugram",
+    "noida",
+    "ahmedabad",
+    "chandigarh",
+    "jaipur",
+    "kochi",
+    "coimbatore",
+    "indore",
+    "thiruvananthapuram",
+  ],
+  co: ["bogota", "bogotá", "medellin", "medellín", "cali", "barranquilla"],
+  ar: ["buenos aires", "córdoba", "rosario", "mendoza"],
+  il: ["tel aviv", "tel aviv-yafo", "jerusalem", "haifa", "herzliya", "ramat gan"],
+  pa: ["panama city", "ciudad de panamá"],
+};
+
+/**
+ * Whether the location names a known non-US metro beside its country code — the
+ * disambiguation for a code that is both an ISO country and a USPS state.
+ */
+function namesNonUsMetro(text: string): boolean {
+  for (const [code, cities] of Object.entries(NON_US_METROS)) {
+    // Uppercase-only on the code, like every other abbreviation here; the city
+    // match stays case-insensitive because a place name is written many ways.
+    if (!new RegExp(`,\\s*${code.toUpperCase()}\\b`).test(text)) continue;
+    if (cities.some((city) => cityBoundary(city).test(text))) return true;
+  }
+  return false;
+}
+
+/**
+ * A whole-word matcher for a city name. `\b` cannot bound a name that ends in an
+ * accented letter (`Bogotá`, `Montréal`) — under the default flags `á` is not a
+ * word character — so this bounds on the Unicode letter class instead.
+ */
+function cityBoundary(city: string): RegExp {
+  const pattern = city
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\s+/g, "\\s+");
+  return new RegExp(`(?<!\\p{L})${pattern}(?!\\p{L})`, "iu");
+}
+
 /** A location string that is *only* a name for the country. */
 const BARE_US_RE = /^(u\.?\s?s\.?|u\.?\s?s\.?\s?a\.?|usa|united states(?:\s+of\s+america)?)\.?$/i;
 
@@ -121,9 +243,11 @@ const NON_US_RE =
  *
  * Order matters. An explicit US signal — the bare country name, a "remote, US"
  * phrasing, a spelled-out state — wins first, so a role open across the US and
- * abroad ("Remote - US or Canada") still counts as US. Then a non-US country or
- * a Canadian province code, which also settles the `CA` (California / Canada)
- * ambiguity. Then a US state code. Then nothing.
+ * abroad ("Remote - US or Canada") still counts as US. Then a non-US country,
+ * spelled out or as an ISO code, or a Canadian province code — which also
+ * settles the `CA` (California / Canada) ambiguity, together with the known
+ * non-US metros for the other codes that double as a USPS state. Then a US
+ * state code. Then nothing.
  */
 export function extractCountry(location: string | null | undefined): Country {
   const text = (location ?? "").trim();
@@ -135,7 +259,9 @@ export function extractCountry(location: string | null | undefined): Country {
   if (
     /\bcanada\b/i.test(text) ||
     CA_PROVINCE_ABBR_RE.test(text) ||
-    NON_US_RE.test(text)
+    NON_US_RE.test(text) ||
+    NON_US_COUNTRY_ABBR_RE.test(text) ||
+    namesNonUsMetro(text)
   ) {
     return "non-us";
   }

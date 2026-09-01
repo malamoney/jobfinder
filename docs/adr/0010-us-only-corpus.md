@@ -77,6 +77,14 @@ carrying its Review State ([ADR 0006](0006-cross-source-dedup-presentation.md)).
 - `country` is written on ingestion, like `dedup_key`, and reads `us` for every row a Fetch wrote
   after this shipped. Extraction still re-derives it (idempotent); the column is null only on
   pre-ADR-0009 rows until the prune or a match run classifies them.
+- The nightly sweep re-derives `country` for the **whole Corpus** from the location text
+  (`reclassifyCountries`, in `drainAndRematch` just before the prune), not only the null rows. The
+  classifier is a heuristic that gets tightened over time (see below); a stored row otherwise keeps
+  whatever reading was current when it was last written, so a fix would never reach the backlog.
+  Re-deriving is a regex over a short string, cheap to run over every row; only the rows that move
+  are written. `scripts/reclassify-countries.ts` is the same pass, unbounded, for applying a fix in
+  one go rather than over several nights (#67 — `Berlin, DE` / `Bangalore, IN` had been read as
+  Delaware / Indiana).
 - The `criteria.us_only` column, its Zod field, the form checkbox, and the `unitedStatesOnly`
   Matching stage are all removed (migration `0015`).
 - A run summary carries `non_us_dropped` (roles the run's Fetches skipped) and `non_us_pruned`

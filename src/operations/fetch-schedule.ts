@@ -9,7 +9,7 @@ import {
   type FetchRunId,
 } from "./fetch-run";
 import { matchAllUsers } from "./matching";
-import { pruneNonUsPostings } from "./prune";
+import { pruneNonUsPostings, reclassifyCountries } from "./prune";
 
 /**
  * Scheduling a Fetch: the nightly sweep, an on-demand sweep, and the status of
@@ -150,27 +150,33 @@ export async function drainFetchQueue(
 }
 
 /**
- * Drives the queue forward, and — only once the whole queue is drained — prunes
- * the non-US roles stored before ADR 0010 (`pruneNonUsPostings`), then rebuilds
- * every User's Matches so overnight Postings reach their Dashboard (#2, user
- * story 20; #17).
+ * Drives the queue forward, and — only once the whole queue is drained —
+ * re-derives every Posting's `country` from its location text
+ * (`reclassifyCountries`), prunes the non-US roles that no User has acted on
+ * (`pruneNonUsPostings`), then rebuilds every User's Matches so overnight
+ * Postings reach their Dashboard (#2, user story 20; #17).
  *
- * The prune runs *before* the re-match, so `matchAllUsers` never spends
- * Extraction and matching on rows about to be deleted, and there is no window in
- * which a Dashboard read could surface a non-US role the prune is about to
- * remove. The batch is looped within a short budget so a large first backlog
- * clears in a night or two rather than one 500-row batch per night.
+ * The re-classify and the prune both run *before* the re-match, so
+ * `matchAllUsers` never spends Extraction and matching on rows about to be
+ * deleted, and there is no window in which a Dashboard read could surface a
+ * non-US role the prune is about to remove. The prune batch is looped within a
+ * short budget so a large first backlog clears in a night or two rather than one
+ * 500-row batch per night.
  *
- * The "drain, then prune, then re-match when done" sequence lives here, at the
- * seam, rather than in each Next entry point that kicks a sweep. The caller
- * checks `remaining`: above zero, more invocations are needed and none of the
- * three has happened yet.
+ * The "drain, then re-classify, then prune, then re-match when done" sequence
+ * lives here, at the seam, rather than in each Next entry point that kicks a
+ * sweep. The caller checks `remaining`: above zero, more invocations are needed
+ * and none of the four has happened yet.
  */
 export async function drainAndRematch(
   options: DrainOptions = {},
 ): Promise<DrainResult> {
   const result = await drainFetchQueue(options);
   if (result.remaining === 0) {
+    // Re-derive `country` from the location text first, so a fix to the
+    // classifier reaches rows stored under the old reading (#67); the prune
+    // then removes any that are now non-US and unreviewed.
+    await reclassifyCountries();
     const pruned = await prunePendingNonUs();
     if (pruned > 0) await recordNonUsPruned(pruned);
     await matchAllUsers();

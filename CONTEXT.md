@@ -56,9 +56,10 @@ _Avoid_: Parsing, enrichment, cleaning
 
 **Country**:
 Whether a Posting's location text places the role in the United States: `us`, `non-us`, or
-`unknown`. Classified from the location string on ingestion, and only `us` roles are stored
-(ADR 0010) — so it reads `us` for every row a Fetch wrote, and `non-us` / `unknown` / null only on
-rows stored before that policy, which the sweep's closing prune removes.
+`unknown`. Classified from the location string on ingestion — only `us` roles are stored
+(ADR 0010) — and re-derived for the whole Corpus each nightly sweep, so a fix to the classifier
+reaches rows already stored. It reads `us` for every row a Fetch wrote; `non-us` / `unknown` / null
+appear only briefly, on rows a sweep has re-tagged but its closing prune has not yet removed.
 _Avoid_: Region, nationality, locale
 
 **Source Key**:
