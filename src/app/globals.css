@@ -5,6 +5,20 @@
 }
 
 /*
+ * Tailwind v4's Preflight dropped the `button { cursor: pointer }` rule v3
+ * shipped, so every <button> (Save, the Dashboard actions, the review Status
+ * buttons, Log out) hovered with the default arrow. Anchors are unaffected —
+ * the browser's own stylesheet still points them. `:not(:disabled)` leaves a
+ * button that cannot be pressed with the default cursor.
+ */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+/*
  * A Posting's description is sanitized HTML from a Source (see
  * `@/postings/description`). Tailwind's reset strips margins from every element,
  * so the spacing a job description needs to be readable is put back here rather
