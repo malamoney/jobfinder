@@ -2,62 +2,59 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import { companyLogoSrc, companyMonogram } from "./format";
+import { companyIconSrc, companyMonogram } from "./format";
+
+/** The rendered box, in CSS pixels — the one source of truth for the size. */
+const SIZE = 36;
+
+/** The disc both the monogram and the logo sit in, so the two never disagree. */
+const DISC = "rounded-lg border border-gray-200 bg-gray-100";
 
 /**
  * The company mark in the corner of a Dashboard card (#62).
  *
  * The logo comes from Logo.dev's CDN, looked up by company name (ADR 0011) and
  * loaded straight from there — the Corpus stores nothing about it and no
- * nightly pass resolves it, because the CDN is already the cache. A company
- * Logo.dev cannot place (it answers 404, `fallback=404` in `companyLogoSrc`),
- * or a name too blank to look up, falls back to a monogram on a neutral disc,
- * so the card never shows a broken image and never waits on the lookup.
+ * nightly pass resolves it, because the CDN is already the cache. A custom
+ * `next/image` loader points at Logo.dev directly rather than through Vercel's
+ * image optimizer: the CDN already serves a small, cached, sized image, and
+ * keeping the proxy out of it keeps that cost off the Vercel project (cf. #52,
+ * #61).
+ *
+ * The monogram — the company's first initial on a neutral disc — is always
+ * rendered as the base layer, and the logo sits on top of it. So the card
+ * shows the monogram while the logo loads, if the name has no logo to find
+ * (Logo.dev 404s, `strategy=match` + `fallback=404` in `companyIconSrc`, and
+ * `onError` hides the image), or if there is no name or token at all. It never
+ * waits on the lookup and never shows a bare broken image.
  *
  * `next/image` with a fixed width and height reserves the box before anything
- * loads, so a slow or failed logo never shifts the card's layout. A custom
- * `loader` points it at Logo.dev directly rather than through Vercel's image
- * optimizer — the CDN already serves a small, cached, sized image, and keeping
- * the proxy out of it keeps that cost off the Vercel project (cf. #52, #61).
+ * loads, so a slow or failed logo never shifts the card's layout.
  */
-
-/** The rendered box, in CSS pixels. `size-9` on the element must match. */
-const SIZE = 36;
-
-const DISC =
-  "size-9 shrink-0 rounded-lg border border-gray-200 bg-gray-100 object-contain";
-
-/** Builds the Logo.dev URL for `next/image`; `src` is the company name. */
-function logoLoader({ src, width }: { src: string; width: number }): string {
-  // `companyLogoSrc` only returns null for a blank name or missing token, and
-  // `CompanyIcon` has already shown the monogram in both cases before it gets
-  // here — so the fallback to `src` is unreachable and just keeps the types honest.
-  return companyLogoSrc(src, width) ?? src;
-}
-
 export function CompanyIcon({ company }: { company: string }) {
   const [failed, setFailed] = useState(false);
-
-  if (failed || !companyLogoSrc(company, SIZE)) {
-    return (
-      <span
-        aria-hidden
-        className={`${DISC} flex items-center justify-center text-sm font-semibold text-gray-500`}
-      >
-        {companyMonogram(company)}
-      </span>
-    );
-  }
+  const src = companyIconSrc(company, SIZE);
 
   return (
-    <Image
-      loader={logoLoader}
-      src={company}
-      alt=""
-      width={SIZE}
-      height={SIZE}
-      onError={() => setFailed(true)}
-      className={DISC}
-    />
+    <span
+      className={`relative flex shrink-0 items-center justify-center overflow-hidden ${DISC}`}
+      style={{ width: SIZE, height: SIZE }}
+    >
+      <span aria-hidden className="text-sm font-semibold text-gray-500">
+        {companyMonogram(company)}
+      </span>
+
+      {src && !failed && (
+        <Image
+          loader={({ width }) => companyIconSrc(company, width) ?? src}
+          src={company}
+          alt=""
+          width={SIZE}
+          height={SIZE}
+          onError={() => setFailed(true)}
+          className={`absolute inset-0 ${DISC} object-contain`}
+        />
+      )}
+    </span>
   );
 }

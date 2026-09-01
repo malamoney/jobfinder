@@ -98,11 +98,11 @@ export function workplaceLabels(
  */
 const LOGODEV_TOKEN = process.env.NEXT_PUBLIC_LOGODEV_TOKEN;
 
-/** The largest icon Logo.dev's CDN will render, from its `size` parameter docs. */
+/** The largest `size` Logo.dev's `size` parameter accepts, per its docs. */
 const LOGODEV_MAX_SIZE = 800;
 
 /**
- * The Logo.dev CDN URL for a company's logo, looked up by name (ADR 0011).
+ * The Logo.dev CDN URL for a company's icon, looked up by name (ADR 0011).
  *
  * The apply URL a Posting carries is on its applicant-tracking host
  * (`job-boards.greenhouse.io`, `jobs.lever.co`), whose favicon is the ATS's
@@ -119,7 +119,7 @@ const LOGODEV_MAX_SIZE = 800;
  * Null when there is no name to look up or no token configured — the caller
  * shows a monogram.
  */
-export function companyLogoSrc(company: string, size: number): string | null {
+export function companyIconSrc(company: string, size: number): string | null {
   const name = company.trim();
   if (!name || !LOGODEV_TOKEN) return null;
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  companyLogoSrc,
+  companyIconSrc,
   companyMonogram,
   formatSalary,
   SALARY_NOT_LISTED,
@@ -91,9 +91,9 @@ describe("the workplace Arrangement tag", () => {
  * company it cannot place falls back to a monogram. `.env.test` sets a fake
  * `NEXT_PUBLIC_LOGODEV_TOKEN` so the URL is deterministic here.
  */
-describe("the Logo.dev logo URL for a company", () => {
+describe("the Logo.dev icon URL for a company", () => {
   it("looks the company up by name against Logo.dev's CDN", () => {
-    const src = companyLogoSrc("Stripe", 40);
+    const src = companyIconSrc("Stripe", 40);
     expect(src).not.toBeNull();
     const url = new URL(src!);
     expect(url.origin).toBe("https://img.logo.dev");
@@ -102,28 +102,28 @@ describe("the Logo.dev logo URL for a company", () => {
   });
 
   it("ranks by exact match and asks for a 404 on a miss, so the card shows its own monogram", () => {
-    const url = new URL(companyLogoSrc("Acme", 40)!);
+    const url = new URL(companyIconSrc("Acme", 40)!);
     expect(url.searchParams.get("strategy")).toBe("match");
     expect(url.searchParams.get("fallback")).toBe("404");
   });
 
   it("passes the render size through, clamped to Logo.dev's maximum", () => {
-    expect(new URL(companyLogoSrc("Acme", 80)!).searchParams.get("size")).toBe(
+    expect(new URL(companyIconSrc("Acme", 80)!).searchParams.get("size")).toBe(
       "80",
     );
     expect(
-      new URL(companyLogoSrc("Acme", 2400)!).searchParams.get("size"),
+      new URL(companyIconSrc("Acme", 2400)!).searchParams.get("size"),
     ).toBe("800");
   });
 
   it("encodes a company name with spaces and symbols", () => {
-    const url = new URL(companyLogoSrc("Ben & Jerry's", 40)!);
+    const url = new URL(companyIconSrc("Ben & Jerry's", 40)!);
     expect(url.pathname).toBe("/name/Ben%20%26%20Jerry's");
   });
 
   it("is null when there is no name to look up", () => {
-    expect(companyLogoSrc("", 40)).toBeNull();
-    expect(companyLogoSrc("   ", 40)).toBeNull();
+    expect(companyIconSrc("", 40)).toBeNull();
+    expect(companyIconSrc("   ", 40)).toBeNull();
   });
 });
 

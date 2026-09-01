@@ -149,7 +149,7 @@ export default async function DashboardPage({
         {/* Logo.dev's free tier asks for a link back where its logos are shown
             (ADR 0011). */}
         <footer className="mt-auto pt-4 text-xs text-gray-400">
-          Company logos by{" "}
+          Logos by{" "}
           <a
             href="https://logo.dev"
             className="underline hover:text-gray-600"
