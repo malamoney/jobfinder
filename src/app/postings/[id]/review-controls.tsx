@@ -83,11 +83,11 @@ export function ReviewControls({ postingId, review }: ReviewControlsProps) {
   const notesChanged = normalizedNotes(notes) !== review.notes;
 
   return (
-    <section className="flex flex-col gap-6 rounded-lg border border-gray-200 p-4">
+    <section className="flex flex-col gap-6 rounded-lg border border-border bg-surface p-4">
       <div className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="text-sm font-medium">Your review</h2>
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-label">
             {STATUS_LABELS[review.status]}
             {review.status === "applied" && review.appliedAt
               ? ` · ${formatDay(review.appliedAt)}`
@@ -106,8 +106,8 @@ export function ReviewControls({ postingId, review }: ReviewControlsProps) {
                 aria-pressed={active}
                 className={`rounded-md border px-3 py-1.5 text-sm font-medium disabled:opacity-60 ${
                   active
-                    ? "border-gray-900 bg-gray-900 text-white"
-                    : "border-gray-300"
+                    ? "border-accent-edge bg-accent-wash text-accent-text"
+                    : "border-border"
                 }`}
               >
                 {STATUS_LABELS[status]}
@@ -115,7 +115,7 @@ export function ReviewControls({ postingId, review }: ReviewControlsProps) {
             );
           })}
         </div>
-        <p role="alert" aria-live="polite" className="text-sm text-red-700">
+        <p role="alert" aria-live="polite" className="text-sm text-danger">
           {statusError}
         </p>
       </div>
@@ -131,13 +131,13 @@ export function ReviewControls({ postingId, review }: ReviewControlsProps) {
           }}
           rows={4}
           placeholder="A contact name, a referral, why you passed."
-          className="rounded-md border border-gray-300 px-3 py-2 text-base"
+          className="rounded-md border border-border bg-field px-3 py-2 text-base"
         />
-        <p role="alert" aria-live="polite" className="text-sm text-red-700">
+        <p role="alert" aria-live="polite" className="text-sm text-danger">
           {notesError}
         </p>
         {savedNotes && !notesChanged && (
-          <p aria-live="polite" className="text-sm text-green-700">
+          <p aria-live="polite" className="text-sm text-ok">
             Saved.
           </p>
         )}
@@ -145,7 +145,7 @@ export function ReviewControls({ postingId, review }: ReviewControlsProps) {
           type="button"
           onClick={saveNotes}
           disabled={pendingNotes || !notesChanged}
-          className="self-start rounded-md border border-gray-300 px-4 py-2 text-sm font-medium disabled:opacity-60"
+          className="self-start rounded-md border border-border px-4 py-2 text-sm font-medium disabled:opacity-60"
         >
           {pendingNotes ? "Saving…" : "Save notes"}
         </button>

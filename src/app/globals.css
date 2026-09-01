@@ -1,7 +1,98 @@
 @import "tailwindcss";
 
-@theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+/*
+ * The palette — the Claude Design "Nocturne" direction (issue #77). One name,
+ * two values: the dark set on `:root` is the default, and `data-theme="light"`
+ * on `<html>` swaps every value beneath it. Components never name a hex — they
+ * use the Tailwind utilities the `@theme` block builds from these
+ * (`bg-surface`, `border-border`, `text-label`, the accent trio, …), which
+ * resolve through the variable live, so the whole app repaints when
+ * `data-theme` flips. The theme toggle that flips it comes in #79; for now
+ * `<html>` is a static `data-theme="dark"` and the light values are reachable
+ * by hand.
+ */
+:root {
+  /* Dark is the shipping theme — tell the UA so form controls, scrollbars,
+     the caret, and text selection render dark too. Flipped under
+     `[data-theme="light"]` below. */
+  color-scheme: dark;
+
+  --bg: #0a0a0b;
+  --chrome: #0c0c0e;
+  --rail: #0b0b0d;
+  --surface: #191919;
+  --field: #141418;
+  --tag: #1c1c21;
+  --border: #232327;
+  --hairline: #1a1a1e;
+  --text: #ededf0;
+  --text-body: #a8a8b2;
+  --label: #8b8b95;
+  --disabled: #6f6f78;
+  --accent: #9184d9;
+  --accent-text: #b5abfc;
+  --accent-edge: #6f63b8;
+  --accent-wash: rgb(145 132 217 / 0.1);
+  --warn: #d9c184;
+  --danger: #e08f8f;
+  --ok: #7fd1a6;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f6f6f4;
+  --chrome: #ffffff;
+  --rail: #fbfbfa;
+  --surface: #ffffff;
+  --field: #ffffff;
+  --tag: #efeeeb;
+  --border: #e2e2dd;
+  --hairline: #e6e6e2;
+  --text: #16161a;
+  --text-body: #4a4a52;
+  --label: #6b6b73;
+  --disabled: #96969e;
+  --accent: #796cbf;
+  --accent-text: #5d5294;
+  --accent-edge: #a89ede;
+  --accent-wash: rgb(121 108 191 / 0.1);
+  --warn: #8a6d1f;
+  --danger: #a33b3b;
+  --ok: #2f7d57;
+}
+
+/*
+ * `inline` so each utility carries `var(--bg)` itself rather than a frozen
+ * copy — that indirection is what lets `data-theme` re-resolve them. The two
+ * font families resolve to the `next/font` variables set on `<html>` in
+ * `layout.tsx`, with a system stack behind each.
+ */
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo,
+    monospace;
+
+  --color-bg: var(--bg);
+  --color-chrome: var(--chrome);
+  --color-rail: var(--rail);
+  --color-surface: var(--surface);
+  --color-field: var(--field);
+  --color-tag: var(--tag);
+  --color-border: var(--border);
+  --color-hairline: var(--hairline);
+  --color-text: var(--text);
+  --color-text-body: var(--text-body);
+  --color-label: var(--label);
+  --color-disabled: var(--disabled);
+  --color-accent: var(--accent);
+  --color-accent-text: var(--accent-text);
+  --color-accent-edge: var(--accent-edge);
+  --color-accent-wash: var(--accent-wash);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-ok: var(--ok);
 }
 
 /*
@@ -22,13 +113,19 @@
  * A Posting's description is sanitized HTML from a Source (see
  * `@/postings/description`). Tailwind's reset strips margins from every element,
  * so the spacing a job description needs to be readable is put back here rather
- * than annotating tags the sanitizer produces.
+ * than annotating tags the sanitizer produces. The body copy takes `--text-body`
+ * and headings step up to `--text`, so the description sits in the palette
+ * without the article naming a colour.
  */
+.description {
+  color: var(--text-body);
+}
 .description :is(p, ul, ol, blockquote, pre, h1, h2, h3, h4, h5, h6) {
   margin-block: 0.75em;
 }
 .description :is(h1, h2, h3, h4, h5, h6) {
   font-weight: 600;
+  color: var(--text);
 }
 .description :is(ul, ol) {
   padding-inline-start: 1.5em;

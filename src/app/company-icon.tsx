@@ -8,7 +8,7 @@ import { companyIconSrc, companyMonogram } from "./format";
 const SIZE = 36;
 
 /** The disc both the monogram and the logo sit in, so the two never disagree. */
-const DISC = "rounded-lg border border-gray-200 bg-gray-100";
+const DISC = "rounded-lg border border-border bg-field";
 
 /**
  * The company mark in the corner of a Dashboard card (#62).
@@ -40,7 +40,7 @@ export function CompanyIcon({ company }: { company: string }) {
       className={`relative flex shrink-0 items-center justify-center overflow-hidden ${DISC}`}
       style={{ width: SIZE, height: SIZE }}
     >
-      <span aria-hidden className="text-sm font-semibold text-gray-500">
+      <span aria-hidden className="text-sm font-semibold text-label">
         {companyMonogram(company)}
       </span>
 

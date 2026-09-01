@@ -45,8 +45,8 @@ export default async function PostingPage({
             large title, then the Arrangement and signal pills. */}
         <header className="flex flex-col gap-3">
           <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
-            <span className="text-gray-600">{posting.company}</span>
-            <span className="text-xs text-gray-500">
+            <span className="text-text-body">{posting.company}</span>
+            <span className="text-xs text-label">
               {formatAge(posting.postedAt)}
             </span>
           </div>
@@ -57,18 +57,18 @@ export default async function PostingPage({
 
           <PostingTags posting={posting} />
 
-          <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-600">
+          <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-text-body">
             <Fact label="Location" value={posting.location ?? "Not given"} />
             {/* Extraction (#11) fills salary from the Posting's text where it
                 states one; an unknown reads as "not listed", never a number (#36). */}
-            <Fact label="Salary" value={formatSalary(posting)} />
+            <Fact label="Salary" value={formatSalary(posting)} mono />
           </dl>
 
           <a
             href={posting.applyUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="self-start rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white"
+            className="self-start rounded-md border border-accent-edge bg-accent-wash px-4 py-2 text-sm font-medium text-accent-text"
           >
             Apply on the employer’s site
           </a>
@@ -77,7 +77,7 @@ export default async function PostingPage({
         <ReviewControls postingId={posting.id} review={posting.review} />
 
         <article
-          className="description max-w-2xl text-sm leading-relaxed text-gray-800"
+          className="description max-w-2xl text-sm leading-relaxed"
           // The HTML has been through `sanitizeDescription`: scripts, styles,
           // event handlers, and `javascript:` links do not survive it.
           dangerouslySetInnerHTML={{
@@ -89,11 +89,20 @@ export default async function PostingPage({
   );
 }
 
-function Fact({ label, value }: { label: string; value: string }) {
+function Fact({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  /** Salary reads as a figure — the mono face, like every other number. */
+  mono?: boolean;
+}) {
   return (
     <div className="flex gap-1.5">
-      <dt className="text-gray-400">{label}</dt>
-      <dd>{value}</dd>
+      <dt className="text-label">{label}</dt>
+      <dd className={mono ? "font-mono" : undefined}>{value}</dd>
     </div>
   );
 }

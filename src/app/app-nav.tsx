@@ -26,7 +26,7 @@ type NavKey = (typeof LINKS)[number]["key"];
 
 export function AppNav({ active }: { active?: NavKey }) {
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-gray-200 bg-white/85 backdrop-blur">
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-border bg-chrome/85 backdrop-blur">
       <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-6">
         <Link href="/dashboard" className="font-semibold tracking-tight">
           Jobfinder
@@ -40,8 +40,8 @@ export function AppNav({ active }: { active?: NavKey }) {
               aria-current={active === key ? "page" : undefined}
               className={
                 active === key
-                  ? "font-medium text-gray-900"
-                  : "text-gray-500 hover:text-gray-900"
+                  ? "font-medium text-text"
+                  : "text-label hover:text-text"
               }
             >
               {label}
@@ -51,7 +51,7 @@ export function AppNav({ active }: { active?: NavKey }) {
           <form action={logOutAction}>
             <button
               type="submit"
-              className="text-gray-500 underline hover:text-gray-900"
+              className="text-label underline hover:text-text"
             >
               Log out
             </button>

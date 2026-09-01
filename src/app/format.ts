@@ -243,6 +243,11 @@ export function companyIconSrc(company: string, size: number): string | null {
     format: "png",
     strategy: "match",
     fallback: "404",
+    // The icon sits on the dark `--field` disc in the shipping dark theme, so
+    // ask for the version of a monochrome mark that reads on a dark ground —
+    // otherwise GitHub, Notion and the like paint black-on-black. When the
+    // light theme lands (#79) this needs to track `data-theme`.
+    theme: "dark",
   });
   return `https://img.logo.dev/name/${encodeURIComponent(name)}?${params}`;
 }
