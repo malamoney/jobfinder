@@ -2,10 +2,17 @@ import { describe, expect, it } from "vitest";
 import {
   companyIconSrc,
   companyMonogram,
+  employmentLabels,
+  formatAge,
   formatSalary,
   SALARY_NOT_LISTED,
   workplaceLabels,
 } from "./format";
+
+/** A date the given number of whole days before now. */
+function daysAgo(days: number): Date {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+}
 
 /**
  * How a Posting's salary reads on the Dashboard and the details page.
@@ -81,6 +88,64 @@ describe("the workplace Arrangement tag", () => {
   it("is empty when the text named no workplace — the funnel's 'silent' case", () => {
     expect(workplaceLabels({ arrangements: [] })).toEqual([]);
     expect(workplaceLabels({ arrangements: ["full-time"] })).toEqual([]);
+  });
+});
+
+/**
+ * The relative age shown on a Dashboard card — "is this fresh?", not the exact
+ * date. A date the Source never published falls back to `formatDay`'s wording.
+ */
+describe("writing a Posting's age", () => {
+  it("writes a span of days as days ago", () => {
+    expect(formatAge(daysAgo(5))).toBe("5 days ago");
+  });
+
+  it("rounds down to the largest whole unit — 100 days is 3 months ago", () => {
+    expect(formatAge(daysAgo(100))).toBe("3 months ago");
+  });
+
+  it("writes something older than a year in years", () => {
+    expect(formatAge(daysAgo(400))).toBe("1 year ago");
+  });
+
+  it("reads as 'just now' for a Posting seen this minute", () => {
+    expect(formatAge(new Date())).toBe("just now");
+  });
+
+  it("never ages a Posting into the future", () => {
+    expect(formatAge(new Date(Date.now() + 60_000))).toBe("just now");
+  });
+
+  it("falls back to the not-given wording when the Source published no date", () => {
+    expect(formatAge(null)).toBe("Date not given");
+    expect(formatAge(null, "No date")).toBe("No date");
+  });
+});
+
+/**
+ * The employment tag on a card — the commitment axis, alongside the workplace
+ * one. `full-time` / `part-time` were filtered out of the old card; the design
+ * shows both.
+ */
+describe("the employment Arrangement tag", () => {
+  it("names the commitment the text stated, ignoring the workplace axis", () => {
+    expect(employmentLabels({ arrangements: ["full-time", "remote"] })).toEqual([
+      "Full-time",
+    ]);
+    expect(employmentLabels({ arrangements: ["part-time"] })).toEqual([
+      "Part-time",
+    ]);
+  });
+
+  it("shows both when the text named both", () => {
+    expect(
+      employmentLabels({ arrangements: ["part-time", "full-time"] }),
+    ).toEqual(["Full-time", "Part-time"]);
+  });
+
+  it("is empty when the text named no employment commitment", () => {
+    expect(employmentLabels({ arrangements: [] })).toEqual([]);
+    expect(employmentLabels({ arrangements: ["remote"] })).toEqual([]);
   });
 });
 

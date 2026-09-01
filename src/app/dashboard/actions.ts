@@ -4,7 +4,8 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { currentUser } from "@/auth";
-import { matchCriteria, requestFetch } from "@/operations";
+import { matchCriteria, requestFetch, setSaved } from "@/operations";
+import type { ReviewOutcome } from "@/review/schema";
 import { advanceSweep } from "../api/cron/fetch/sweep";
 
 /**
@@ -81,4 +82,30 @@ export async function fetchNowAction(): Promise<DashboardActionResult> {
     message:
       "Fetching new postings now. It runs in the background — refresh shortly to see new matches.",
   };
+}
+
+/**
+ * The Save toggle on a Dashboard card (#63): mark a matched Posting
+ * `interested`, or un-mark it back to `new`.
+ *
+ * Reachable by a direct POST, so it checks for a User itself. On success it
+ * revalidates the Dashboard so a filtered view (Interested, New) reflects the
+ * change once the card's `router.refresh()` lands; the change of mind itself is
+ * `setSaved`'s.
+ */
+export async function toggleSavedAction(
+  postingId: string,
+  saved: boolean,
+): Promise<ReviewOutcome> {
+  const signedIn = await currentUser(await headers());
+  if (!signedIn) {
+    return {
+      ok: false,
+      message: "Your session has ended. Log in and try again.",
+    };
+  }
+
+  const outcome = await setSaved(signedIn.id, postingId, saved);
+  if (outcome.ok) revalidatePath("/dashboard");
+  return outcome;
 }

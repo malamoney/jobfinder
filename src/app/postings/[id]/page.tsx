@@ -6,7 +6,8 @@ import { currentUser } from "@/auth";
 import { readPosting } from "@/operations";
 import { sanitizeDescription } from "@/postings/description";
 import { AppNav } from "../../app-nav";
-import { formatDay, formatSalary, workplaceLabels } from "../../format";
+import { formatAge, formatSalary } from "../../format";
+import { PostingTags } from "../../posting-tags";
 import { ReviewControls } from "./review-controls";
 
 export const metadata: Metadata = { title: "Posting · Jobfinder" };
@@ -34,50 +35,33 @@ export default async function PostingPage({
   return (
     <>
       <AppNav />
-      <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-8 px-6 pb-16 pt-24">
+      <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 pb-16 pt-24">
         <Link href="/dashboard" className="self-start text-sm underline">
           ← Back to dashboard
         </Link>
 
+        {/* The same heading and tag treatment as the Dashboard card (#63), so a
+            card and the page it opens read as one product: company and age, a
+            large title, then the Arrangement and signal pills. */}
         <header className="flex flex-col gap-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex flex-col gap-1">
-              <h1 className="text-2xl font-semibold tracking-tight">
-                {posting.title}
-              </h1>
-              <p className="text-sm text-gray-600">{posting.company}</p>
-            </div>
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-              {workplaceLabels(posting).map((label) => (
-                <span
-                  key={label}
-                  className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700"
-                >
-                  {label}
-                </span>
-              ))}
-              {posting.expired && (
-                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
-                  Expired
-                </span>
-              )}
-              {posting.unresolvedLocation && (
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-                  Location unresolved
-                </span>
-              )}
-            </div>
+          <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
+            <span className="text-gray-600">{posting.company}</span>
+            <span className="text-xs text-gray-500">
+              {formatAge(posting.postedAt)}
+            </span>
           </div>
+
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {posting.title}
+          </h1>
+
+          <PostingTags posting={posting} />
 
           <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-600">
             <Fact label="Location" value={posting.location ?? "Not given"} />
             {/* Extraction (#11) fills salary from the Posting's text where it
                 states one; an unknown reads as "not listed", never a number (#36). */}
             <Fact label="Salary" value={formatSalary(posting)} />
-            <Fact
-              label="Posted"
-              value={formatDay(posting.postedAt, "Date not given")}
-            />
           </dl>
 
           <a
@@ -93,7 +77,7 @@ export default async function PostingPage({
         <ReviewControls postingId={posting.id} review={posting.review} />
 
         <article
-          className="description text-sm leading-relaxed text-gray-800"
+          className="description max-w-2xl text-sm leading-relaxed text-gray-800"
           // The HTML has been through `sanitizeDescription`: scripts, styles,
           // event handlers, and `javascript:` links do not survive it.
           dangerouslySetInnerHTML={{

@@ -9,6 +9,7 @@ import {
   readPosting,
   saveCriteria,
   setNotes,
+  setSaved,
   setStatus,
   type Board,
 } from "@/operations";
@@ -170,6 +171,120 @@ describe("a Posting's Status", () => {
     await setStatus(ada, postingId, "applied");
 
     expect((await readPosting(grace, postingId))?.review.status).toBe("new");
+  });
+});
+
+describe("the Save toggle from a Dashboard card", () => {
+  it("saving a Posting sets it to interested", async () => {
+    const postingId = await corpusHas([greenhouseJob({ id: 1 })]);
+    const userId = await givenAUser();
+
+    const outcome = await setSaved(userId, postingId, true);
+
+    expect(outcome).toEqual({ ok: true });
+    const details = await readPosting(userId, postingId);
+    expect(details?.review.status).toBe("interested");
+    expect(details?.review.statusChangedAt).toBeInstanceOf(Date);
+  });
+
+  it("un-saving returns the Posting to new", async () => {
+    const postingId = await corpusHas([greenhouseJob({ id: 1 })]);
+    const userId = await givenAUser();
+
+    await setSaved(userId, postingId, true);
+    await setSaved(userId, postingId, false);
+
+    const details = await readPosting(userId, postingId);
+    expect(details?.review.status).toBe("new");
+    expect(details?.review.statusChangedAt).toBeNull();
+  });
+
+  it("holds one row however many times it is toggled", async () => {
+    const postingId = await corpusHas([greenhouseJob({ id: 1 })]);
+    const userId = await givenAUser();
+
+    await setSaved(userId, postingId, true);
+    await setSaved(userId, postingId, false);
+    await setSaved(userId, postingId, true);
+
+    const rows = await getDb()
+      .select()
+      .from(reviewState)
+      .where(eq(reviewState.userId, userId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("interested");
+  });
+
+  it("shows up on the Dashboard once the User has saved a match", async () => {
+    boardReturns("acme", [greenhouseJob({ id: 1, title: "Staff Engineer" })]);
+    await fetchBoard(acme);
+    const [posting] = await listPostings();
+    const userId = await givenAUser();
+    await saveCriteria(userId, statedCriteria({ titles: ["Engineer"] }));
+
+    await setSaved(userId, posting.id, true);
+    let saved = (await readDashboard(userId, "interested")).postings;
+    expect(saved.map((p) => p.id)).toEqual([posting.id]);
+
+    await setSaved(userId, posting.id, false);
+    saved = (await readDashboard(userId, "interested")).postings;
+    expect(saved).toHaveLength(0);
+    expect((await readDashboard(userId, "new")).postings.map((p) => p.id)).toEqual(
+      [posting.id],
+    );
+  });
+
+  it("refuses to touch a Posting the User has already applied to", async () => {
+    const postingId = await corpusHas([greenhouseJob({ id: 1 })]);
+    const userId = await givenAUser();
+    await setStatus(userId, postingId, "applied");
+
+    const outcome = await setSaved(userId, postingId, false);
+
+    expect(outcome.ok).toBe(false);
+    const details = await readPosting(userId, postingId);
+    expect(details?.review.status).toBe("applied");
+    expect(details?.review.appliedAt).toBeInstanceOf(Date);
+  });
+
+  it("refuses a Posting marked not_interested", async () => {
+    const postingId = await corpusHas([greenhouseJob({ id: 1 })]);
+    const userId = await givenAUser();
+    await setStatus(userId, postingId, "not_interested");
+
+    expect((await setSaved(userId, postingId, true)).ok).toBe(false);
+    expect((await readPosting(userId, postingId))?.review.status).toBe(
+      "not_interested",
+    );
+  });
+
+  it("keeps the applied date intact when it later reads as interested", async () => {
+    const postingId = await corpusHas([greenhouseJob({ id: 1 })]);
+    const userId = await givenAUser();
+    await setStatus(userId, postingId, "applied");
+    await setStatus(userId, postingId, "interested");
+
+    // The card would show the toggle now (status is interested), but the User
+    // has an applied date on this Posting — un-saving must not strand it.
+    expect((await setSaved(userId, postingId, false)).ok).toBe(false);
+    expect((await readPosting(userId, postingId))?.review.appliedAt).toBeInstanceOf(
+      Date,
+    );
+  });
+
+  it("refuses a non-boolean value", async () => {
+    const postingId = await corpusHas([greenhouseJob({ id: 1 })]);
+    const userId = await givenAUser();
+
+    expect((await setSaved(userId, postingId, "yes")).ok).toBe(false);
+  });
+
+  it("refuses a Save against a missing Posting", async () => {
+    const userId = await givenAUser();
+
+    expect(
+      (await setSaved(userId, "11111111-1111-1111-1111-111111111111", true)).ok,
+    ).toBe(false);
   });
 });
 
