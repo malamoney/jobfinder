@@ -191,14 +191,24 @@ function axisClause(
  * The commute radius, over the geocoded location.
  *
  * "A hybrid role four hundred miles away is exactly as uncommutable as an
- * onsite one" (#12): the radius applies to onsite and hybrid Postings and to
- * nothing else. A remote Posting ignores it. A Posting whose text names no
- * location mode is left alone too — unknown is not "commute", the same way the
- * Arrangement stage never excludes on a silent axis.
+ * onsite one" (#12): a role at a fixed address that is too far to reach is
+ * excluded. What counts as "at a fixed address" depends on whether the User
+ * accepts remote work:
  *
- * A Posting whose location could not be geocoded is *kept*, not dropped:
- * silently dropping it is how a User loses a role they wanted and never finds
- * out (#12). The Dashboard flags it as unresolved instead.
+ * - **The User accepts remote.** The radius is left off any Posting whose text
+ *   offers remote — that role can be done from home wherever it is based. A
+ *   Posting silent on its location mode is left alone too, the same way the
+ *   Arrangement stage never excludes on a silent axis.
+ * - **The User does not accept remote** (they ticked only onsite and/or
+ *   hybrid). Then every Posting with a resolved location must be within the
+ *   radius. A Posting in Austin whose text never says "remote" is an Austin
+ *   role, whether or not its text also says "onsite" — and the User asked for
+ *   work they can get to (#73: silent-on-arrangement roles were bypassing the
+ *   radius entirely and filling the Dashboard from across the country).
+ *
+ * A Posting whose location could not be geocoded is *kept* either way, not
+ * dropped: silently dropping it is how a User loses a role they wanted and
+ * never finds out (#12). The Dashboard flags it as unresolved instead.
  *
  * The distance is a great-circle computation in SQL against the `geocodes`
  * cache, which `matchCriteria` has already filled for every surviving location.
@@ -206,17 +216,19 @@ function axisClause(
 const withinCommuteRadius: FunnelStage = {
   name: "commute radius over the geocoded location",
   derived: true,
-  narrow({ radiusMiles }, { home }) {
+  narrow({ radiusMiles, arrangements }, { home }) {
     if (radiusMiles == null || !home) return undefined;
 
-    // The radius bites only on a Posting whose text places it onsite or hybrid
-    // and does not also offer remote. Everything else — a remote role, or one
-    // whose text names no location mode — is left alone, the same way the
-    // Arrangement stage never excludes on a silent axis.
-    const radiusDoesNotApply = or(
-      not(arrayOverlaps(postings.arrangements, [...DISTANCE_ARRANGEMENTS])),
-      arrayOverlaps(postings.arrangements, ["remote"] satisfies Arrangement[]),
-    );
+    // When the User accepts remote, a Posting that offers remote escapes the
+    // radius — and one that also names no location mode, like the Arrangement
+    // stage, gets the benefit of the doubt. When the User does not accept
+    // remote, nothing escapes: every resolved location is measured.
+    const radiusDoesNotApply = arrangements.includes("remote")
+      ? or(
+          not(arrayOverlaps(postings.arrangements, [...DISTANCE_ARRANGEMENTS])),
+          arrayOverlaps(postings.arrangements, ["remote"] satisfies Arrangement[]),
+        )
+      : sql`false`;
 
     // The only Postings the radius drops: those whose location the cache
     // resolved to a point that is too far. A location with no resolved point —
