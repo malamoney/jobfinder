@@ -82,7 +82,7 @@ export default async function DashboardPage({
   return (
     <>
       <AppNav active="dashboard" />
-      <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 pb-16 pt-24">
+      <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 pb-16 pt-20">
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
           <p className="text-sm text-text-body">
@@ -158,19 +158,33 @@ export default async function DashboardPage({
           </>
         )}
 
-        {/* Logo.dev's free tier asks for a link back where its logos are shown
-            (ADR 0011). */}
-        <footer className="mt-auto pt-4 text-xs text-label">
-          Logos by{" "}
-          <a
-            href="https://logo.dev"
-            className="underline hover:text-text-body"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Logo.dev
-          </a>
-          .
+        <footer className="mt-auto flex flex-col gap-2 pt-4 text-label">
+          {/* The status line, canvas 3a: the count on the left, the privacy
+              line on the right, both mono micro-labels. The list is ordered by
+              posted date, newest first (`readDashboard`) — the mockup's "sorted
+              by score" names a ranking the matcher does not compute. */}
+          {matchedCount > 0 && (
+            <div className="flex items-center justify-between gap-4 font-mono text-[10px] uppercase tracking-[0.12em]">
+              <span>
+                Showing {postings.length} of {matchedCount} · Sorted by date
+              </span>
+              <span>All data stays in your account</span>
+            </div>
+          )}
+          {/* Logo.dev's free tier asks for a link back where its logos are
+              shown (ADR 0011). */}
+          <p className="text-xs">
+            Logos by{" "}
+            <a
+              href="https://logo.dev"
+              className="underline hover:text-text-body"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Logo.dev
+            </a>
+            .
+          </p>
         </footer>
       </main>
     </>
