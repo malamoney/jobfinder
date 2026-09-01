@@ -1,4 +1,4 @@
-import { desc, isNotNull, sql } from "drizzle-orm";
+import { desc, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { fetchRuns, type SourceName } from "@/db/schema";
 import {
@@ -9,6 +9,7 @@ import {
   type FetchRunId,
 } from "./fetch-run";
 import { matchAllUsers } from "./matching";
+import { pruneNonUsPostings } from "./prune";
 
 /**
  * Scheduling a Fetch: the nightly sweep, an on-demand sweep, and the status of
@@ -149,23 +150,72 @@ export async function drainFetchQueue(
 }
 
 /**
- * Drives the queue forward, and — only once the whole queue is drained —
- * rebuilds every User's Matches so overnight Postings reach their Dashboard
- * (#2, user story 20; #17).
+ * Drives the queue forward, and — only once the whole queue is drained — prunes
+ * the non-US roles stored before ADR 0010 (`pruneNonUsPostings`), then rebuilds
+ * every User's Matches so overnight Postings reach their Dashboard (#2, user
+ * story 20; #17).
  *
- * The "drain, then re-match when done" pairing lives here, at the seam, rather
- * than in each Next entry point that kicks a sweep. The caller checks
- * `remaining`: above zero, more invocations are needed and the re-match has not
- * happened yet.
+ * The prune runs *before* the re-match, so `matchAllUsers` never spends
+ * Extraction and matching on rows about to be deleted, and there is no window in
+ * which a Dashboard read could surface a non-US role the prune is about to
+ * remove. The batch is looped within a short budget so a large first backlog
+ * clears in a night or two rather than one 500-row batch per night.
+ *
+ * The "drain, then prune, then re-match when done" sequence lives here, at the
+ * seam, rather than in each Next entry point that kicks a sweep. The caller
+ * checks `remaining`: above zero, more invocations are needed and none of the
+ * three has happened yet.
  */
 export async function drainAndRematch(
   options: DrainOptions = {},
 ): Promise<DrainResult> {
   const result = await drainFetchQueue(options);
   if (result.remaining === 0) {
+    const pruned = await prunePendingNonUs();
+    if (pruned > 0) await recordNonUsPruned(pruned);
     await matchAllUsers();
   }
   return result;
+}
+
+/**
+ * How long the closing prune may keep taking batches. Small — the sweep and the
+ * re-match are the night's real work, and whatever the prune does not reach is
+ * caught by the next run.
+ */
+const PRUNE_BUDGET_MS = 10_000;
+
+/** Prunes non-US roles batch after batch until none remain or the budget is spent. */
+async function prunePendingNonUs(): Promise<number> {
+  const deadline = Date.now() + PRUNE_BUDGET_MS;
+  let total = 0;
+  let removed: number;
+  do {
+    removed = await pruneNonUsPostings();
+    total += removed;
+  } while (removed > 0 && Date.now() < deadline);
+  return total;
+}
+
+/**
+ * Tallies a prune's deletions onto the most recent run, so a run summary's
+ * `nonUsPruned` reflects the sweep that triggered it. Accumulates, because a
+ * large first backlog is pruned a batch per nightly invocation and each one
+ * lands against the same run.
+ */
+async function recordNonUsPruned(count: number): Promise<void> {
+  const db = getDb();
+  const [latest] = await db
+    .select({ id: fetchRuns.id })
+    .from(fetchRuns)
+    .orderBy(desc(fetchRuns.startedAt))
+    .limit(1);
+  if (!latest) return;
+
+  await db
+    .update(fetchRuns)
+    .set({ nonUsPruned: sql`${fetchRuns.nonUsPruned} + ${count}` })
+    .where(eq(fetchRuns.id, latest.id));
 }
 
 /** One Board that failed in a Fetch, and why. */
@@ -187,6 +237,13 @@ export type FetchRunSummary = {
   failed: number;
   /** The failed Boards with their reasons, so a dead Board can be found (#17). */
   failures: FetchFailure[];
+  /**
+   * How many roles the run's Fetches saw and did not store because their
+   * location does not place them in the US, and — separately — how many
+   * already-stored such roles the sweep's closing prune removed (ADR 0010).
+   */
+  nonUsDropped: number;
+  nonUsPruned: number;
 };
 
 /**
@@ -201,8 +258,15 @@ export type FetchRunSummary = {
 export async function readLatestFetchRun(): Promise<FetchRunSummary | null> {
   const db = getDb();
 
+  const runColumns = {
+    id: fetchRuns.id,
+    finishedAt: fetchRuns.finishedAt,
+    nonUsDropped: fetchRuns.nonUsDropped,
+    nonUsPruned: fetchRuns.nonUsPruned,
+  };
+
   const [newest] = await db
-    .select({ id: fetchRuns.id, finishedAt: fetchRuns.finishedAt })
+    .select(runColumns)
     .from(fetchRuns)
     .orderBy(desc(fetchRuns.startedAt))
     .limit(1);
@@ -212,7 +276,7 @@ export async function readLatestFetchRun(): Promise<FetchRunSummary | null> {
 
   const [describe] = running
     ? await db
-        .select({ id: fetchRuns.id })
+        .select(runColumns)
         .from(fetchRuns)
         .where(isNotNull(fetchRuns.finishedAt))
         .orderBy(desc(fetchRuns.startedAt))
@@ -228,6 +292,8 @@ export async function readLatestFetchRun(): Promise<FetchRunSummary | null> {
       succeeded: 0,
       failed: 0,
       failures: [],
+      nonUsDropped: 0,
+      nonUsPruned: 0,
     };
   }
 
@@ -247,5 +313,7 @@ export async function readLatestFetchRun(): Promise<FetchRunSummary | null> {
     succeeded: report.tasks.filter((task) => task.status === "succeeded").length,
     failed: failures.length,
     failures,
+    nonUsDropped: describe.nonUsDropped,
+    nonUsPruned: describe.nonUsPruned,
   };
 }

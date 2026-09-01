@@ -53,9 +53,10 @@ export async function extractPostings(
     })
     .from(postings)
     // `country is null` alongside the usual `extracted_at is null` so a Posting
-    // extracted before that field existed (ADR 0009) is picked up on the next
-    // match run rather than only on its next re-Fetch. Re-deriving the rest
-    // from the same text is idempotent, and a salary already on record is kept.
+    // stored before country was classified (ADR 0009, now enforced on ingestion
+    // by ADR 0010) is picked up on the next match run rather than only on its
+    // next re-Fetch. Re-deriving the rest from the same text is idempotent, and
+    // a salary already on record is kept.
     .where(and(scope, or(isNull(postings.extractedAt), isNull(postings.country))));
   if (pending.length === 0) return;
 
@@ -78,7 +79,7 @@ export async function extractPostings(
         salaryMax: salary ? Math.round(salary.max) : null,
         salaryPeriod: salary?.period ?? null,
         arrangements: extractArrangements(text),
-        // The geocode cache key (#12) and the country (ADR 0009), both from the
+        // The geocode cache key (#12) and the country (ADR 0010), both from the
         // location string alone rather than the joined text — a place named in
         // the description is not where the role is.
         normalizedLocation: normalizeLocation(posting.location),

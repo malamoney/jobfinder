@@ -40,7 +40,7 @@ describe("fetching a Greenhouse Board", () => {
         id: 100,
         title: "Staff Engineer, Infrastructure",
         company_name: "Acme",
-        location: { name: "Hybrid - London" },
+        location: { name: "Hybrid - Boston, MA" },
         absolute_url: "https://job-boards.greenhouse.io/acme/jobs/100",
         first_published: "2026-08-06T12:50:10-04:00",
         content: "&lt;p&gt;Build the thing.&lt;/p&gt;",
@@ -57,7 +57,7 @@ describe("fetching a Greenhouse Board", () => {
       boardId: acme.id,
       company: "Acme",
       title: "Staff Engineer, Infrastructure",
-      location: "Hybrid - London",
+      location: "Hybrid - Boston, MA",
       applyUrl: "https://job-boards.greenhouse.io/acme/jobs/100",
       postedAt: new Date("2026-08-06T12:50:10-04:00"),
     });

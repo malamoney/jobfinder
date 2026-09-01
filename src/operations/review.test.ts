@@ -288,7 +288,7 @@ describe("an unresolved location on the Posting page", () => {
     const postingId = await corpusHas([
       greenhouseJob({
         id: 1,
-        location: { name: "Undisclosed location" },
+        location: { name: "Undisclosed location, USA" },
         content: "&lt;p&gt;This is an onsite role.&lt;/p&gt;",
       }),
     ]);
@@ -309,16 +309,9 @@ describe("an unresolved location on the Posting page", () => {
     expect((await readPosting(userId, postingId))?.unresolvedLocation).toBe(true);
   });
 
-  it("does not flag a Posting the Source gave no location for", async () => {
-    const postingId = await corpusHas([
-      greenhouseJob({ id: 1, location: null }),
-    ]);
-    const userId = await givenAUser();
-
-    expect((await readPosting(userId, postingId))?.unresolvedLocation).toBe(
-      false,
-    );
-  });
+  // A Posting the Source gave no location for is dropped at ingestion now — a
+  // null location classifies as `unknown`, and the Corpus keeps only `us`
+  // (ADR 0010) — so there is no such Posting to flag or not flag.
 });
 
 describe("reading a Posting that is not there", () => {

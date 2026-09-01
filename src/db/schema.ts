@@ -161,10 +161,13 @@ export const postings = pgTable(
       .notNull()
       .default([]),
     // Whether the location text places this role in the United States — `us`,
-    // `non-us`, or `unknown` (`@/postings/country`). Read by the "United States
-    // only" funnel stage, which — unlike every other derived stage — excludes
-    // on `unknown` too (ADR 0009). Null until Extraction has run; a re-Fetch
-    // clears it with the other derived fields.
+    // `non-us`, or `unknown` (`@/postings/country`). Written on ingestion, like
+    // `dedup_key`: `reconcileBoard` classifies every fetched role and stores
+    // only the `us` ones (ADR 0010), so this reads `us` for every row a Fetch
+    // wrote after that gate existed. Extraction re-derives it from the same
+    // text (idempotent), and a re-Fetch refreshes it. Null only on a row
+    // ingested before ADR 0009, until the prune or the next match run classifies
+    // it.
     country: text("country").$type<Country>(),
     extractedAt: timestamp("extracted_at", { withTimezone: true }),
   },
@@ -253,6 +256,14 @@ export const fetchRuns = pgTable("fetch_runs", {
     .notNull()
     .defaultNow(),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
+
+  // How many roles this run's Fetches saw and did not store because their
+  // location text does not place them in the United States (ADR 0010). A tally
+  // rather than rows — the Postings are never written — accumulated across every
+  // Board the run swept. `non_us_pruned` is the matching figure for the sweep's
+  // closing prune of roles that were stored before the ingestion gate existed.
+  nonUsDropped: integer("non_us_dropped").notNull().default(0),
+  nonUsPruned: integer("non_us_pruned").notNull().default(0),
 });
 
 /** A Fetch run as stored. */
@@ -364,9 +375,9 @@ export const criteria = pgTable("criteria", {
   homeLocation: text("home_location"),
   radiusMiles: integer("radius_miles"),
   minSalary: integer("min_salary"),
-  // "United States only": drop every role the location text does not place in
-  // the US — a foreign one, and a remote or unplaced one alike (ADR 0009).
-  usOnly: boolean("us_only").notNull().default(false),
+  // There is no "United States only" Criterion any more: the Corpus holds only
+  // US-based roles by ingestion policy (ADR 0010), so a per-User toggle for it
+  // could only ever be on. ADR 0009 recorded the toggle; ADR 0010 supersedes it.
 
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

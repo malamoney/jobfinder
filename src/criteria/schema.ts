@@ -148,10 +148,9 @@ export const criteriaInput = z
       .int(MESSAGES.salaryWhole)
       .nonnegative(MESSAGES.salaryNonNegative)
       .nullish(),
-    // Off unless the User ticks it. On, Matching drops every role its location
-    // text does not place in the United States — including remote ones and ones
-    // that name no place (ADR 0009).
-    usOnly: z.boolean().default(false),
+    // There is no "United States only" field: the Corpus holds only US-based
+    // roles by ingestion policy (ADR 0010, superseding ADR 0009), so Matching
+    // has nothing left to filter on that axis.
   })
   .superRefine((value, ctx) => {
     if (!value.arrangements || !acceptsDistanceRole(value.arrangements)) return;
@@ -180,7 +179,6 @@ export const criteriaInput = z
       homeLocation: distance ? (value.homeLocation ?? null) : null,
       radiusMiles: distance ? (value.radiusMiles ?? null) : null,
       minSalary: value.minSalary ?? null,
-      usOnly: value.usOnly,
     };
   });
 

@@ -225,7 +225,7 @@ describe("fetching a Lever Board", () => {
       leverPosting({
         id: "33538a2f-d27d-4a96-8f05-fa4b0e4d940e",
         text: "Staff Engineer, Infrastructure",
-        categories: { location: "London", allLocations: ["London"] },
+        categories: { location: "Boston, MA", allLocations: ["Boston, MA"] },
         workplaceType: "hybrid",
         createdAt: 1_775_000_000_000,
         hostedUrl: "https://jobs.lever.co/acme/33538a2f",
@@ -238,7 +238,7 @@ describe("fetching a Lever Board", () => {
       source: "lever",
       sourceId: "33538a2f-d27d-4a96-8f05-fa4b0e4d940e",
       title: "Staff Engineer, Infrastructure",
-      location: "Hybrid - London",
+      location: "Hybrid - Boston, MA",
       applyUrl: "https://jobs.lever.co/acme/33538a2f",
       postedAt: new Date(1_775_000_000_000),
     });
@@ -377,11 +377,11 @@ describe("fetching an Ashby Board", () => {
   it("names the other locations a job is open in", async () => {
     ashbyBoardReturns("acme", [
       ashbyJob({
-        location: "Berlin",
+        location: "Austin, TX",
         workplaceType: "Hybrid",
         secondaryLocations: [
-          { location: "Munich" },
-          { location: "Vienna" },
+          { location: "Denver, CO" },
+          { location: "Seattle, WA" },
         ],
       }),
     ]);
@@ -389,7 +389,7 @@ describe("fetching an Ashby Board", () => {
     await fetchBoard(acme);
 
     expect((await listPostings())[0].location).toBe(
-      "Hybrid - Berlin / Munich / Vienna",
+      "Hybrid - Austin, TX / Denver, CO / Seattle, WA",
     );
   });
 
@@ -562,16 +562,16 @@ describe("fetching a Workable Board", () => {
     workableBoardReturns("acme", [
       workableJob({
         telecommuting: true,
-        city: "London",
-        state: null,
-        country: "United Kingdom",
+        city: "Austin",
+        state: "Texas",
+        country: "United States",
       }),
     ]);
 
     await fetchBoard(acme);
 
     expect((await listPostings())[0].location).toBe(
-      "Remote - London, United Kingdom",
+      "Remote - Austin, Texas, United States",
     );
   });
 });
@@ -589,7 +589,7 @@ describe("fetching a Recruitee Board", () => {
         id: 2_721_461,
         title: "Staff Engineer, Infrastructure",
         company_name: "Acme",
-        location: "Amsterdam, Noord-Holland, Netherlands",
+        location: "Austin, Texas, United States",
         remote: false,
         hybrid: true,
         careers_url: "https://jobs.acme.com/o/staff-engineer",
@@ -605,7 +605,7 @@ describe("fetching a Recruitee Board", () => {
       sourceId: "2721461",
       company: "Acme",
       title: "Staff Engineer, Infrastructure",
-      location: "Hybrid - Amsterdam, Noord-Holland, Netherlands",
+      location: "Hybrid - Austin, Texas, United States",
       applyUrl: "https://jobs.acme.com/o/staff-engineer",
       // Recruitee dates are not ISO 8601; parsed rather than dropped.
       postedAt: new Date("2026-08-25T11:59:25Z"),

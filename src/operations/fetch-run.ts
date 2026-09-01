@@ -328,7 +328,18 @@ async function commitFetch(
       return false;
     }
 
-    await reconcileBoard(tx, task.board, fetched);
+    const nonUsDropped = await reconcileBoard(tx, task.board, fetched);
+    if (nonUsDropped > 0) {
+      // Tallied onto the run in the same transaction as the outcome, so a run
+      // summary's count of roles skipped for being non-US (ADR 0010) is exact
+      // even when several Workers sweep in parallel.
+      await tx
+        .update(fetchRuns)
+        .set({
+          nonUsDropped: sql`${fetchRuns.nonUsDropped} + ${nonUsDropped}`,
+        })
+        .where(eq(fetchRuns.id, task.runId));
+    }
     return true;
   });
 }

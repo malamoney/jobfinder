@@ -41,7 +41,8 @@ _Avoid_: Job board, index
 
 **Corpus**:
 The full set of Postings held in the database, fetched once and shared by all Users rather than
-fetched per User.
+fetched per User. Holds only roles the location text places in the United States — a Fetch drops
+the rest before storing them (ADR 0010).
 _Avoid_: Index, cache, pool
 
 **Fetch**:
@@ -55,8 +56,9 @@ _Avoid_: Parsing, enrichment, cleaning
 
 **Country**:
 Whether a Posting's location text places the role in the United States: `us`, `non-us`, or
-`unknown`. Extracted from the location string. Read only by the "United States only" Criterion,
-which — alone among the funnel's stages — excludes `unknown` as well as `non-us` (ADR 0009).
+`unknown`. Classified from the location string on ingestion, and only `us` roles are stored
+(ADR 0010) — so it reads `us` for every row a Fetch wrote, and `non-us` / `unknown` / null only on
+rows stored before that policy, which the sweep's closing prune removes.
 _Avoid_: Region, nationality, locale
 
 **Source Key**:
@@ -141,9 +143,9 @@ _Avoid_: Lock, lease, reservation
 
 **Criteria**:
 A User's stated definition of the work they want: titles, keywords, Arrangements, location bounds,
-minimum salary, and a "United States only" toggle. Minimum salary excludes only Postings that
-*state* a salary below it; Postings with no stated salary always pass. "United States only" is the
-exception to that leniency — it drops a Posting whose Country is `non-us` *or* `unknown` (ADR 0009).
+and a minimum salary. Minimum salary excludes only Postings that *state* a salary below it;
+Postings with no stated salary always pass. There is no country Criterion — the Corpus is US-only
+by ingestion policy (ADR 0010), so every role a User could match is already US-based.
 _Avoid_: Filters, preferences, settings, query
 
 **Match**:

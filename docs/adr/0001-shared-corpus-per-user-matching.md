@@ -14,3 +14,11 @@ Boards we track, independent of how many people use the app.
   first-class operation rather than something that only happens at Fetch time.
 - A User can only ever see what the last Fetch collected, so "Run Now" cannot mean "search the
   sources for me right now" without reintroducing the per-User cost this decision avoids.
+
+## Amendment (ADR 0010)
+
+The Fetch is no longer entirely Criteria-blind. [ADR 0010](0010-us-only-corpus.md) bakes in one
+standing geographic policy — the Corpus stores only US-based roles — because the sole User's
+"US only" stance is fixed and storing the roles they will never see wastes the free-tier database.
+The Corpus is still fetched once and shared, and per-User Criteria still govern everything else;
+what changed is that "without regard for anyone's Criteria" now has a single, hard-coded exception.

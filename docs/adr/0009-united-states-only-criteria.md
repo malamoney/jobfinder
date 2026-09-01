@@ -1,5 +1,12 @@
 # "United States only" Criteria, over a country derived from location text
 
+> **Superseded by [ADR 0010](0010-us-only-corpus.md).** The sole User wants US-only roles as a
+> standing fact, not a per-search choice, so the filter moved from a Matching stage to an ingestion
+> gate: the Corpus now stores only `us` roles and the toggle is gone. The `country` classifier and
+> the `us` / `non-us` / `unknown` vocabulary this ADR introduced are unchanged and still carry the
+> decision — read below for why the signal lives in the location text and why `unknown` is treated
+> like `non-us`.
+
 A User can tick "United States only" in their Criteria. When it is on, Matching drops every Posting
 whose location text does not place it in the United States — a role based abroad, a remote role,
 and a role that names no place, all together.

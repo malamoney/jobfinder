@@ -180,6 +180,16 @@ function LastFetchLine({ fetch }: { fetch: FetchRunSummary | null }) {
           <span className="text-gray-500"> · another fetch is running</span>
         )}
       </p>
+      {fetch.nonUsPruned > 0 && (
+        // A one-time cleanup that trends to zero: roles stored before the corpus
+        // went US-only (ADR 0010) are being removed a batch per sweep. The
+        // steady-state count of foreign roles the sources still list and this
+        // sweep skipped is on the run record but not shown — it never changes.
+        <p className="text-gray-500">
+          Removed {fetch.nonUsPruned} non-US role
+          {fetch.nonUsPruned === 1 ? "" : "s"} stored before the US-only change.
+        </p>
+      )}
       {fetch.failures.length > 0 && (
         <details className="text-gray-600">
           <summary className="cursor-pointer text-amber-700">
