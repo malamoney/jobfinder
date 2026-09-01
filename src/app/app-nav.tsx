@@ -11,6 +11,10 @@ import { logOutAction } from "./actions";
  * Each page passes which entry it is (`active`), for the current-page marker; a
  * page with no entry of its own — a Posting — passes nothing. Pages that render
  * it leave room at the top (`pt-24`) so their content clears the bar.
+ *
+ * The inner container is the same `mx-auto max-w-6xl px-6` every page behind the
+ * login uses for its own shell (ADR 0012), so the mark here and a page's content
+ * share a left edge at every width.
  */
 
 const LINKS = [
