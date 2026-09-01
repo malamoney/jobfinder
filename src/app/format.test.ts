@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  cardLocation,
   companyIconSrc,
   companyMonogram,
   employmentLabels,
   formatAge,
   formatSalary,
+  LOCATION_NOT_GIVEN,
+  MULTIPLE_LOCATIONS,
   SALARY_NOT_LISTED,
   workplaceLabels,
 } from "./format";
@@ -146,6 +149,48 @@ describe("the employment Arrangement tag", () => {
   it("is empty when the text named no employment commitment", () => {
     expect(employmentLabels({ arrangements: [] })).toEqual([]);
     expect(employmentLabels({ arrangements: ["remote"] })).toEqual([]);
+  });
+});
+
+/**
+ * A Posting's location as a Dashboard card shows it (#75) — the field that was
+ * breaking the card's uniform height, either because a Source joined several
+ * offices into one string or because a single one just ran long. The long
+ * single case is left to CSS (`.truncate`), not truncated here, so it stays
+ * correct at every grid width.
+ */
+describe("a Posting's location on a Dashboard card", () => {
+  it("leaves a single, plainly-written location alone", () => {
+    expect(cardLocation("Cambridge, MA USA")).toBe("Cambridge, MA USA");
+    expect(cardLocation("Remote (United States)")).toBe(
+      "Remote (United States)",
+    );
+  });
+
+  it("collapses a slash-joined list of offices to one line", () => {
+    expect(
+      cardLocation(
+        "Fort Lauderdale, Florida, United States / Miami, Florida, United States / Boca Raton, Florida, United States",
+      ),
+    ).toBe(MULTIPLE_LOCATIONS);
+  });
+
+  it("collapses a semicolon-joined list of offices to one line", () => {
+    expect(
+      cardLocation(
+        "Washington, D.C.; Austin, TX; Baltimore, MD; Chicago, IL; Atlanta, GA",
+      ),
+    ).toBe(MULTIPLE_LOCATIONS);
+  });
+
+  it("is not fooled by a single location that merely contains a comma", () => {
+    expect(cardLocation("Austin, Texas, United States")).toBe(
+      "Austin, Texas, United States",
+    );
+  });
+
+  it("falls back when the Posting states no location", () => {
+    expect(cardLocation(null)).toBe(LOCATION_NOT_GIVEN);
   });
 });
 
