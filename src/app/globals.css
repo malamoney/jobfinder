@@ -7,9 +7,9 @@
  * use the Tailwind utilities the `@theme` block builds from these
  * (`bg-surface`, `border-border`, `text-label`, the accent trio, …), which
  * resolve through the variable live, so the whole app repaints when
- * `data-theme` flips. The theme toggle that flips it comes in #79; for now
- * `<html>` is a static `data-theme="dark"` and the light values are reachable
- * by hand.
+ * `data-theme` flips. `layout.tsx` sets `data-theme` from the `theme` cookie on
+ * the server (#79); the nav's LIGHT / DARK toggle writes that cookie and flips
+ * the attribute.
  */
 :root {
   /* Dark is the shipping theme — tell the UA so form controls, scrollbars,

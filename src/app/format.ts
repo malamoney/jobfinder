@@ -3,6 +3,7 @@ import {
   LOCATION_ARRANGEMENTS,
 } from "@/criteria/schema";
 import type { Posting } from "@/db/schema";
+import type { Theme } from "./theme";
 
 /**
  * How the app writes a date where a person will read it.
@@ -233,7 +234,11 @@ const LOGODEV_MAX_SIZE = 800;
  * Null when there is no name to look up or no token configured — the caller
  * shows a monogram.
  */
-export function companyIconSrc(company: string, size: number): string | null {
+export function companyIconSrc(
+  company: string,
+  size: number,
+  theme: Theme,
+): string | null {
   const name = company.trim();
   if (!name || !LOGODEV_TOKEN) return null;
 
@@ -243,11 +248,12 @@ export function companyIconSrc(company: string, size: number): string | null {
     format: "png",
     strategy: "match",
     fallback: "404",
-    // The icon sits on the dark `--field` disc in the shipping dark theme, so
-    // ask for the version of a monochrome mark that reads on a dark ground —
-    // otherwise GitHub, Notion and the like paint black-on-black. When the
-    // light theme lands (#79) this needs to track `data-theme`.
-    theme: "dark",
+    // The icon sits on the `--field` disc, which is near-black in dark and white
+    // in light. Ask Logo.dev for the version of a monochrome mark (GitHub,
+    // Notion, …) that reads on that ground, so it never paints black-on-black or
+    // white-on-white. Tracks the theme cookie via the `theme` prop the caller
+    // threads down from the server (#79).
+    theme,
   });
   return `https://img.logo.dev/name/${encodeURIComponent(name)}?${params}`;
 }

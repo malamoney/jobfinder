@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { logOutAction } from "./actions";
+import { readTheme } from "./theme-server";
+import { ThemeToggle } from "./theme-toggle";
 
 /**
  * The navigation on every page behind a login.
@@ -15,6 +17,9 @@ import { logOutAction } from "./actions";
  * The inner container is the same `mx-auto max-w-6xl px-6` every page behind the
  * login uses for its own shell (ADR 0012), so the mark here and a page's content
  * share a left edge at every width.
+ *
+ * The right edge carries the LIGHT / DARK toggle (#79) and, next to it, a
+ * placeholder avatar disc — where an account menu will go.
  */
 
 const LINKS = [
@@ -24,7 +29,9 @@ const LINKS = [
 
 type NavKey = (typeof LINKS)[number]["key"];
 
-export function AppNav({ active }: { active?: NavKey }) {
+export async function AppNav({ active }: { active?: NavKey }) {
+  const theme = await readTheme();
+
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-border bg-chrome/85 backdrop-blur">
       <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-6">
@@ -56,6 +63,14 @@ export function AppNav({ active }: { active?: NavKey }) {
               Log out
             </button>
           </form>
+
+          <ThemeToggle theme={theme} />
+
+          {/* Placeholder for the account menu. */}
+          <span
+            aria-hidden
+            className="size-7 shrink-0 rounded-full border border-border bg-field"
+          />
         </div>
       </nav>
     </header>
