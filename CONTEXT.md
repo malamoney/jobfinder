@@ -169,3 +169,14 @@ _Avoid_: Bookmark, flag, interaction
 Where a Posting sits in a User's review pipeline: `new`, `interested`, `not_interested`, or
 `applied`. Exactly one at a time.
 _Avoid_: Favorite, bookmarked, starred, saved, archived
+
+### Presentation
+
+**Company icon**:
+The small square mark shown for a Board's company in the corner of a Dashboard card. Resolved by
+company name through Logo.dev and loaded straight from its CDN — never stored, and no sweep resolves
+it, because the CDN is already the cache (ADR 0011). A company Logo.dev cannot place falls back to a
+**monogram** — the company's first initial on a neutral disc — so a card never shows a broken image
+or waits on the lookup. The apply URL cannot be used for this: it points at the applicant-tracking
+host, whose favicon is the ATS's mark, not the company's.
+_Avoid_: Logo, favicon, avatar, brand mark

@@ -13,6 +13,7 @@ import {
 } from "@/operations";
 import { REVIEW_STATUSES, STATUS_LABELS } from "@/review/schema";
 import { AppNav } from "../app-nav";
+import { CompanyIcon } from "../company-icon";
 import {
   formatDateTime,
   formatDay,
@@ -144,6 +145,21 @@ export default async function DashboardPage({
             )}
           </>
         )}
+
+        {/* Logo.dev's free tier asks for a link back where its logos are shown
+            (ADR 0011). */}
+        <footer className="mt-auto pt-4 text-xs text-gray-400">
+          Logos by{" "}
+          <a
+            href="https://logo.dev"
+            className="underline hover:text-gray-600"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Logo.dev
+          </a>
+          .
+        </footer>
       </main>
     </>
   );
@@ -231,14 +247,17 @@ function PostingCard({ posting }: { posting: DashboardPosting }) {
   return (
     <li className="flex flex-col gap-3 rounded-lg border border-gray-200 p-4">
       <div className="flex items-start justify-between gap-3">
-        <div className="flex flex-col gap-0.5">
-          <Link
-            href={`/postings/${posting.id}`}
-            className="font-medium text-gray-900 underline"
-          >
-            {posting.title}
-          </Link>
-          <span className="text-sm text-gray-600">{posting.company}</span>
+        <div className="flex items-start gap-3">
+          <CompanyIcon company={posting.company} />
+          <div className="flex flex-col gap-0.5">
+            <Link
+              href={`/postings/${posting.id}`}
+              className="font-medium text-gray-900 underline"
+            >
+              {posting.title}
+            </Link>
+            <span className="text-sm text-gray-600">{posting.company}</span>
+          </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           {workplaceLabels(posting).map((label) => (
