@@ -38,6 +38,14 @@ const FILTERS: { key: DashboardFilter | "open"; label: string }[] = [
 /** The `?status=` values `readDashboard` understands. */
 const FILTER_VALUES = new Set<string>([...REVIEW_STATUSES, "all"]);
 
+/**
+ * The most matched Keywords a card shows before collapsing the rest into a
+ * "+N" pill. A card is a triage glance, not the record — the full list is on
+ * the Posting page — and an unbounded row of pills is the other thing (besides
+ * the title) that pushes a card past its standard height (#75).
+ */
+const MAX_CARD_KEYWORDS = 6;
+
 /** The filter a `?status=` value names, or undefined for the default view. */
 function parseFilter(raw: string | undefined): DashboardFilter | undefined {
   return raw && FILTER_VALUES.has(raw) ? (raw as DashboardFilter) : undefined;
@@ -254,12 +262,18 @@ function Empty({ message, cta }: { message: string; cta: string }) {
  * A row of cards is uneven otherwise (#75): a short card's Apply button sits
  * high, a long one's low, and the effect got worse as the redesign added rows
  * (salary, location, keywords) a plain fact list didn't have. Two rules fix
- * it — `min-h-80` gives every card a floor (a grid row still stretches every
- * `<li>` in it to the tallest one, so a genuinely longer card, and its row,
- * simply grows past the floor rather than clipping), and the footer's
- * `mt-auto` pushes it to the card's bottom, so whatever slack a short card has
- * collects in the one place it reads as intentional — between the tags/
- * keywords and the divider — rather than trailing below the Apply button.
+ * it — `min-h-80` gives every card a floor, and the footer's `mt-auto` pushes
+ * it to the card's bottom so whatever slack a short card has collects between
+ * the tags/keywords and the divider rather than trailing below the Apply
+ * button.
+ *
+ * The two things that varied a card's height most are bounded so a row rarely
+ * has to grow past the floor at all: the title is clamped to two lines
+ * (`line-clamp-2`, full text on the Posting page it links to), and the matched
+ * Keywords stop at `MAX_CARD_KEYWORDS` with a "+N" pill for the rest. A grid
+ * row still stretches every `<li>` in it to the tallest, so a card that does
+ * exceed the floor — many Arrangement tags, mostly — grows its row uniformly
+ * rather than clipping.
  */
 function PostingCard({ posting }: { posting: DashboardPosting }) {
   const savable = posting.status === "new" || posting.status === "interested";
@@ -293,7 +307,8 @@ function PostingCard({ posting }: { posting: DashboardPosting }) {
         </div>
         <Link
           href={`/postings/${posting.id}`}
-          className="text-lg font-semibold leading-snug tracking-tight text-gray-900 hover:underline"
+          title={posting.title}
+          className="line-clamp-2 text-lg font-semibold leading-snug tracking-tight text-gray-900 hover:underline"
         >
           {posting.title}
         </Link>
@@ -303,7 +318,7 @@ function PostingCard({ posting }: { posting: DashboardPosting }) {
 
       {posting.matchedKeywords.length > 0 && (
         <ul className="flex flex-wrap gap-1.5">
-          {posting.matchedKeywords.map((keyword) => (
+          {posting.matchedKeywords.slice(0, MAX_CARD_KEYWORDS).map((keyword) => (
             <li
               key={keyword}
               className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700"
@@ -311,6 +326,14 @@ function PostingCard({ posting }: { posting: DashboardPosting }) {
               {keyword}
             </li>
           ))}
+          {posting.matchedKeywords.length > MAX_CARD_KEYWORDS && (
+            <li
+              title={posting.matchedKeywords.join(", ")}
+              className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500"
+            >
+              +{posting.matchedKeywords.length - MAX_CARD_KEYWORDS}
+            </li>
+          )}
         </ul>
       )}
 
