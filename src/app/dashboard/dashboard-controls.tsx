@@ -2,32 +2,30 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import {
-  fetchNowAction,
-  runMatchingAction,
-  type DashboardActionResult,
-} from "./actions";
+import { fetchNowAction, type DashboardActionResult } from "./actions";
 
-/** Shown when an action fails for a reason it did not give one for. */
+/** Shown when the action fails for a reason it did not give one for. */
 const INFRA_FAILURE = "Something went wrong. Try again in a moment.";
 
 /**
- * "Run matching now" and "Fetch new postings" (#17).
+ * The "Filters" / "Run scan now" pair in the Dashboard header (canvas 3a).
  *
- * Both run through a Server Action and then refresh the page, so what shows
- * always matches what the server did. A message — the outcome, or a cooldown
- * refusal — appears in place rather than navigating away.
+ * "Filters" jumps to the filter chip row (`#filters`) — shown only when there
+ * is a row to jump to. "Run scan now" triggers a real Corpus sweep through a
+ * Server Action, cooldown-guarded server-side, then refreshes so the kicker
+ * reflects it. The outcome — started, or a cooldown refusal — appears under the
+ * buttons rather than navigating away.
  */
-export function DashboardControls() {
+export function DashboardControls({ showFilters }: { showFilters: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [result, setResult] = useState<DashboardActionResult | null>(null);
 
-  function run(action: () => Promise<DashboardActionResult>) {
+  function runScan() {
     setResult(null);
     start(async () => {
       try {
-        const outcome = await action();
+        const outcome = await fetchNowAction();
         setResult(outcome);
         if (outcome.ok) router.refresh();
       } catch {
@@ -37,30 +35,32 @@ export function DashboardControls() {
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap gap-2">
+    <div className="flex flex-col items-end gap-1.5">
+      <div className="flex gap-2">
+        {showFilters && (
+          <a
+            href="#filters"
+            className="rounded-control border border-border px-3.5 py-[7px] text-[12.5px] text-label hover:text-text"
+          >
+            Filters
+          </a>
+        )}
         <button
           type="button"
-          onClick={() => run(runMatchingAction)}
+          onClick={runScan}
           disabled={pending}
-          className="rounded-md border border-border px-3 py-1.5 text-sm font-medium disabled:opacity-60"
+          className="rounded-control border border-accent-edge bg-accent-wash px-3.5 py-[7px] text-[12.5px] font-medium text-accent-text disabled:border-border disabled:bg-transparent disabled:text-label"
         >
-          Run matching now
-        </button>
-        <button
-          type="button"
-          onClick={() => run(fetchNowAction)}
-          disabled={pending}
-          className="rounded-md border border-border px-3 py-1.5 text-sm font-medium disabled:opacity-60"
-        >
-          Fetch new postings
+          {pending ? "Scanning…" : "Run scan now"}
         </button>
       </div>
       {result && (
         <p
           role="status"
           aria-live="polite"
-          className={`text-sm ${result.ok ? "text-ok" : "text-danger"}`}
+          className={`max-w-xs text-right text-[12.5px] ${
+            result.ok ? "text-ok" : "text-danger"
+          }`}
         >
           {result.message}
         </p>

@@ -14,7 +14,7 @@ import {
 import { REVIEW_STATUSES, STATUS_LABELS } from "@/review/schema";
 import { AppNav } from "../app-nav";
 import { CompanyIcon } from "../company-icon";
-import { cardLocation, formatAge, formatDateTime, formatSalary } from "../format";
+import { cardLocation, formatAge, formatDay, formatSalary } from "../format";
 import { PostingTags } from "../posting-tags";
 import { readTheme } from "../theme-server";
 import type { Theme } from "../theme";
@@ -83,17 +83,21 @@ export default async function DashboardPage({
     <>
       <AppNav active="dashboard" />
       <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 pb-16 pt-20">
-        <header className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-text-body">
-            Signed in as {signedIn.email}.
-          </p>
+        {/* Canvas 3a: a mono fetch kicker over a weight-500 title, with the
+            "Filters" / "Run scan now" pair on the right. The kicker carries the
+            sweep facts #17 needs (how many boards, when, what failed); the old
+            `--surface` status panel and the separate "Run matching now" button
+            are folded away — matching already re-runs on every Criteria save
+            and after the nightly Fetch. */}
+        <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+          <div className="flex flex-col gap-2.5">
+            <FetchKicker fetch={lastFetch} newToday={newTodayCount} />
+            <h1 className="text-[27px] font-medium leading-tight tracking-tight">
+              Matches for review
+            </h1>
+          </div>
+          <DashboardControls showFilters={Boolean(stated) && matchedCount > 0} />
         </header>
-
-        <section className="flex flex-col gap-3 rounded-card border border-border bg-surface p-4">
-          <LastFetchLine fetch={lastFetch} />
-          <DashboardControls />
-        </section>
 
         {!stated ? (
           <Empty
@@ -114,7 +118,9 @@ export default async function DashboardPage({
             />
 
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-              <nav className="flex flex-wrap gap-2">
+              {/* `scroll-mt-20` clears the 52px fixed nav when the header's
+                  "Filters" button jumps here. */}
+              <nav id="filters" className="flex scroll-mt-20 flex-wrap gap-2">
                 {FILTERS.map(({ key, label }) => {
                   const active =
                     key === "open" ? filter === undefined : filter === key;
@@ -191,52 +197,49 @@ export default async function DashboardPage({
 }
 
 /**
- * The last Fetch, so a User can tell "no new roles" from "the sweep broke"
- * (#17). A sweep in progress is noted without hiding the previous outcome, and
- * the failed Boards sit behind a disclosure — present when it matters, out of
- * the way when it does not.
+ * The mono kicker over the Dashboard title (canvas 3a): today's new matches,
+ * then the facts a User needs to tell "no new roles" from "the sweep broke"
+ * (#17) — how many Boards the last sweep covered and when it finished. A sweep
+ * running now is called out, and failed Boards sit behind a disclosure so the
+ * line stays short until something is actually wrong.
  */
-function LastFetchLine({ fetch }: { fetch: FetchRunSummary | null }) {
+function FetchKicker({
+  fetch,
+  newToday,
+}: {
+  fetch: FetchRunSummary | null;
+  newToday: number;
+}) {
+  const parts = [`${newToday} new`];
   if (!fetch) {
-    return (
-      <p className="text-sm text-text-body">
-        No fetch has run yet. The nightly sweep collects new postings at 3am.
-      </p>
+    parts.push("no sweep yet");
+  } else {
+    parts.push(`${fetch.boardCount} boards swept`);
+    parts.push(
+      fetch.finishedAt
+        ? `last sweep ${formatDay(fetch.finishedAt)}`
+        : "first sweep running",
     );
   }
 
-  const finished =
-    fetch.finishedAt === null
-      ? "The first fetch is running now."
-      : `Last fetched ${formatDateTime(fetch.finishedAt)} · ${fetch.succeeded} of ${fetch.boardCount} boards`;
-
   return (
-    <div className="flex flex-col gap-1.5 text-sm">
-      <p className="text-text-body">
-        {finished}
-        {fetch.failed > 0 && (
-          <span className="text-warn"> · {fetch.failed} failed</span>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center gap-x-2">
+        <p className="micro-label">{parts.join(" · ")}</p>
+        {fetch?.running && fetch.finishedAt && (
+          <span className="micro-label text-accent-text">· sweeping now</span>
         )}
-        {fetch.running && (
-          <span className="text-label"> · another fetch is running</span>
-        )}
-      </p>
-      {fetch.nonUsPruned > 0 && (
-        // A one-time cleanup that trends to zero: roles stored before the corpus
-        // went US-only (ADR 0010) are being removed a batch per sweep. The
-        // steady-state count of foreign roles the sources still list and this
-        // sweep skipped is on the run record but not shown — it never changes.
-        <p className="text-label">
-          Removed {fetch.nonUsPruned} non-US role
-          {fetch.nonUsPruned === 1 ? "" : "s"} stored before the US-only change.
-        </p>
-      )}
-      {fetch.failures.length > 0 && (
-        <details className="text-text-body">
-          <summary className="cursor-pointer text-warn">
-            Boards that errored
+      </div>
+      {fetch && fetch.failures.length > 0 && (
+        // Its own line below the facts, so opening it never reflows the kicker.
+        <details className="group">
+          <summary className="micro-label cursor-pointer list-none text-warn marker:content-none">
+            {fetch.failed} failed{" "}
+            <span className="inline-block transition-transform group-open:rotate-90">
+              ▸
+            </span>
           </summary>
-          <ul className="mt-1 flex flex-col gap-1">
+          <ul className="mt-2 flex flex-col gap-1 text-[12.5px]">
             {fetch.failures.map((failure) => (
               <li key={`${failure.source}/${failure.slug}`}>
                 <span className="font-mono font-medium text-text">

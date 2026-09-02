@@ -6,22 +6,29 @@ import { AppNav } from "../app-nav";
  * Next renders this in place of `page.tsx` while the server component is still
  * resolving — the User's Criteria, their Matches, and the latest Fetch run are
  * three database reads. The nav is kept so the chrome does not flash, and the
- * body mirrors the real page's shape — header line, stat strip, a grid of three
- * cards — so the layout does not jump when the data arrives.
+ * body mirrors the real page's shape — kicker, title, stat strip, a grid of
+ * three cards — so the layout does not jump when the data arrives.
  */
 export default function DashboardLoading() {
   return (
     <>
       <AppNav active="dashboard" />
       <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 pb-16 pt-20">
-        <header className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          {/* Stands in for the "Signed in as …" line the loaded page renders,
-              so the content below keeps its vertical position. */}
-          <span
-            aria-hidden
-            className="h-4 w-52 animate-pulse rounded bg-border"
-          />
+        <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+          <div className="flex flex-col gap-2.5">
+            {/* Stands in for the fetch kicker, so the title below holds its spot. */}
+            <span
+              aria-hidden
+              className="h-2.5 w-56 animate-pulse rounded bg-border"
+            />
+            <h1 className="text-[27px] font-medium leading-tight tracking-tight">
+              Matches for review
+            </h1>
+          </div>
+          <div className="flex gap-2" aria-hidden>
+            <span className="h-8 w-16 animate-pulse rounded-control bg-border" />
+            <span className="h-8 w-28 animate-pulse rounded-control bg-border" />
+          </div>
         </header>
 
         <div className="flex animate-pulse flex-col gap-6" aria-hidden>
