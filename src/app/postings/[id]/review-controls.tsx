@@ -13,6 +13,7 @@ import {
   type SettableStatus,
 } from "@/review/schema";
 import { formatDay } from "../../format";
+import { MonoLabel } from "../../mono-label";
 import { setNotesAction, setStatusAction } from "./actions";
 
 /** Shown when a write fails for a reason that is not a validation message. */
@@ -82,17 +83,24 @@ export function ReviewControls({ postingId, review }: ReviewControlsProps) {
 
   const notesChanged = normalizedNotes(notes) !== review.notes;
 
+  // Canvas 4a: a "APPLIED · AUG 24" status line in `--accent-text`, shown once
+  // the User has actually placed the Posting somewhere — "NEW" in the accent
+  // tone would read as a decision that has not been made.
+  const decided = review.status !== "new";
+
   return (
-    <section className="flex flex-col gap-6 rounded-lg border border-border bg-surface p-4">
-      <div className="flex flex-col gap-2">
+    <section className="flex flex-col gap-[22px] rounded-card border border-border bg-surface p-4">
+      <div className="flex flex-col gap-2.5">
         <div className="flex items-baseline justify-between gap-3">
-          <h2 className="text-sm font-medium">Your review</h2>
-          <span className="text-xs text-label">
-            {STATUS_LABELS[review.status]}
-            {review.status === "applied" && review.appliedAt
-              ? ` · ${formatDay(review.appliedAt)}`
-              : ""}
-          </span>
+          <MonoLabel as="p">Your review</MonoLabel>
+          {decided && (
+            <MonoLabel tone="accent">
+              {STATUS_LABELS[review.status]}
+              {review.status === "applied" && review.appliedAt
+                ? ` · ${formatDay(review.appliedAt)}`
+                : ""}
+            </MonoLabel>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           {SETTABLE_STATUSES.map((status) => {
@@ -104,10 +112,10 @@ export function ReviewControls({ postingId, review }: ReviewControlsProps) {
                 onClick={() => chooseStatus(status)}
                 disabled={pendingStatus}
                 aria-pressed={active}
-                className={`rounded-md border px-3 py-1.5 text-sm font-medium disabled:opacity-60 ${
+                className={`rounded-control border px-3.5 py-[7px] text-[12.5px] disabled:opacity-60 ${
                   active
                     ? "border-accent-edge bg-accent-wash text-accent-text"
-                    : "border-border"
+                    : "border-border text-label"
                 }`}
               >
                 {STATUS_LABELS[status]}
@@ -115,13 +123,13 @@ export function ReviewControls({ postingId, review }: ReviewControlsProps) {
             );
           })}
         </div>
-        <p role="alert" aria-live="polite" className="text-sm text-danger">
+        <p role="alert" aria-live="polite" className="text-[12.5px] text-danger">
           {statusError}
         </p>
       </div>
 
-      <label className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium">Notes</span>
+      <label className="flex flex-col gap-2">
+        <MonoLabel>Notes</MonoLabel>
         <textarea
           value={notes}
           onChange={(event) => {
@@ -131,13 +139,13 @@ export function ReviewControls({ postingId, review }: ReviewControlsProps) {
           }}
           rows={4}
           placeholder="A contact name, a referral, why you passed."
-          className="rounded-md border border-border bg-field px-3 py-2 text-base"
+          className="rounded-control border border-border bg-field px-3 py-2.5 text-[13.5px] text-text"
         />
-        <p role="alert" aria-live="polite" className="text-sm text-danger">
+        <p role="alert" aria-live="polite" className="text-[12.5px] text-danger">
           {notesError}
         </p>
         {savedNotes && !notesChanged && (
-          <p aria-live="polite" className="text-sm text-ok">
+          <p aria-live="polite" className="text-[12.5px] text-ok">
             Saved.
           </p>
         )}
@@ -145,7 +153,7 @@ export function ReviewControls({ postingId, review }: ReviewControlsProps) {
           type="button"
           onClick={saveNotes}
           disabled={pendingNotes || !notesChanged}
-          className="self-start rounded-md border border-border px-4 py-2 text-sm font-medium disabled:opacity-60"
+          className="self-start rounded-control border border-border px-3.5 py-[7px] text-[12.5px] font-medium disabled:text-disabled"
         >
           {pendingNotes ? "Saving…" : "Save notes"}
         </button>

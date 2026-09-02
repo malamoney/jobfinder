@@ -19,7 +19,7 @@ export {
   type BoardEntry,
   type CuratedBoard,
 } from "./boards";
-export { readCriteria, saveCriteria } from "./criteria";
+export { readCriteria, readCriteriaSavedAt, saveCriteria } from "./criteria";
 export {
   readDashboard,
   type Dashboard,

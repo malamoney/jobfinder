@@ -109,9 +109,11 @@
 /*
  * The mono micro-label the Nocturne direction puts on every structural caption
  * (#77): a stat-strip caption, the empty-state kicker, the footer status line,
- * the loading note. 9.5px JetBrains Mono, uppercase, `.14em` tracking, in
- * `--label`. Named so the five sites that wear it cannot drift apart on size or
- * tracking the way hand-inlined values did.
+ * the loading note, the Criteria "LAST SAVED" kicker, the "SAVED" indicator.
+ * 9.5px JetBrains Mono, uppercase, `.14em` tracking, in `--label`. Named so the
+ * sites that wear it cannot drift apart on size or tracking the way hand-inlined
+ * values did. Form field labels compose it through the `MonoLabel` component
+ * (`@/app/mono-label`), which only adds an `--accent-text` tone on top.
  */
 @utility micro-label {
   font-family: var(--font-mono);
@@ -162,7 +164,9 @@
   margin-block: 0.75em;
 }
 .description :is(h1, h2, h3, h4, h5, h6) {
-  font-weight: 600;
+  /* Inter at weight 500, never heavier (#77) — the same ceiling the app's own
+     titles keep; the description just steps up from `--text-body` to `--text`. */
+  font-weight: 500;
   color: var(--text);
 }
 .description :is(ul, ol) {

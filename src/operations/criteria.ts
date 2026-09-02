@@ -42,6 +42,25 @@ export async function readCriteria(userId: string): Promise<Criteria | null> {
 }
 
 /**
+ * When a User last saved their Criteria, or null if they never have.
+ *
+ * Kept apart from `readCriteria` so that operation's return stays the stated
+ * values and nothing else — the row's timestamps are presentation, wanted only
+ * by the Criteria page's "LAST SAVED" kicker (#83). `saveCriteria` writes
+ * `updatedAt` on every upsert, so this is the time of the most recent save.
+ */
+export async function readCriteriaSavedAt(
+  userId: string,
+): Promise<Date | null> {
+  const [row] = await getDb()
+    .select({ updatedAt: criteria.updatedAt })
+    .from(criteria)
+    .where(eq(criteria.userId, userId));
+
+  return row?.updatedAt ?? null;
+}
+
+/**
  * Validates what a User entered and stores it, replacing whatever they had
  * stated before.
  *

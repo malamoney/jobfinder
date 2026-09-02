@@ -7,6 +7,7 @@ import { readPosting } from "@/operations";
 import { sanitizeDescription } from "@/postings/description";
 import { AppNav } from "../../app-nav";
 import { formatAge, formatSalary } from "../../format";
+import { MonoLabel } from "../../mono-label";
 import { PostingTags } from "../../posting-tags";
 import { ReviewControls } from "./review-controls";
 
@@ -36,28 +37,29 @@ export default async function PostingPage({
     <>
       <AppNav />
       <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 pb-16 pt-20">
-        <Link href="/dashboard" className="self-start text-sm underline">
+        <Link
+          href="/dashboard"
+          className="self-start text-[12.5px] text-label hover:text-text"
+        >
           ← Back to dashboard
         </Link>
 
         {/* The same heading and tag treatment as the Dashboard card (#63), so a
             card and the page it opens read as one product: company and age, a
-            large title, then the Arrangement and signal pills. */}
+            large title, then the Arrangement and signal pills (canvas 4a). */}
         <header className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
-            <span className="text-text-body">{posting.company}</span>
-            <span className="text-xs text-label">
-              {formatAge(posting.postedAt)}
-            </span>
+          <div className="flex flex-wrap items-baseline gap-x-2 text-[12.5px] text-label">
+            <span>{posting.company}</span>
+            <span>{formatAge(posting.postedAt)}</span>
           </div>
 
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-[27px] font-medium leading-tight tracking-tight">
             {posting.title}
           </h1>
 
           <PostingTags posting={posting} />
 
-          <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-text-body">
+          <dl className="flex flex-wrap gap-x-6 gap-y-1.5">
             <Fact label="Location" value={posting.location ?? "Not given"} />
             {/* Extraction (#11) fills salary from the Posting's text where it
                 states one; an unknown reads as "not listed", never a number (#36). */}
@@ -68,7 +70,7 @@ export default async function PostingPage({
             href={posting.applyUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="self-start rounded-md border border-accent-edge bg-accent-wash px-4 py-2 text-sm font-medium text-accent-text"
+            className="mt-1 self-start rounded-control border border-accent-edge bg-accent-wash px-3.5 py-[7px] text-[12.5px] font-medium text-accent-text"
           >
             Apply on the employer’s site
           </a>
@@ -77,7 +79,7 @@ export default async function PostingPage({
         <ReviewControls postingId={posting.id} review={posting.review} />
 
         <article
-          className="description max-w-2xl text-sm leading-relaxed"
+          className="description max-w-[620px] text-[13.5px] leading-[1.75]"
           // The HTML has been through `sanitizeDescription`: scripts, styles,
           // event handlers, and `javascript:` links do not survive it.
           dangerouslySetInnerHTML={{
@@ -100,9 +102,19 @@ function Fact({
   mono?: boolean;
 }) {
   return (
-    <div className="flex gap-1.5">
-      <dt className="text-label">{label}</dt>
-      <dd className={mono ? "font-mono" : undefined}>{value}</dd>
+    <div className="flex items-baseline gap-2">
+      <dt>
+        <MonoLabel>{label}</MonoLabel>
+      </dt>
+      <dd
+        className={
+          mono
+            ? "font-mono text-[13px] font-medium text-text"
+            : "text-[12.5px] text-label"
+        }
+      >
+        {value}
+      </dd>
     </div>
   );
 }

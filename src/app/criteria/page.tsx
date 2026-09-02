@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/auth";
-import { readCriteria } from "@/operations";
+import { readCriteria, readCriteriaSavedAt } from "@/operations";
 import { AppNav } from "../app-nav";
 import { CriteriaForm } from "./criteria-form";
 
@@ -20,12 +20,15 @@ export default async function CriteriaPage() {
   const signedIn = await currentUser(await headers());
   if (!signedIn) redirect("/login");
 
-  const stated = await readCriteria(signedIn.id);
+  const [stated, lastSavedAt] = await Promise.all([
+    readCriteria(signedIn.id),
+    readCriteriaSavedAt(signedIn.id),
+  ]);
 
   return (
     <>
       <AppNav active="criteria" />
-      <CriteriaForm initial={stated} />
+      <CriteriaForm initial={stated} lastSavedAt={lastSavedAt} />
     </>
   );
 }
