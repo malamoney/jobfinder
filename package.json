@@ -23,6 +23,7 @@
     "seed:boards": "tsx --env-file-if-exists=.env.local scripts/seed-boards.ts",
     "boards:status": "tsx --env-file-if-exists=.env.local scripts/board-health.ts",
     "warm-geocodes": "tsx --env-file-if-exists=.env.local scripts/warm-geocodes.ts",
+    "resolve-home-locations": "tsx --env-file-if-exists=.env.local scripts/resolve-home-locations.ts",
     "reclassify-countries": "tsx --env-file-if-exists=.env.local scripts/reclassify-countries.ts"
   },
   "dependencies": {

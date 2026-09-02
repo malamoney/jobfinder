@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { LocationPrecision } from "./precision";
 
 /**
  * The geocoder: turning a normalized location string into a coordinate, or
@@ -19,6 +20,16 @@ export type Coordinate = {
   latitude: number;
   longitude: number;
 };
+
+/**
+ * A coordinate together with how precisely the geocoder placed the text it was
+ * given (#100).
+ *
+ * The cache path ignores the precision — a Posting's location is whatever the
+ * employer wrote — but a User's home address is asked for exactly so that it can
+ * be told apart from their city, and only the geocoder knows which it matched.
+ */
+export type Placement = Coordinate & { precision: LocationPrecision };
 
 /** The endpoint the geocoder calls. Written out so a test can intercept it. */
 export const NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search";
@@ -56,17 +67,58 @@ const REGION_TYPES = new Set([
 ]);
 
 /**
+ * Address types precise enough to be somebody's front door. Read only when a
+ * result carries no `place_rank`.
+ */
+const EXACT_TYPES = new Set(["house", "building", "address", "place_house"]);
+
+/**
+ * Nominatim's own precision ladder, as `place_rank` reports it: 30 is a house
+ * number, 26 a road, 16 a city, 8 a state, 4 a country. The two thresholds are
+ * where the ladder crosses from a front door to a settlement, and from a
+ * settlement to a region.
+ */
+const EXACT_RANK = 28;
+const CITY_RANK = 16;
+
+/**
  * What the adapter depends on from a Nominatim result, and nothing more.
  * `lat`/`lon` arrive as strings; `addresstype` is jsonv2's label for what the
- * result is — `city`, `town`, `county`, `state`.
+ * result is — `city`, `town`, `county`, `state`; `place_rank` is Nominatim's
+ * numeric grading of how specific the match is.
  */
 const nominatimResults = z.array(
   z.object({
     lat: z.coerce.number(),
     lon: z.coerce.number(),
     addresstype: z.string().nullish(),
+    place_rank: z.number().nullish(),
   }),
 );
+
+type NominatimResult = z.output<typeof nominatimResults>[number];
+
+/**
+ * How precisely Nominatim placed a result, read from its own grading of the
+ * match rather than guessed from the shape of what was typed — "12 Beacon St"
+ * looks like an address whether or not any such address exists.
+ *
+ * `place_rank` is the answer when it is there. Falling back to `addresstype`
+ * keeps an older or trimmed response usable, and an unfamiliar type is read as
+ * `city` rather than `exact`: overstating precision is the direction that
+ * misleads.
+ */
+function precisionOf(result: NominatimResult): LocationPrecision {
+  const rank = result.place_rank;
+  if (rank != null) {
+    if (rank >= EXACT_RANK) return "exact";
+    return rank >= CITY_RANK ? "city" : "area";
+  }
+
+  const type = result.addresstype ?? "";
+  if (EXACT_TYPES.has(type)) return "exact";
+  return REGION_TYPES.has(type) ? "area" : "city";
+}
 
 /**
  * The coordinate Nominatim resolves `query` to, or null when it resolves to
@@ -86,7 +138,7 @@ const nominatimResults = z.array(
 export async function geocode(
   query: string,
   signal: AbortSignal = AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
-): Promise<Coordinate | null> {
+): Promise<Placement | null> {
   const url = new URL(NOMINATIM_SEARCH_URL);
   url.searchParams.set("q", query);
   url.searchParams.set("format", "jsonv2");
@@ -112,5 +164,28 @@ export async function geocode(
   const results = parsed.data;
   const chosen =
     results.find((r) => !REGION_TYPES.has(r.addresstype ?? "")) ?? results[0];
-  return chosen ? { latitude: chosen.lat, longitude: chosen.lon } : null;
+  if (!chosen) return null;
+
+  return {
+    latitude: chosen.lat,
+    longitude: chosen.lon,
+    precision: precisionOf(chosen),
+  };
+}
+
+/**
+ * Waits out the least time between two lookups, which Nominatim's usage policy
+ * puts at one request a second. Zero in tests (`.env.test`), where MSW answers
+ * instantly and there is no one to be a good citizen towards.
+ *
+ * The policy is the geocoder's, so it is honoured here rather than at each
+ * caller — the cache warm-up (`@/operations/geocoding`) and the home-location
+ * pass (`@/operations/home-location`) both pace themselves by it.
+ */
+export function pauseBetweenLookups(): Promise<void> {
+  const configured = Number(process.env.GEOCODER_MIN_INTERVAL_MS);
+  const ms = Number.isFinite(configured) ? configured : 1000;
+  return ms > 0
+    ? new Promise((resolve) => setTimeout(resolve, ms))
+    : Promise.resolve();
 }

@@ -120,6 +120,13 @@
       "when": 1788369540459,
       "tag": "0016_strange_black_bolt",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788387340910,
+      "tag": "0017_chemical_gabe_jones",
+      "breakpoints": true
     }
   ]
 }

@@ -14,6 +14,8 @@ import {
   type Criteria,
   type CriteriaInput,
   type CriteriaOutcome,
+  type HomeCoordinate,
+  type HomeOutcome,
 } from "@/criteria/schema";
 import { formatCompactAge } from "../format";
 import { MonoLabel } from "../mono-label";
@@ -54,7 +56,54 @@ type CriteriaFormProps = {
   initial: Criteria | null;
   /** When the statement was last saved, for the kicker; null if never. */
   lastSavedAt: Date | null;
+  /** The Home Coordinate their stored Criteria carry, or null if they carry none. */
+  homeCoordinate: HomeCoordinate | null;
 };
+
+/**
+ * What to tell the User about where their home location landed (#100), or
+ * nothing when there is nothing worth saying.
+ *
+ * The point of the sentence is what a distance measured from that point is
+ * worth. A city is a usable answer and an honest one — it is just approximate,
+ * and the User should know which of the two they gave.
+ */
+function homeNote(
+  outcome: HomeOutcome,
+): { tone: string; text: string } | null {
+  if (outcome.state === "none") return null;
+
+  if (outcome.state === "not-found") {
+    return {
+      tone: "text-danger",
+      text: "That address could not be found, so onsite and hybrid roles are not being limited by distance. Your criteria are saved — check the address, or try just a city and state.",
+    };
+  }
+
+  if (outcome.state === "unchecked") {
+    return {
+      // Not the User's mistake and not permanent: the next match run tries the
+      // lookup again on its own.
+      tone: "text-warn",
+      text: "The address lookup could not be reached, so distance is not being applied to onsite and hybrid roles yet. Your criteria are saved — this sorts itself out once the lookup is back.",
+    };
+  }
+
+  switch (outcome.home.precision) {
+    case "exact":
+      return { tone: "text-ok", text: "Found that address exactly." };
+    case "city":
+      return {
+        tone: "text-warn",
+        text: "That matched a city rather than an address, so your radius is measured from the middle of it. A street address would sharpen it.",
+      };
+    case "area":
+      return {
+        tone: "text-warn",
+        text: "That matched an area wider than a city, so your radius is only rough. A street address, or a city and state, would sharpen it.",
+      };
+  }
+}
 
 /**
  * A number typed into a field, or null when the field was left blank.
@@ -78,7 +127,11 @@ function typedNumber(value: string): number | null {
  * ticked — `needsDistanceBounds` is the same predicate the server validates
  * with.
  */
-export function CriteriaForm({ initial, lastSavedAt }: CriteriaFormProps) {
+export function CriteriaForm({
+  initial,
+  lastSavedAt,
+  homeCoordinate,
+}: CriteriaFormProps) {
   const stated = initial ?? BLANK;
 
   // The kicker's "LAST SAVED …" clause. Seeded from the server's timestamp and
@@ -93,6 +146,13 @@ export function CriteriaForm({ initial, lastSavedAt }: CriteriaFormProps) {
     stated.arrangements,
   );
   const [homeLocation, setHomeLocation] = useState(stated.homeLocation ?? "");
+  // Where the stored address was placed. Held apart from the save's verdict
+  // because it survives a save that changed nothing else, and is dropped the
+  // moment the address itself is edited — a note about the old address over a
+  // new one would be a lie.
+  const [home, setHome] = useState<HomeOutcome>(
+    homeCoordinate ? { state: "placed", home: homeCoordinate } : { state: "none" },
+  );
   const [radiusMiles, setRadiusMiles] = useState(
     stated.radiusMiles?.toString() ?? "",
   );
@@ -105,7 +165,8 @@ export function CriteriaForm({ initial, lastSavedAt }: CriteriaFormProps) {
   const wantsDistance = needsDistanceBounds(arrangements);
 
   /** Fills every field from the stored, normalized values a save answered with. */
-  function showStored(saved: Criteria) {
+  function showStored(saved: Criteria, placed: HomeOutcome) {
+    setHome(placed);
     setTitles(saved.titles);
     setKeywords(saved.keywords);
     setArrangements(saved.arrangements);
@@ -192,7 +253,7 @@ export function CriteriaForm({ initial, lastSavedAt }: CriteriaFormProps) {
         const result = await saveCriteriaAction(null, input);
         setOutcome(result);
         if (result.ok) {
-          showStored(result.criteria);
+          showStored(result.criteria, result.home);
           setSavedAt(new Date());
         }
       } catch {
@@ -208,6 +269,7 @@ export function CriteriaForm({ initial, lastSavedAt }: CriteriaFormProps) {
     });
   }
 
+  const placedNote = homeNote(home);
   const serverProblem = outcome && !outcome.ok ? outcome.message : null;
   const problem = refused ?? serverProblem;
   const saved = outcome?.ok === true && !refused;
@@ -326,12 +388,17 @@ export function CriteriaForm({ initial, lastSavedAt }: CriteriaFormProps) {
             </div>
             <div className="grid gap-3 sm:grid-cols-[1fr_130px]">
               <label className="flex flex-col gap-1.5">
-                <span className="text-[12.5px] text-label">Home location</span>
+                <span className="text-[12.5px] text-label">Home address</span>
                 <input
                   value={homeLocation}
-                  onChange={(event) => setHomeLocation(event.target.value)}
-                  autoComplete="address-level2"
-                  placeholder="Boston, MA"
+                  onChange={(event) => {
+                    setHomeLocation(event.target.value);
+                    // The stored address is not this one any more, so what was
+                    // said about where it landed no longer describes anything.
+                    setHome({ state: "none" });
+                  }}
+                  autoComplete="street-address"
+                  placeholder="12 Beacon St, Boston, MA 02108"
                   className="rounded-control border border-border bg-field px-3 py-2 text-[13.5px]"
                 />
               </label>
@@ -346,6 +413,23 @@ export function CriteriaForm({ initial, lastSavedAt }: CriteriaFormProps) {
                 />
               </label>
             </div>
+            {/* Asking for the street address is the point (#100): the radius,
+                and the commute times built on it, are measured from wherever
+                this lands. A city is still a perfectly good answer — it is just
+                a rounder one, and the note below says so after a save. */}
+            <p className="text-[12.5px] text-label">
+              A full street address measures the distance from where you
+              actually live. A city and state works too — anything measured from
+              it is then approximate.
+            </p>
+            {/* A live region rather than an alert: this slot carries a
+                confirmation as often as a problem, and `status` is the polite
+                counterpart of the `role="alert"` the app's error-only lines use. */}
+            <p role="status" aria-live="polite" className="text-[12.5px]">
+              {placedNote && (
+                <span className={placedNote.tone}>{placedNote.text}</span>
+              )}
+            </p>
           </fieldset>
         )}
 

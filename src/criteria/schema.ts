@@ -1,4 +1,7 @@
 import { z } from "zod";
+// Type-only, and erased: this module still has nothing behind it, and still
+// runs unchanged in the browser.
+import type { Placement } from "@/geocoding/nominatim";
 
 /**
  * A User's stated Criteria: titles, keywords, accepted Arrangements, a home
@@ -85,7 +88,7 @@ const MESSAGES = {
   itemTooLong: "That is too long to be a title or a keyword.",
   arrangementsEmpty: "Choose at least one kind of arrangement you would accept.",
   homeLocationNeeded:
-    "Add your home location so onsite and hybrid roles can be limited by distance.",
+    "Add your home address so onsite and hybrid roles can be limited by distance.",
   radiusNeeded:
     "Add a commute radius so onsite and hybrid roles can be limited by distance.",
   radiusWhole: "Radius must be a whole number of miles.",
@@ -189,14 +192,45 @@ export type CriteriaInput = z.input<typeof criteriaInput>;
 export type Criteria = z.output<typeof criteriaInput>;
 
 /**
+ * The Home Coordinate: where a User's stated home location was placed, and how
+ * precisely (#100, ADR 0014).
+ *
+ * Kept with the User's own Criteria rather than in the shared Geocode Cache, so
+ * that a street address precise enough to be worth giving is not precise enough
+ * to be pooled.
+ *
+ * A geocoder's Placement, named for what it is to a User — nothing is added to
+ * it here, and two identical shapes with a copy between them would only be a
+ * chance for the two to disagree.
+ */
+export type HomeCoordinate = Placement;
+
+/**
+ * What became of the home location a save was handed.
+ *
+ * Four answers, because the User is owed a different sentence for each: nothing
+ * was stated; it was placed (at a street address, or only at a city, which the
+ * form says out loud); the geocoder answered and knew no such place; or the
+ * geocoder could not be reached at all. Only the last two leave the commute
+ * radius unapplied, and neither is a reason to refuse the save — a geocoder's
+ * ignorance must not lock a User out of their own search.
+ */
+export type HomeOutcome =
+  | { state: "none" }
+  | { state: "placed"; home: HomeCoordinate }
+  | { state: "not-found" }
+  | { state: "unchecked" };
+
+/**
  * What reading or writing Criteria answers with.
  *
  * The shape the form renders, so it lives here in the half with no database
  * behind it. `criteria` on a success is the stored, normalized values, so the
- * form can show exactly what was kept.
+ * form can show exactly what was kept, and `home` is what the save made of the
+ * home location among them.
  */
 export type CriteriaOutcome =
-  | { ok: true; criteria: Criteria }
+  | { ok: true; criteria: Criteria; home: HomeOutcome }
   | { ok: false; message: string };
 
 /**

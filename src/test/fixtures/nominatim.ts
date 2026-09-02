@@ -23,12 +23,26 @@ export type GeocoderCalls = {
 };
 
 /**
+ * A place the geocoder knows, and how precisely it can place it.
+ *
+ * `place_rank` is Nominatim's own grading of a match — 30 a house number, 26 a
+ * road, 16 a city, 8 a state — and is what the adapter reads to decide whether
+ * a User's home location reached their front door or only their city (#100).
+ * Left off, a place answers the way an ordinary city lookup does.
+ */
+export type Place = Coordinate & { placeRank?: number };
+
+/** Nominatim's grading for a plain city hit, the default a fixture stands in. */
+const CITY_RANK = 16;
+
+/**
  * Declares the coordinates the geocoder can resolve, keyed by the exact query
- * string it will be sent (the normalized location). A query with no entry
- * resolves to nothing, the way Nominatim answers for a place it cannot find.
+ * string it will be sent — the normalized location for a Posting, the address
+ * exactly as the User typed it for a home. A query with no entry resolves to
+ * nothing, the way Nominatim answers for a place it cannot find.
  */
 export function geocoderKnows(
-  places: Record<string, Coordinate>,
+  places: Record<string, Place>,
 ): GeocoderCalls {
   const queries: string[] = [];
 
@@ -44,6 +58,7 @@ export function geocoderKnows(
               {
                 lat: String(hit.latitude),
                 lon: String(hit.longitude),
+                place_rank: hit.placeRank ?? CITY_RANK,
                 display_name: query,
               },
             ]

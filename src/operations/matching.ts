@@ -31,6 +31,7 @@ import { WORKING_HOURS_PER_YEAR } from "@/postings/salary";
 import type { Coordinate } from "@/geocoding/nominatim";
 import { extractPostings } from "./extraction";
 import { ensureGeocoded, readGeocode } from "./geocoding";
+import { homeCoordinateOf, placeUnplacedHome } from "./home-location";
 
 /**
  * The matching funnel: the ordered, deterministic stages that turn a User's
@@ -279,12 +280,6 @@ function combine(
 /** The context the cheap stages run under; none of them read it. */
 const NO_CONTEXT: MatchContext = { home: null };
 
-/** The normalized key for a User's home location, or null when they set none. */
-function homeKeyOf(stated: CriteriaRow): string | null {
-  if (stated.radiusMiles == null) return null;
-  return normalizeLocation(stated.homeLocation);
-}
-
 /**
  * Fills the geocode cache with the locations a distance-bounded match run
  * needs — the survivors of the cheap stages, plus the User's home.
@@ -292,13 +287,14 @@ function homeKeyOf(stated: CriteriaRow): string | null {
  * Runs before the match transaction opens, on a plain handle: a warm-up run
  * makes one external call per uncached string, and none of that should hold the
  * User's `matches` rows locked. What it geocodes is read straight back out of
- * the cache inside the transaction (`resolveHomeCoordinate`, the distance
- * stage's subquery). A no-op when the User set no radius, or once the Corpus's
- * locations are all cached.
+ * the cache inside the transaction (the distance stage's subquery). A no-op when
+ * the User set no radius, or once the Corpus's locations are all cached.
  *
- * The home location is geocoded on its own budget, and first: the distance
- * stage does not run at all without a home coordinate, so it must never be
- * crowded out of a bounded warm-up by the Posting locations. The rest are
+ * Only Posting locations are warmed into the cache. The User's home is resolved
+ * when they save their Criteria and kept on that row (#100, ADR 0014), so it
+ * never enters the shared cache — and a row that reaches here without a point,
+ * because it was stated before that or because the geocoder was down when it was
+ * saved, is placed here rather than left to depend on the cache. The batch is
  * bounded by `ensureGeocoded` — a Fetch that introduced hundreds of new
  * locations is drained a batch per match run, not all at once inside one
  * request.
@@ -316,10 +312,13 @@ async function warmGeocodesForMatch(userId: string): Promise<void> {
     .where(eq(criteria.userId, userId));
   if (!stated) return;
 
-  const homeKey = homeKeyOf(stated);
-  if (!homeKey) return;
+  // Nothing to measure without a radius, and nothing to measure it from
+  // without a home — either way the distance stage will not run, so the Corpus
+  // needs no coordinates for this User.
+  if (stated.radiusMiles == null || !stated.homeLocation) return;
 
-  await ensureGeocoded(db, [homeKey], 1);
+  // Place a home that has no point yet, before the transaction reads it back.
+  await placeUnplacedHome(stated);
 
   const cheap = combine(
     FUNNEL.filter((stage) => !stage.derived),
@@ -336,25 +335,39 @@ async function warmGeocodesForMatch(userId: string): Promise<void> {
   const keys = new Set<string>();
   for (const row of located) {
     const key = normalizeLocation(row.location);
-    if (key && key !== homeKey) keys.add(key);
+    if (key) keys.add(key);
   }
 
   await ensureGeocoded(db, [...keys]);
 }
 
 /**
- * The User's home coordinate, read from the cache `warmGeocodesForMatch` filled.
+ * The User's home coordinate: the point their Criteria row carries, resolved
+ * from the address they stated when they saved it (#100).
  *
- * Null when the User set no radius, or when their home location would not
- * geocode — the distance stage then does not run, because showing every role
+ * `warmGeocodesForMatch` has already placed a row that reached this run without
+ * one, so the only rows still lacking a point are those the geocoder could not
+ * be reached about. Those fall back to the pre-#100 path — the shared cache,
+ * keyed by the normalized home string — so a Criteria row stated before this,
+ * met by a geocoder outage in the same run, still bounds by distance. The
+ * fallback only ever reads that cache: nothing writes a home location into it
+ * any more.
+ *
+ * Null when the User set no radius, or when their home location has no point
+ * either way — the distance stage then does not run, because showing every role
  * beats hiding a commutable one.
  */
 async function resolveHomeCoordinate(
   tx: Transaction,
   stated: CriteriaRow,
 ): Promise<Coordinate | null> {
-  const homeKey = homeKeyOf(stated);
-  return homeKey ? readGeocode(tx, homeKey) : null;
+  if (stated.radiusMiles == null) return null;
+
+  const home = homeCoordinateOf(stated);
+  if (home) return { latitude: home.latitude, longitude: home.longitude };
+
+  const cachedKey = normalizeLocation(stated.homeLocation);
+  return cachedKey ? readGeocode(tx, cachedKey) : null;
 }
 
 /**

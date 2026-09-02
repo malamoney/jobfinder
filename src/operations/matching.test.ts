@@ -8,18 +8,20 @@ import {
   matchAllUsers,
   matchCriteria,
   readDashboard,
+  readHomeCoordinate,
   saveCriteria,
   setStatus,
   type Board,
 } from "@/operations";
 import { getDb } from "@/db";
-import { postings, user } from "@/db/schema";
+import { criteria, geocodes, postings, user } from "@/db/schema";
 import { normalizeLocation } from "@/postings/location";
 import { boardReturns, greenhouseJob } from "@/test/fixtures/greenhouse";
 import {
   geocoderIsDown,
   geocoderKnows,
   type Coordinate,
+  type Place,
 } from "@/test/fixtures/nominatim";
 import type { CriteriaInput } from "@/criteria/schema";
 
@@ -766,7 +768,7 @@ describe("the commute radius", () => {
   }
 
   it("surfaces an onsite Posting inside the radius", async () => {
-    geocoderKnows({ "boston, ma": BOSTON, "cambridge, ma": CAMBRIDGE });
+    geocoderKnows({ "Boston, MA": BOSTON, "cambridge, ma": CAMBRIDGE });
     await corpusHas([jobAt(1, "Platform Engineer", "Cambridge, MA", "onsite")]);
     const userId = await givenAUser();
 
@@ -778,7 +780,7 @@ describe("the commute radius", () => {
   });
 
   it("excludes an onsite Posting outside the radius", async () => {
-    geocoderKnows({ "boston, ma": BOSTON, "new york, ny": NEW_YORK });
+    geocoderKnows({ "Boston, MA": BOSTON, "new york, ny": NEW_YORK });
     await corpusHas([jobAt(1, "Platform Engineer", "New York, NY", "onsite")]);
     const userId = await givenAUser();
 
@@ -788,7 +790,7 @@ describe("the commute radius", () => {
   });
 
   it("excludes a hybrid Posting outside the radius on the same basis", async () => {
-    geocoderKnows({ "boston, ma": BOSTON, "new york, ny": NEW_YORK });
+    geocoderKnows({ "Boston, MA": BOSTON, "new york, ny": NEW_YORK });
     await corpusHas([jobAt(1, "Platform Engineer", "New York, NY", "hybrid")]);
     const userId = await givenAUser();
 
@@ -798,7 +800,7 @@ describe("the commute radius", () => {
   });
 
   it("leaves a remote Posting alone wherever it is based, for a User who accepts remote", async () => {
-    geocoderKnows({ "boston, ma": BOSTON });
+    geocoderKnows({ "Boston, MA": BOSTON });
     await corpusHas([
       jobAt(1, "Platform Engineer", "San Francisco, CA", "fully remote"),
     ]);
@@ -823,7 +825,7 @@ describe("the commute radius", () => {
   // to — every resolved location is measured.
   describe("a User who does not accept remote", () => {
     it("excludes a Posting outside the radius even when its text names no location mode", async () => {
-      geocoderKnows({ "boston, ma": BOSTON, "austin, tx": { latitude: 30.2672, longitude: -97.7431 } });
+      geocoderKnows({ "Boston, MA": BOSTON, "austin, tx": { latitude: 30.2672, longitude: -97.7431 } });
       await corpusHas([
         greenhouseJob({
           id: 1,
@@ -840,7 +842,7 @@ describe("the commute radius", () => {
     });
 
     it("keeps a silent-on-arrangement Posting inside the radius", async () => {
-      geocoderKnows({ "boston, ma": BOSTON, "cambridge, ma": CAMBRIDGE });
+      geocoderKnows({ "Boston, MA": BOSTON, "cambridge, ma": CAMBRIDGE });
       await corpusHas([
         greenhouseJob({
           id: 1,
@@ -859,7 +861,7 @@ describe("the commute radius", () => {
     });
 
     it("excludes a far Posting that offers remote — the User did not ask for remote", async () => {
-      geocoderKnows({ "boston, ma": BOSTON, "new york, ny": NEW_YORK });
+      geocoderKnows({ "Boston, MA": BOSTON, "new york, ny": NEW_YORK });
       await corpusHas([
         jobAt(1, "Platform Engineer", "New York, NY", "remote or onsite"),
       ]);
@@ -871,7 +873,7 @@ describe("the commute radius", () => {
     });
 
     it("still surfaces a silent-on-arrangement Posting whose location will not geocode", async () => {
-      geocoderKnows({ "boston, ma": BOSTON });
+      geocoderKnows({ "Boston, MA": BOSTON });
       await corpusHas([
         greenhouseJob({
           id: 1,
@@ -891,7 +893,7 @@ describe("the commute radius", () => {
   });
 
   it("surfaces an onsite Posting whose location will not geocode, flagged unresolved", async () => {
-    geocoderKnows({ "boston, ma": BOSTON });
+    geocoderKnows({ "Boston, MA": BOSTON });
     await corpusHas([
       jobAt(1, "Platform Engineer", "Undisclosed location, USA", "onsite"),
     ]);
@@ -905,7 +907,7 @@ describe("the commute radius", () => {
   });
 
   it("geocodes each distinct location once, however many Postings share it", async () => {
-    const geo = geocoderKnows({ "boston, ma": BOSTON });
+    const geo = geocoderKnows({ "Boston, MA": BOSTON, "boston, ma": BOSTON });
     await corpusHas([
       jobAt(1, "Platform Engineer", "Boston, MA", "onsite"),
       jobAt(2, "Data Engineer", "Boston,  MA", "onsite"),
@@ -914,8 +916,11 @@ describe("the commute radius", () => {
 
     await saveCriteria(userId, commuteCriteria());
 
-    // The two Postings and the home location all normalize to one string.
-    expect(geo.queries()).toEqual(["boston, ma"]);
+    // The two Postings normalize to one string, so the Corpus costs one lookup.
+    // The home location is the other, asked exactly as the User typed it and
+    // resolved onto their own Criteria row rather than into the shared cache
+    // (#100).
+    expect(geo.queries()).toEqual(["Boston, MA", "boston, ma"]);
   });
 
   // A Fetch can introduce hundreds of new location strings at once. Geocoding
@@ -930,7 +935,7 @@ describe("the commute radius", () => {
     const key = (city: string) => normalizeLocation(city) as string;
     const geo = geocoderKnows(
       Object.fromEntries([
-        ["boston, ma", BOSTON],
+        ["Boston, MA", BOSTON],
         ...cities.map((city) => [key(city), BOSTON] as const),
       ]),
     );
@@ -959,19 +964,19 @@ describe("the commute radius", () => {
   });
 
   it("resolves a known location from cache on the next match run", async () => {
-    geocoderKnows({ "boston, ma": BOSTON, "cambridge, ma": CAMBRIDGE });
+    geocoderKnows({ "Boston, MA": BOSTON, "cambridge, ma": CAMBRIDGE });
     await corpusHas([jobAt(1, "Platform Engineer", "Cambridge, MA", "onsite")]);
     const userId = await givenAUser();
     await saveCriteria(userId, commuteCriteria());
 
-    const geo = geocoderKnows({ "boston, ma": BOSTON, "cambridge, ma": CAMBRIDGE });
+    const geo = geocoderKnows({ "Boston, MA": BOSTON, "cambridge, ma": CAMBRIDGE });
     await saveCriteria(userId, commuteCriteria());
 
     expect(geo.queries()).toEqual([]);
   });
 
   it("does no geocoding for a User whose Criteria set no radius", async () => {
-    const geo = geocoderKnows({ "boston, ma": BOSTON });
+    const geo = geocoderKnows({ "Boston, MA": BOSTON });
     await corpusHas([jobAt(1, "Platform Engineer", "Boston, MA", "onsite")]);
     const userId = await givenAUser();
 
@@ -1008,8 +1013,104 @@ describe("the commute radius", () => {
       (await readDashboard(userId)).postings.map((p) => p.title),
     ).toEqual(["Platform Engineer"]);
 
-    geocoderKnows({ "boston, ma": BOSTON, "new york, ny": NEW_YORK });
+    geocoderKnows({ "Boston, MA": BOSTON, "new york, ny": NEW_YORK });
     await saveCriteria(userId, commuteCriteria());
     expect((await readDashboard(userId)).postings).toHaveLength(0);
+  });
+
+  /**
+   * The home coordinate moved onto the Criteria row in #100: it is resolved
+   * once at save time from the address exactly as the User typed it, and never
+   * looked up by string in the cache every User shares.
+   */
+  describe("measuring from the coordinate on the Criteria row", () => {
+    /** A street address, and where the geocoder puts it — a front door, not a city. */
+    const BEACON_ST = "12 Beacon St, Boston, MA";
+    const EXACTLY: Place = { ...BOSTON, placeRank: 30 };
+
+    it("bounds the radius from the exact address the User stated", async () => {
+      geocoderKnows({ [BEACON_ST]: EXACTLY, "new york, ny": NEW_YORK });
+      await corpusHas([jobAt(1, "Platform Engineer", "New York, NY", "onsite")]);
+      const userId = await givenAUser();
+
+      await saveCriteria(
+        userId,
+        commuteCriteria({ homeLocation: BEACON_ST }),
+      );
+
+      expect((await readDashboard(userId)).postings).toHaveLength(0);
+    });
+
+    it("keeps the exact address out of the shared Geocode Cache", async () => {
+      geocoderKnows({ [BEACON_ST]: EXACTLY, "cambridge, ma": CAMBRIDGE });
+      await corpusHas([jobAt(1, "Platform Engineer", "Cambridge, MA", "onsite")]);
+      const userId = await givenAUser();
+
+      await saveCriteria(userId, commuteCriteria({ homeLocation: BEACON_ST }));
+
+      // Only the Posting's location. Somebody's street address is not a string
+      // to pool across every User of the product.
+      const cached = await getDb().select().from(geocodes);
+      expect(cached.map((row) => row.location)).toEqual(["cambridge, ma"]);
+    });
+
+    /** Nulls the coordinate, leaving a row shaped the way one saved before #100 is. */
+    async function asStatedBeforeTheCoordinateExisted(
+      userId: string,
+    ): Promise<void> {
+      await getDb()
+        .update(criteria)
+        .set({ homeLatitude: null, homeLongitude: null, homePrecision: null })
+        .where(eq(criteria.userId, userId));
+    }
+
+    it("places Criteria stated before it existed, on their next match run", async () => {
+      geocoderKnows({ "Boston, MA": BOSTON, "new york, ny": NEW_YORK });
+      await corpusHas([jobAt(1, "Platform Engineer", "New York, NY", "onsite")]);
+      const userId = await givenAUser();
+      await saveCriteria(userId, commuteCriteria());
+      await asStatedBeforeTheCoordinateExisted(userId);
+
+      await matchCriteria(userId);
+
+      // Placed as it went, and bounding by distance in the same run — so no row
+      // is left depending on the shared cache still holding its home string.
+      expect(await readHomeCoordinate(userId)).toMatchObject(BOSTON);
+      expect((await readDashboard(userId)).postings).toHaveLength(0);
+    });
+
+    it("falls back to the shared cache when that run cannot reach the geocoder", async () => {
+      geocoderKnows({ "Boston, MA": BOSTON, "new york, ny": NEW_YORK });
+      await corpusHas([jobAt(1, "Platform Engineer", "New York, NY", "onsite")]);
+      const userId = await givenAUser();
+      await saveCriteria(userId, commuteCriteria());
+
+      // The home string in the cache is how a match run used to leave it.
+      await getDb()
+        .insert(geocodes)
+        .values({ location: "boston, ma", ...BOSTON })
+        .onConflictDoNothing();
+      await asStatedBeforeTheCoordinateExisted(userId);
+
+      geocoderIsDown();
+      await matchCriteria(userId);
+
+      expect((await readDashboard(userId)).postings).toHaveLength(0);
+    });
+
+    it("shows every role rather than hiding one when neither the row nor the cache places the home", async () => {
+      geocoderKnows({ "Boston, MA": BOSTON, "new york, ny": NEW_YORK });
+      await corpusHas([jobAt(1, "Platform Engineer", "New York, NY", "onsite")]);
+      const userId = await givenAUser();
+      await saveCriteria(userId, commuteCriteria());
+      await asStatedBeforeTheCoordinateExisted(userId);
+
+      geocoderIsDown();
+      await matchCriteria(userId);
+
+      expect((await readDashboard(userId)).postings.map((p) => p.title)).toEqual(
+        ["Platform Engineer"],
+      );
+    });
   });
 });

@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/auth";
-import { readCriteria, readCriteriaSavedAt } from "@/operations";
+import {
+  readCriteria,
+  readCriteriaSavedAt,
+  readHomeCoordinate,
+} from "@/operations";
 import { AppNav } from "../app-nav";
 import { CriteriaForm } from "./criteria-form";
 
@@ -20,15 +24,23 @@ export default async function CriteriaPage() {
   const signedIn = await currentUser(await headers());
   if (!signedIn) redirect("/login");
 
-  const [stated, lastSavedAt] = await Promise.all([
+  const [stated, lastSavedAt, home] = await Promise.all([
     readCriteria(signedIn.id),
     readCriteriaSavedAt(signedIn.id),
+    // Where their home address was placed (#100), so a User who gave a city
+    // sees that it is a city every time they come back, not only right after
+    // the save that resolved it.
+    readHomeCoordinate(signedIn.id),
   ]);
 
   return (
     <>
       <AppNav active="criteria" />
-      <CriteriaForm initial={stated} lastSavedAt={lastSavedAt} />
+      <CriteriaForm
+        initial={stated}
+        lastSavedAt={lastSavedAt}
+        homeCoordinate={home}
+      />
     </>
   );
 }

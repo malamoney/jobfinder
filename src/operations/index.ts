@@ -33,6 +33,11 @@ export {
   type BoardAddress,
   type BoardFetchOptions,
 } from "./fetch-board";
+export {
+  readHomeCoordinate,
+  resolveHomeLocations,
+  type HomeBackfill,
+} from "./home-location";
 export { probeBoard, type BoardProbe } from "./probe";
 export {
   readFetchRun,

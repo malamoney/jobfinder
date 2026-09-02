@@ -411,8 +411,10 @@ describe("an unresolved location on the Posting page", () => {
     const userId = await givenAUser();
     // A match run over an onsite Criteria geocodes the location; it resolves to
     // nothing and is cached as unresolved.
+    // The home location is asked for exactly as the User typed it (#100); the
+    // Posting's is asked for normalized.
     geocoderKnows({
-      "boston, ma": { latitude: 42.3601, longitude: -71.0589 },
+      "Boston, MA": { latitude: 42.3601, longitude: -71.0589 },
     });
     await saveCriteria(userId, {
       titles: ["Staff Engineer"],

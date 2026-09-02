@@ -88,7 +88,8 @@ _Avoid_: Dead, stale, closed, removed
 **Geocode Cache**:
 Normalized location strings paired with the coordinate each resolves to, keyed by the string rather
 than the Posting — the same handful of strings recur across thousands of Postings. A negative result
-is cached too; a geocoder outage is not (ADR 0005).
+is cached too; a geocoder outage is not (ADR 0005). Postings only: a User's Home Coordinate is never
+pooled here (ADR 0014).
 _Avoid_: Geo table, location index
 
 **Unresolved location**:
@@ -148,6 +149,23 @@ and a minimum salary. Minimum salary excludes only Postings that *state* a salar
 Postings with no stated salary always pass. There is no country Criterion — the Corpus is US-only
 by ingestion policy (ADR 0010), so every role a User could match is already US-based.
 _Avoid_: Filters, preferences, settings, query
+
+**Home Coordinate**:
+The point a User's stated home location resolved to, kept on their own Criteria beside the text it
+came from, with the Precision the geocoder graded it at. Resolved when they save rather than looked
+up per match run, geocoded exactly as they typed it — never through the Posting-location normalizer,
+which strips the parentheticals an address may need — and never written to the Geocode Cache, which
+every User shares (ADR 0014). Criteria carrying none, stated before it existed or saved while the
+geocoder was unreachable, are placed by their next match run. A home that could not be placed leaves
+it absent: the commute radius then does nothing, rather than the save being refused.
+_Avoid_: Home point, origin, home geocode
+
+**Precision**:
+How exactly the geocoder placed a location, as it graded the match itself: `exact` (a street
+address), `city` (a town, or a street with no number), or `area` (anything wider). What decides how
+much a distance measured from a Home Coordinate is worth, and what the Criteria page tells a User who
+gave a city.
+_Avoid_: Accuracy, confidence, resolution
 
 **Match**:
 The verdict that a Posting satisfies a User's Criteria, carrying the Keywords that hit. Derived, and

@@ -7,6 +7,7 @@ import {
   type Criteria,
   type CriteriaOutcome,
 } from "@/criteria/schema";
+import { resolveHome } from "./home-location";
 import { matchCriteria } from "./matching";
 
 /**
@@ -69,6 +70,14 @@ export async function readCriteriaSavedAt(
  * earlier statement is not kept — Matching only ever wants the current one,
  * and #2 defers "named searches" to a later UI.
  *
+ * The home location among them is resolved to a coordinate here (#100), before
+ * the row is written, so the point is stored with the text it came from and the
+ * commute radius has something exact to measure from. A home location that
+ * cannot be placed is not a reason to refuse the save: the outcome says so, and
+ * the radius stage does nothing rather than the User being turned away. Clearing
+ * the home location clears the coordinate with it — it cannot outlive the
+ * Arrangement selection that asked for it.
+ *
  * Re-matches the whole Corpus before returning, so a User who saves a Criteria
  * change sees its effect on the next Dashboard load rather than waiting for the
  * nightly Fetch (#2, user story 19). Every matching stage is free, so this is
@@ -87,16 +96,18 @@ export async function saveCriteria(
   }
 
   const values = parsed.data;
+  const home = await resolveHome(userId, values.homeLocation);
+
   const [row] = await getDb()
     .insert(criteria)
-    .values({ userId, ...values })
+    .values({ userId, ...values, ...home.columns })
     .onConflictDoUpdate({
       target: criteria.userId,
-      set: { ...values, updatedAt: new Date() },
+      set: { ...values, ...home.columns, updatedAt: new Date() },
     })
     .returning();
 
   await matchCriteria(userId);
 
-  return { ok: true, criteria: fromRow(row) };
+  return { ok: true, criteria: fromRow(row), home: home.outcome };
 }
