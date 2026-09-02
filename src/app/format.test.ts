@@ -5,6 +5,7 @@ import {
   companyMonogram,
   employmentLabels,
   formatAge,
+  formatCompactAge,
   formatSalary,
   LOCATION_NOT_GIVEN,
   MULTIPLE_LOCATIONS,
@@ -122,6 +123,36 @@ describe("writing a Posting's age", () => {
   it("falls back to the not-given wording when the Source published no date", () => {
     expect(formatAge(null)).toBe("Date not given");
     expect(formatAge(null, "No date")).toBe("No date");
+  });
+});
+
+/**
+ * The tight age form the Criteria page's "LAST SAVED" kicker wears (#83): the
+ * same buckets as `formatAge`, abbreviated to one or two letters so it fits a
+ * mono micro-label. Null when there is no date — the kicker then reads plain
+ * "CRITERIA", with no "last saved" clause at all.
+ */
+describe("writing a compact age", () => {
+  it("abbreviates days", () => {
+    expect(formatCompactAge(daysAgo(3))).toBe("3d ago");
+  });
+
+  it("abbreviates weeks and months, rounding down to the largest whole unit", () => {
+    expect(formatCompactAge(daysAgo(10))).toBe("1w ago");
+    expect(formatCompactAge(daysAgo(100))).toBe("3mo ago");
+  });
+
+  it("abbreviates a span past a year in years", () => {
+    expect(formatCompactAge(daysAgo(400))).toBe("1y ago");
+  });
+
+  it("reads 'just now' this minute and never runs into the future", () => {
+    expect(formatCompactAge(new Date())).toBe("just now");
+    expect(formatCompactAge(new Date(Date.now() + 60_000))).toBe("just now");
+  });
+
+  it("is null when there is no date", () => {
+    expect(formatCompactAge(null)).toBeNull();
   });
 });
 

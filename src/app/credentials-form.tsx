@@ -10,6 +10,7 @@ import {
   MIN_PASSWORD_LENGTH,
   type AuthOutcome,
 } from "@/auth/credentials";
+import { MonoLabel } from "./mono-label";
 
 /**
  * The email-and-password form, which signing up and logging in share.
@@ -62,68 +63,86 @@ export function CredentialsForm({
   const problem = refused ?? serverProblem;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 px-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">{heading}</h1>
-        <p className="text-sm text-text-body">{blurb}</p>
-      </div>
-
-      {/* `noValidate` because the messages below are ours, in our wording,
-          rather than whatever the browser would say in its own. */}
-      <form action={check} className="flex flex-col gap-4" noValidate>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">Email</span>
-          <input
-            name="email"
-            type="email"
-            autoComplete="email"
-            required
-            className="rounded-md border border-border bg-field px-3 py-2 text-base"
+    // Canvas 4e: a centered `--bg` card lit by a single radial glow — no border,
+    // no fill of its own, just the wash bleeding down from above the wordmark.
+    <main className="flex min-h-screen flex-col items-center justify-center px-6">
+      <div className="flex w-full max-w-sm flex-col gap-5 rounded-card bg-bg px-8 py-12 [background-image:radial-gradient(500px_200px_at_50%_-70px,var(--accent-wash),transparent_70%)]">
+        <div className="flex items-center gap-2 font-medium tracking-tight">
+          <span
+            aria-hidden
+            className="brand-dot size-2 rounded-full bg-accent"
           />
-        </label>
+          jobfinder
+        </div>
 
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">Password</span>
-          <input
-            name="password"
-            type="password"
-            // Tells a password manager which of the two this is, so it offers
-            // to generate on signup and to fill on login.
-            autoComplete={showPasswordRule ? "new-password" : "current-password"}
-            required
-            className="rounded-md border border-border bg-field px-3 py-2 text-base"
-          />
-          {showPasswordRule && (
-            <span className="text-xs text-label">
-              At least {MIN_PASSWORD_LENGTH} characters.
-            </span>
-          )}
-        </label>
+        <div className="flex flex-col gap-1.5">
+          <h1 className="text-2xl font-medium tracking-tight">{heading}</h1>
+          <p className="text-[13.5px] text-label">{blurb}</p>
+        </div>
 
-        {/*
-          Announced rather than merely coloured: someone using a screen reader
-          finds out the submission failed at the moment it does, and the
-          message is the same sentence the server decided on.
-        */}
-        <p role="alert" aria-live="polite" className="text-sm text-danger">
-          {problem}
+        {/* `noValidate` because the messages below are ours, in our wording,
+            rather than whatever the browser would say in its own. */}
+        <form action={check} className="flex flex-col gap-4" noValidate>
+          <label className="group flex flex-col gap-1.5">
+            <MonoLabel className="group-focus-within:text-accent-text">
+              Email
+            </MonoLabel>
+            <input
+              name="email"
+              type="email"
+              autoComplete="email"
+              required
+              className="rounded-control border border-border bg-field px-3 py-2 text-[13.5px] focus:border-accent-edge focus:outline-none focus:ring-[3px] focus:ring-accent-wash"
+            />
+          </label>
+
+          <label className="group flex flex-col gap-1.5">
+            <MonoLabel className="group-focus-within:text-accent-text">
+              Password
+            </MonoLabel>
+            <input
+              name="password"
+              type="password"
+              // Tells a password manager which of the two this is, so it offers
+              // to generate on signup and to fill on login.
+              autoComplete={
+                showPasswordRule ? "new-password" : "current-password"
+              }
+              required
+              className="rounded-control border border-border bg-field px-3 py-2 text-[13.5px] focus:border-accent-edge focus:outline-none focus:ring-[3px] focus:ring-accent-wash"
+            />
+            {showPasswordRule && (
+              <span className="text-[12px] text-label">
+                At least {MIN_PASSWORD_LENGTH} characters.
+              </span>
+            )}
+          </label>
+
+          {/*
+            Announced rather than merely coloured: someone using a screen reader
+            finds out the submission failed at the moment it does, and the
+            message is the same sentence the server decided on.
+          */}
+          <p role="alert" aria-live="polite" className="text-[12.5px] text-danger">
+            {problem}
+          </p>
+
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-control border border-accent-edge bg-accent-wash px-3.5 py-2 text-center text-[13px] font-medium text-accent-text disabled:border-border disabled:bg-transparent disabled:text-label"
+          >
+            {pending ? "Working…" : submitLabel}
+          </button>
+        </form>
+
+        <p className="text-[12.5px] text-label">
+          {footer.prompt}{" "}
+          <Link href={footer.href} className="text-accent-text hover:underline">
+            {footer.linkLabel}
+          </Link>
         </p>
-
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-md border border-accent-edge bg-accent-wash px-4 py-2 text-sm font-medium text-accent-text disabled:border-border disabled:bg-transparent disabled:text-label"
-        >
-          {pending ? "Working…" : submitLabel}
-        </button>
-      </form>
-
-      <p className="text-sm text-text-body">
-        {footer.prompt}{" "}
-        <Link href={footer.href} className="font-medium underline">
-          {footer.linkLabel}
-        </Link>
-      </p>
+      </div>
     </main>
   );
 }

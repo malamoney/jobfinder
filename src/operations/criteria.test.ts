@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { signUp } from "@/auth";
-import { readCriteria, saveCriteria } from "@/operations";
+import { readCriteria, readCriteriaSavedAt, saveCriteria } from "@/operations";
 import { getDb } from "@/db";
 import { criteria, user } from "@/db/schema";
 import type { CriteriaInput } from "@/criteria/schema";
@@ -280,6 +280,44 @@ describe("minimum salary", () => {
     );
 
     expect(outcome.ok && outcome.criteria.minSalary).toBe(180000);
+  });
+});
+
+/**
+ * The Criteria page shows a "LAST SAVED Nd ago" kicker (#83), so it needs the
+ * save time without the whole row being reshaped — `readCriteria` still hands
+ * back only the stated values.
+ */
+describe("when Criteria were last saved", () => {
+  it("has no last-saved time before a User states any", async () => {
+    const userId = await givenAUser();
+
+    expect(await readCriteriaSavedAt(userId)).toBeNull();
+  });
+
+  it("reports the time of the most recent save", async () => {
+    const userId = await givenAUser();
+    const before = Date.now();
+
+    await saveCriteria(userId, statedCriteria());
+
+    const savedAt = await readCriteriaSavedAt(userId);
+    expect(savedAt).toBeInstanceOf(Date);
+    expect(savedAt!.getTime()).toBeGreaterThanOrEqual(before - 1000);
+    expect(savedAt!.getTime()).toBeLessThanOrEqual(Date.now() + 1000);
+  });
+
+  it("moves forward when the statement is revised", async () => {
+    const userId = await givenAUser();
+
+    await saveCriteria(userId, statedCriteria());
+    const first = await readCriteriaSavedAt(userId);
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await saveCriteria(userId, statedCriteria({ titles: ["Staff Engineer"] }));
+    const second = await readCriteriaSavedAt(userId);
+
+    expect(second!.getTime()).toBeGreaterThan(first!.getTime());
   });
 });
 

@@ -39,21 +39,20 @@ export function formatDateTime(date: Date | null, fallback = "Never"): string {
 const RELATIVE_AGE = new Intl.RelativeTimeFormat("en-US", { numeric: "always" });
 
 /**
- * How old a Posting is, in words — "5 days ago", "3 months ago" — for the
- * Dashboard card, where an exact date is noise and "is this fresh?" is the
- * question.
+ * A past date reduced to the largest whole time unit that fits, rounded down so
+ * nothing is ever aged up, or `"just now"` for anything under a minute old.
  *
- * `null` is a date the Source never published; it falls back to `formatDay`'s
- * wording ("Date not given") rather than a guess at the age. Anything under a
- * minute old reads as "just now"; everything else is bucketed to the largest
- * whole unit that fits, rounded down, so a Posting is never aged up.
+ * The shared core of `formatAge` and `formatCompactAge` — one bucket ladder, so
+ * the long form ("3 days ago") and the tight form ("3d ago") can never disagree
+ * about which bucket a date lands in. Callers turn the `unit` into whatever
+ * wording they need.
  */
-export function formatAge(
-  date: Date | null,
-  fallback = "Date not given",
-): string {
-  if (!date) return fallback;
+/** The units `bucketAge` reduces to — the singular names `Intl` also accepts. */
+type AgeUnit = "minute" | "hour" | "day" | "week" | "month" | "year";
 
+type AgeBucket = "just now" | { amount: number; unit: AgeUnit };
+
+function bucketAge(date: Date): AgeBucket {
   const elapsed = Math.max(0, Date.now() - new Date(date).getTime());
   const MINUTE = 60_000;
   const HOUR = 60 * MINUTE;
@@ -64,7 +63,7 @@ export function formatAge(
 
   if (elapsed < MINUTE) return "just now";
 
-  const [amount, unit]: [number, Intl.RelativeTimeFormatUnit] =
+  const [amount, unit]: [number, AgeUnit] =
     elapsed < HOUR
       ? [elapsed / MINUTE, "minute"]
       : elapsed < DAY
@@ -77,7 +76,52 @@ export function formatAge(
               ? [elapsed / MONTH, "month"]
               : [elapsed / YEAR, "year"];
 
-  return RELATIVE_AGE.format(-Math.floor(amount), unit);
+  return { amount: Math.floor(amount), unit };
+}
+
+/**
+ * How old a Posting is, in words — "5 days ago", "3 months ago" — for the
+ * Dashboard card, where an exact date is noise and "is this fresh?" is the
+ * question.
+ *
+ * `null` is a date the Source never published; it falls back to `formatDay`'s
+ * wording ("Date not given") rather than a guess at the age.
+ */
+export function formatAge(
+  date: Date | null,
+  fallback = "Date not given",
+): string {
+  if (!date) return fallback;
+
+  const bucket = bucketAge(date);
+  if (bucket === "just now") return "just now";
+  return RELATIVE_AGE.format(-bucket.amount, bucket.unit);
+}
+
+/** One or two letters for each bucket unit, for `formatCompactAge`. */
+const COMPACT_UNIT: Record<AgeUnit, string> = {
+  minute: "m",
+  hour: "h",
+  day: "d",
+  week: "w",
+  month: "mo",
+  year: "y",
+};
+
+/**
+ * A record's age in the tightest form that still reads — "3d ago", "1w ago",
+ * "just now" — for the Criteria page's "LAST SAVED" kicker (#83), where
+ * `formatAge`'s "3 days ago" is too long to sit in a mono micro-label.
+ *
+ * `null` is a User who has never saved Criteria — the kicker then shows no
+ * clause at all rather than a guess.
+ */
+export function formatCompactAge(date: Date | null): string | null {
+  if (!date) return null;
+
+  const bucket = bucketAge(date);
+  if (bucket === "just now") return "just now";
+  return `${bucket.amount}${COMPACT_UNIT[bucket.unit]} ago`;
 }
 
 /** The salary text shown when Extraction found no salary in a Posting. */

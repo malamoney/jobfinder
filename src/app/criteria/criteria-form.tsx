@@ -14,6 +14,8 @@ import {
   type CriteriaInput,
   type CriteriaOutcome,
 } from "@/criteria/schema";
+import { formatCompactAge } from "../format";
+import { MonoLabel } from "../mono-label";
 import { saveCriteriaAction } from "./actions";
 
 /** How each Arrangement reads on its checkbox. */
@@ -49,6 +51,8 @@ const BLANK: Criteria = {
 type CriteriaFormProps = {
   /** What the User has stated before, or null if they never have. */
   initial: Criteria | null;
+  /** When the statement was last saved, for the kicker; null if never. */
+  lastSavedAt: Date | null;
 };
 
 /**
@@ -73,8 +77,12 @@ function typedNumber(value: string): number | null {
  * ticked — `needsDistanceBounds` is the same predicate the server validates
  * with.
  */
-export function CriteriaForm({ initial }: CriteriaFormProps) {
+export function CriteriaForm({ initial, lastSavedAt }: CriteriaFormProps) {
   const stated = initial ?? BLANK;
+
+  // The kicker's "LAST SAVED …" clause. Seeded from the server's timestamp and
+  // moved to "just now" the moment a save succeeds, so it never lags the form.
+  const [savedAt, setSavedAt] = useState<Date | null>(lastSavedAt);
 
   const [titles, setTitles] = useState<string[]>(stated.titles);
   const [titleDraft, setTitleDraft] = useState("");
@@ -182,7 +190,10 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
       try {
         const result = await saveCriteriaAction(null, input);
         setOutcome(result);
-        if (result.ok) showStored(result.criteria);
+        if (result.ok) {
+          showStored(result.criteria);
+          setSavedAt(new Date());
+        }
       } catch {
         // A save operation throws only on an infrastructure failure — the
         // schema's verdicts come back as an outcome, not an exception. Keep it
@@ -199,6 +210,7 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
   const serverProblem = outcome && !outcome.ok ? outcome.message : null;
   const problem = refused ?? serverProblem;
   const saved = outcome?.ok === true && !refused;
+  const savedAge = formatCompactAge(savedAt);
 
   return (
     // The page shell matches every other page behind the login (`max-w-6xl`,
@@ -207,10 +219,17 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
     // nav's left edge, the way the Posting page holds its description.
     <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 pb-16 pt-20">
       <div className="flex w-full max-w-2xl flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">
+        {/* Canvas 4c: a mono kicker over the heading. The "LAST SAVED" clause
+            is dropped entirely for a User stating Criteria for the first time
+            (`formatCompactAge` returns null), so it never reads "LAST SAVED
+            NEVER". */}
+        <MonoLabel as="p">
+          Criteria{savedAge && ` · Last saved ${savedAge}`}
+        </MonoLabel>
+        <h1 className="text-[27px] font-medium leading-tight tracking-tight">
           What are you looking for?
         </h1>
-        <p className="text-sm text-text-body">
+        <p className="text-[13.5px] text-label">
           State it once. You can come back and change any of it whenever your
           search does.
         </p>
@@ -222,7 +241,7 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
           save();
         }}
         onChange={edited}
-        className="flex w-full max-w-2xl flex-col gap-8"
+        className="flex w-full max-w-2xl flex-col gap-7"
         noValidate
       >
         <ChipField
@@ -249,10 +268,14 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
           placeholder="postgres"
         />
 
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <p className="text-sm font-medium">Arrangements you accept</p>
-            <p className="text-xs text-label">
+        {/* Canvas 4c: the arrangement groups sit in a `--surface` card. The two
+            groups are kept — leaving one untouched constrains nothing on that
+            axis, and the mockup's single flat row would hide that — but styled
+            as chips. */}
+        <div className="flex flex-col gap-3.5 rounded-card border border-border bg-surface p-4">
+          <div className="flex flex-col gap-1.5">
+            <MonoLabel as="p">Arrangements you accept</MonoLabel>
+            <p className="text-[12.5px] text-label">
               Roles structured in a way you cannot take are never shown. A group
               you leave untouched is not used to filter — so leave one blank if
               you have no preference there.
@@ -260,20 +283,25 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
           </div>
           {ARRANGEMENT_GROUPS.map(({ legend, values }) => (
             <fieldset key={legend} className="flex flex-col gap-2">
-              <legend className="text-xs font-medium text-text-body">
-                {legend}
-              </legend>
-              <div className="flex flex-wrap gap-3">
+              <legend className="text-[12.5px] text-label">{legend}</legend>
+              <div className="flex flex-wrap gap-2">
                 {values.map((arrangement) => (
                   <label
                     key={arrangement}
-                    className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm"
+                    className="group flex items-center gap-2 rounded-control border border-border px-3 py-1.5 text-[12.5px] text-label has-[:checked]:border-accent-edge has-[:checked]:bg-accent-wash has-[:checked]:text-accent-text has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent-wash"
                   >
                     <input
                       type="checkbox"
                       checked={arrangements.includes(arrangement)}
                       onChange={() => toggleArrangement(arrangement)}
+                      className="peer sr-only"
                     />
+                    <span
+                      aria-hidden
+                      className="flex size-[13px] items-center justify-center rounded-[3px] border border-border text-[9px] leading-none text-transparent peer-checked:border-accent peer-checked:bg-accent peer-checked:text-bg"
+                    >
+                      ✓
+                    </span>
                     {ARRANGEMENT_LABELS[arrangement]}
                   </label>
                 ))}
@@ -283,38 +311,46 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
         </div>
 
         {wantsDistance && (
-          <fieldset className="flex flex-col gap-4">
-            <legend className="text-sm font-medium">Commute</legend>
-            <p className="-mt-1 text-xs text-label">
-              Onsite and hybrid roles are limited to somewhere you could get
-              to. Remote roles ignore this.
-            </p>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-sm font-medium">Home location</span>
-              <input
-                value={homeLocation}
-                onChange={(event) => setHomeLocation(event.target.value)}
-                autoComplete="address-level2"
-                placeholder="Boston, MA"
-                className="rounded-md border border-border bg-field px-3 py-2 text-base"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-sm font-medium">Radius (miles)</span>
-              <input
-                value={radiusMiles}
-                onChange={(event) => setRadiusMiles(event.target.value)}
-                inputMode="numeric"
-                placeholder="30"
-                className="rounded-md border border-border bg-field px-3 py-2 font-mono text-base"
-              />
-            </label>
+          // Canvas 4c: a 2px `--accent` left border and a wash fading out to the
+          // right mark the fieldset the onsite/hybrid tick brought in.
+          <fieldset className="flex flex-col gap-3 border-l-2 border-accent bg-[linear-gradient(90deg,var(--accent-wash),transparent_60%)] p-4">
+            <div className="flex flex-col gap-1">
+              <MonoLabel as="legend" tone="accent">
+                Commute
+              </MonoLabel>
+              <p className="text-[12.5px] text-label">
+                Onsite and hybrid roles are limited to somewhere you could get
+                to. Remote roles ignore this.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-[1fr_130px]">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[12.5px] text-label">Home location</span>
+                <input
+                  value={homeLocation}
+                  onChange={(event) => setHomeLocation(event.target.value)}
+                  autoComplete="address-level2"
+                  placeholder="Boston, MA"
+                  className="rounded-control border border-border bg-field px-3 py-2 text-[13.5px]"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[12.5px] text-label">Radius (mi)</span>
+                <input
+                  value={radiusMiles}
+                  onChange={(event) => setRadiusMiles(event.target.value)}
+                  inputMode="numeric"
+                  placeholder="30"
+                  className="rounded-control border border-border bg-field px-3 py-2 font-mono text-[13.5px]"
+                />
+              </label>
+            </div>
           </fieldset>
         )}
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">Minimum salary</span>
-          <span className="text-xs text-label">
+          <MonoLabel>Minimum salary</MonoLabel>
+          <span className="text-[12.5px] text-label">
             Leave blank to see every role. A posting that states no salary is
             always shown.
           </span>
@@ -323,26 +359,28 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
             onChange={(event) => setMinSalary(event.target.value)}
             inputMode="numeric"
             placeholder="150000"
-            className="mt-1 rounded-md border border-border bg-field px-3 py-2 font-mono text-base"
+            className="mt-1 max-w-[220px] rounded-control border border-border bg-field px-3 py-2 font-mono text-[13.5px]"
           />
         </label>
 
-        <p role="alert" aria-live="polite" className="text-sm text-danger">
+        <p role="alert" aria-live="polite" className="text-[12.5px] text-danger">
           {problem}
         </p>
-        {saved && (
-          <p aria-live="polite" className="text-sm text-ok">
-            Saved.
-          </p>
-        )}
 
-        <button
-          type="submit"
-          disabled={pending}
-          className="self-start rounded-md border border-accent-edge bg-accent-wash px-4 py-2 text-sm font-medium text-accent-text disabled:border-border disabled:bg-transparent disabled:text-label"
-        >
-          {pending ? "Saving…" : "Save criteria"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-control border border-accent-edge bg-accent-wash px-3.5 py-[7px] text-[12.5px] font-medium text-accent-text disabled:border-border disabled:bg-transparent disabled:text-label"
+          >
+            {pending ? "Saving…" : "Save criteria"}
+          </button>
+          {saved && (
+            <span aria-live="polite" className="micro-label text-ok">
+              Saved
+            </span>
+          )}
+        </div>
       </form>
     </main>
   );
@@ -374,8 +412,8 @@ function ChipField({
 }: ChipFieldProps) {
   return (
     <fieldset className="flex flex-col gap-2">
-      <legend className="text-sm font-medium">{legend}</legend>
-      <p className="text-xs text-label">{hint}</p>
+      <MonoLabel as="legend">{legend}</MonoLabel>
+      <p className="text-[12.5px] text-label">{hint}</p>
 
       <div className="mt-1 flex gap-2">
         <input
@@ -383,30 +421,30 @@ function ChipField({
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onDraftKeyDown}
           placeholder={placeholder}
-          className="flex-1 rounded-md border border-border bg-field px-3 py-2 text-base"
+          className="flex-1 rounded-control border border-border bg-field px-3 py-2 text-[13.5px]"
         />
         <button
           type="button"
           onClick={onAdd}
-          className="rounded-md border border-border px-4 py-2 text-sm font-medium"
+          className="rounded-control border border-border px-3.5 py-2 text-[12.5px] font-medium text-label hover:text-text"
         >
           Add
         </button>
       </div>
 
       {items.length > 0 && (
-        <ul className="mt-1 flex flex-wrap gap-2">
+        <ul className="mt-1 flex flex-wrap gap-1.5">
           {items.map((item) => (
             <li
               key={item}
-              className="flex items-center gap-1.5 rounded-full bg-tag py-1 pl-3 pr-1.5 text-sm"
+              className="flex items-center gap-1.5 rounded-full bg-tag py-1 pl-3 pr-1.5 text-[12.5px] text-text-body"
             >
               {item}
               <button
                 type="button"
                 onClick={() => onRemove(item)}
                 aria-label={`Remove ${item}`}
-                className="flex h-5 w-5 items-center justify-center rounded-full text-label hover:bg-border hover:text-text"
+                className="flex size-4 items-center justify-center rounded-full text-disabled hover:bg-border hover:text-text"
               >
                 ×
               </button>
