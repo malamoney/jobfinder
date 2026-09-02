@@ -1,0 +1,1 @@
+ALTER TABLE "review_state" ADD COLUMN "viewed_at" timestamp with time zone;

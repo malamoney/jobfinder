@@ -362,20 +362,29 @@ function PostingCard({
           company={posting.company}
           theme={theme}
         />
-        {savable ? (
-          <SavedToggle
-            // Keyed on the Status so a change reconciled in place (this card, or
-            // another island's refresh) remounts the toggle against the server's
-            // value rather than keeping a stale label.
-            key={posting.status}
-            postingId={posting.id}
-            saved={posting.status === "interested"}
-          />
-        ) : (
-          <span className="rounded-control border border-accent-edge bg-accent-wash px-2.5 py-1 text-xs font-medium text-accent-text">
-            {STATUS_LABELS[posting.status]}
-          </span>
-        )}
+        <div className="flex flex-wrap items-start justify-end gap-2">
+          {/* A passive "already looked at this one" marker, left of the Save
+              control — the `--disabled` tone the "Expired" tag wears. */}
+          {posting.viewed && (
+            <span className="rounded-control border border-border px-2.5 py-1 text-xs font-medium text-disabled">
+              Viewed
+            </span>
+          )}
+          {savable ? (
+            <SavedToggle
+              // Keyed on the Status so a change reconciled in place (this card,
+              // or another island's refresh) remounts the toggle against the
+              // server's value rather than keeping a stale label.
+              key={posting.status}
+              postingId={posting.id}
+              saved={posting.status === "interested"}
+            />
+          ) : (
+            <span className="rounded-control border border-accent-edge bg-accent-wash px-2.5 py-1 text-xs font-medium text-accent-text">
+              {STATUS_LABELS[posting.status]}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col gap-1">

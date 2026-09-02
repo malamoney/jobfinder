@@ -5,6 +5,7 @@ import {
   addBoard,
   fetchBoard,
   listPostings,
+  markViewed,
   readDashboard,
   readPosting,
   saveCriteria,
@@ -530,5 +531,80 @@ describe("filtering the Dashboard by Status", () => {
     expect(applied.id).toBe(ids.applied);
     expect(applied.status).toBe("applied");
     expect(applied.appliedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe("marking a Posting viewed", () => {
+  /** A User with one matched Posting; returns both ids. */
+  async function oneMatched(): Promise<{ userId: string; postingId: string }> {
+    boardReturns("acme", [greenhouseJob({ id: 1, title: "Staff Engineer" })]);
+    await fetchBoard(acme);
+    const [posting] = await listPostings();
+    const userId = await givenAUser();
+    await saveCriteria(userId, statedCriteria({ titles: ["Engineer"] }));
+    return { userId, postingId: posting.id };
+  }
+
+  it("a matched Posting is not viewed until it has been opened", async () => {
+    const { userId } = await oneMatched();
+
+    expect((await readDashboard(userId)).postings[0].viewed).toBe(false);
+  });
+
+  it("shows as viewed on the Dashboard once opened", async () => {
+    const { userId, postingId } = await oneMatched();
+
+    await markViewed(userId, postingId);
+
+    expect((await readDashboard(userId)).postings[0].viewed).toBe(true);
+  });
+
+  it("does not touch the Status — viewing is not reviewing", async () => {
+    const { userId, postingId } = await oneMatched();
+
+    await markViewed(userId, postingId);
+
+    const card = (await readDashboard(userId)).postings[0];
+    expect(card.status).toBe("new");
+    expect((await readDashboard(userId)).unreviewedCount).toBe(1);
+    expect((await readPosting(userId, postingId))?.review.statusChangedAt).toBeNull();
+  });
+
+  it("keeps the first-view time when opened again", async () => {
+    const { userId, postingId } = await oneMatched();
+
+    await markViewed(userId, postingId);
+    const [first] = await getDb()
+      .select({ viewedAt: reviewState.viewedAt })
+      .from(reviewState)
+      .where(eq(reviewState.userId, userId));
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await markViewed(userId, postingId);
+    const [second] = await getDb()
+      .select({ viewedAt: reviewState.viewedAt })
+      .from(reviewState)
+      .where(eq(reviewState.userId, userId));
+
+    expect(second.viewedAt).toEqual(first.viewedAt);
+  });
+
+  it("records the view alongside a Status the User had already set", async () => {
+    const { userId, postingId } = await oneMatched();
+    await setStatus(userId, postingId, "interested");
+
+    await markViewed(userId, postingId);
+
+    const card = (await readDashboard(userId)).postings[0];
+    expect(card.status).toBe("interested");
+    expect(card.viewed).toBe(true);
+  });
+
+  it("is a no-op for a Posting that is not in the Corpus", async () => {
+    const userId = await givenAUser();
+
+    await expect(
+      markViewed(userId, "00000000-0000-0000-0000-000000000000"),
+    ).resolves.toBeUndefined();
   });
 });

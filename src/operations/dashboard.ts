@@ -45,6 +45,12 @@ export type DashboardPosting = Posting & {
   status: ReviewStatus;
   /** When the User last marked this `applied`, or null if they never have. */
   appliedAt: Date | null;
+  /**
+   * Whether the User has opened this opening's detail page — any listing of it
+   * (#13), like the Status. Independent of the Status: a viewed Posting can
+   * still be `new`.
+   */
+  viewed: boolean;
 };
 
 /**
@@ -195,6 +201,11 @@ export async function readDashboard(
       ),
       status: effective?.status ?? DEFAULT_STATUS,
       appliedAt: effective?.appliedAt ?? null,
+      // Viewed is monotonic and not a decision, so it is read as "any listing
+      // of this opening has a view", not "the latest mark's view".
+      viewed: (marksByKey.get(representative.dedupKey) ?? []).some(
+        (mark) => mark.viewedAt !== null,
+      ),
     };
   });
 
@@ -239,6 +250,7 @@ type GroupMark = {
   status: ReviewStatus;
   appliedAt: Date | null;
   updatedAt: Date;
+  viewedAt: Date | null;
 };
 
 /**
@@ -259,6 +271,7 @@ async function readGroupMarks(
       status: reviewState.status,
       appliedAt: reviewState.appliedAt,
       updatedAt: reviewState.updatedAt,
+      viewedAt: reviewState.viewedAt,
     })
     .from(reviewState)
     .innerJoin(postings, eq(postings.id, reviewState.postingId))
