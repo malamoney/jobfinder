@@ -6,10 +6,10 @@ import { companyIconSrc, companyMonogram } from "./format";
 import type { Theme } from "./theme";
 
 /** The rendered box, in CSS pixels — the one source of truth for the size. */
-const SIZE = 36;
+const SIZE = 34;
 
 /** The disc both the monogram and the logo sit in, so the two never disagree. */
-const DISC = "rounded-lg border border-border bg-field";
+const DISC = "rounded-control border border-border bg-field";
 
 /**
  * The company mark in the corner of a Dashboard card (#62).

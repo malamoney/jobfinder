@@ -224,6 +224,62 @@ describe("the unreviewed count", () => {
   });
 });
 
+describe("the new-today count", () => {
+  /** Comfortably outside the 24-hour "new today" window. */
+  const THREE_DAYS_AGO = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+
+  it("counts only matched openings first seen in the last 24 hours", async () => {
+    await corpusHas([
+      greenhouseJob({ id: 1, title: "Staff Engineer, Fresh" }),
+      greenhouseJob({ id: 2, title: "Staff Engineer, Stale" }),
+      greenhouseJob({ id: 3, title: "Recruiter" }),
+    ]);
+    const userId = await givenAUser();
+    await saveCriteria(userId, statedCriteria({ titles: ["Staff Engineer"] }));
+
+    // Both Staff Engineer roles match, but one was collected days ago.
+    await getDb()
+      .update(postings)
+      .set({ firstSeenAt: THREE_DAYS_AGO })
+      .where(eq(postings.title, "Staff Engineer, Stale"));
+
+    const dashboard = await readDashboard(userId);
+    expect(dashboard.matchedCount).toBe(2);
+    expect(dashboard.newTodayCount).toBe(1);
+  });
+
+  it("counts an opening new only when every matched listing of it is recent", async () => {
+    await corpusHas([greenhouseJob({ id: 1, title: "Staff Engineer" })]);
+    const userId = await givenAUser();
+    await saveCriteria(userId, statedCriteria({ titles: ["Staff Engineer"] }));
+
+    await getDb()
+      .update(postings)
+      .set({ firstSeenAt: THREE_DAYS_AGO })
+      .where(eq(postings.title, "Staff Engineer"));
+
+    expect((await readDashboard(userId)).newTodayCount).toBe(0);
+  });
+
+  it("leaves out an opening that is already Expired", async () => {
+    await corpusHas([
+      greenhouseJob({ id: 1, title: "Staff Engineer, Live" }),
+      greenhouseJob({ id: 2, title: "Staff Engineer, Gone" }),
+    ]);
+    // Two further successful Fetches without #2 mark it Expired (#7); it stays
+    // freshly collected the whole time.
+    await corpusHas([greenhouseJob({ id: 1, title: "Staff Engineer, Live" })]);
+    await corpusHas([greenhouseJob({ id: 1, title: "Staff Engineer, Live" })]);
+
+    const userId = await givenAUser();
+    await saveCriteria(userId, statedCriteria({ titles: ["Staff Engineer"] }));
+
+    const dashboard = await readDashboard(userId);
+    expect(dashboard.matchedCount).toBe(2);
+    expect(dashboard.newTodayCount).toBe(1);
+  });
+});
+
 describe("re-matching when Criteria change", () => {
   it("re-matches the whole Corpus, including Postings collected earlier", async () => {
     await corpusHas([
