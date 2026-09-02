@@ -44,7 +44,7 @@ export default async function PostingPage({
           href="/dashboard"
           className="self-start text-[12.5px] text-label hover:text-text"
         >
-          ← Back to dashboard
+          ← Back to matches
         </Link>
 
         {/* The same heading and tag treatment as the Dashboard card (#63), so a

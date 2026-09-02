@@ -21,7 +21,7 @@ import type { Theme } from "../theme";
 import { DashboardControls } from "./dashboard-controls";
 import { SavedToggle } from "./saved-toggle";
 
-export const metadata: Metadata = { title: "Dashboard · Jobfinder" };
+export const metadata: Metadata = { title: "Matches · Jobfinder" };
 
 // Server Actions inherit the page's ceiling (`fetchNowAction`'s background
 // sweep needs the room). 60s is safe on every Vercel plan.
