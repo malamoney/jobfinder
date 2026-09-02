@@ -96,7 +96,7 @@ export default async function DashboardPage({
               Matches for review
             </h1>
           </div>
-          <DashboardControls showFilters={Boolean(stated) && matchedCount > 0} />
+          <DashboardControls />
         </header>
 
         {!stated ? (
@@ -117,33 +117,26 @@ export default async function DashboardPage({
               unreviewed={unreviewedCount}
             />
 
-            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-              {/* `scroll-mt-20` clears the 52px fixed nav when the header's
-                  "Filters" button jumps here. */}
-              <nav id="filters" className="flex scroll-mt-20 flex-wrap gap-2">
-                {FILTERS.map(({ key, label }) => {
-                  const active =
-                    key === "open" ? filter === undefined : filter === key;
-                  return (
-                    <Link
-                      key={key}
-                      href={key === "open" ? "/dashboard" : `/dashboard?status=${key}`}
-                      aria-current={active ? "page" : undefined}
-                      className={`rounded-full border px-3.5 py-1.5 text-[13px] ${
-                        active
-                          ? "border-accent-edge bg-accent-wash text-accent-text"
-                          : "border-border text-label"
-                      }`}
-                    >
-                      {label}
-                    </Link>
-                  );
-                })}
-              </nav>
-              <Link href="/criteria" className="text-[13px] text-label underline hover:text-text">
-                Edit your criteria
-              </Link>
-            </div>
+            <nav className="flex flex-wrap gap-2">
+              {FILTERS.map(({ key, label }) => {
+                const active =
+                  key === "open" ? filter === undefined : filter === key;
+                return (
+                  <Link
+                    key={key}
+                    href={key === "open" ? "/dashboard" : `/dashboard?status=${key}`}
+                    aria-current={active ? "page" : undefined}
+                    className={`rounded-full border px-3.5 py-1.5 text-[13px] ${
+                      active
+                        ? "border-accent-edge bg-accent-wash text-accent-text"
+                        : "border-border text-label"
+                    }`}
+                  >
+                    {label}
+                  </Link>
+                );
+              })}
+            </nav>
 
             {postings.length === 0 ? (
               <p className="text-sm text-text-body">

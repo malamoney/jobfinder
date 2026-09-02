@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { fetchNowAction, type DashboardActionResult } from "./actions";
 
@@ -8,15 +9,15 @@ import { fetchNowAction, type DashboardActionResult } from "./actions";
 const INFRA_FAILURE = "Something went wrong. Try again in a moment.";
 
 /**
- * The "Filters" / "Run scan now" pair in the Dashboard header (canvas 3a).
+ * The "Criteria" / "Run scan now" pair in the Dashboard header (canvas 3a).
  *
- * "Filters" jumps to the filter chip row (`#filters`) — shown only when there
- * is a row to jump to. "Run scan now" triggers a real Corpus sweep through a
- * Server Action, cooldown-guarded server-side, then refreshes so the kicker
- * reflects it. The outcome — started, or a cooldown refusal — appears under the
- * buttons rather than navigating away.
+ * "Criteria" links to the page where the search is stated and revised. "Run
+ * scan now" triggers a real Corpus sweep through a Server Action, cooldown-
+ * guarded server-side, then refreshes so the kicker reflects it. The outcome —
+ * started, or a cooldown refusal — appears under the buttons rather than
+ * navigating away.
  */
-export function DashboardControls({ showFilters }: { showFilters: boolean }) {
+export function DashboardControls() {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [result, setResult] = useState<DashboardActionResult | null>(null);
@@ -37,14 +38,12 @@ export function DashboardControls({ showFilters }: { showFilters: boolean }) {
   return (
     <div className="flex flex-col items-end gap-1.5">
       <div className="flex gap-2">
-        {showFilters && (
-          <a
-            href="#filters"
-            className="rounded-control border border-border px-3.5 py-[7px] text-[12.5px] text-label hover:text-text"
-          >
-            Filters
-          </a>
-        )}
+        <Link
+          href="/criteria"
+          className="rounded-control border border-border px-3.5 py-[7px] text-[12.5px] text-label hover:text-text"
+        >
+          Criteria
+        </Link>
         <button
           type="button"
           onClick={runScan}
