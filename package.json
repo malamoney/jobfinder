@@ -18,6 +18,7 @@
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "db:migrate": "drizzle-kit migrate --config drizzle.config.ts",
     "db:generate:test": "drizzle-kit generate --config drizzle.test.config.ts",
+    "drain": "tsx --env-file-if-exists=.env.local scripts/drain-fetch.ts",
     "discover": "tsx --env-file-if-exists=.env.local scripts/discover-boards.ts",
     "seed:boards": "tsx --env-file-if-exists=.env.local scripts/seed-boards.ts",
     "boards:status": "tsx --env-file-if-exists=.env.local scripts/board-health.ts",
