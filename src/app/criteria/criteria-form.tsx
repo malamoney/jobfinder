@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, type KeyboardEvent } from "react";
+import Link from "next/link";
 // Not "@/operations": that reaches Postgres, and this runs in the browser.
 // This is the schema with nothing behind it, which is what lets the same rules
 // answer a typo here and reject a crafted POST on the server.
@@ -367,7 +368,7 @@ export function CriteriaForm({ initial, lastSavedAt }: CriteriaFormProps) {
           {problem}
         </p>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <button
             type="submit"
             disabled={pending}
@@ -375,11 +376,28 @@ export function CriteriaForm({ initial, lastSavedAt }: CriteriaFormProps) {
           >
             {pending ? "Saving…" : "Save criteria"}
           </button>
-          {saved && (
-            <span aria-live="polite" className="micro-label text-ok">
-              Saved
-            </span>
-          )}
+          {/* Saving also rebuilds this User's Matches over the whole Corpus
+              (`saveCriteria` → `matchCriteria`), which is most of the wait — so
+              the slot says so while it runs, then turns into the link to go see
+              the result. Cleared by `edited()` the moment a field changes. */}
+          <span aria-live="polite" className="text-[12.5px]">
+            {pending && (
+              <span className="text-label">
+                Saving, and matching it against every posting…
+              </span>
+            )}
+            {saved && (
+              <span className="inline-flex items-center gap-2">
+                <span className="micro-label text-ok">Saved</span>
+                <Link
+                  href="/dashboard"
+                  className="text-accent-text hover:underline"
+                >
+                  See your matches →
+                </Link>
+              </span>
+            )}
+          </span>
         </div>
       </form>
     </main>
