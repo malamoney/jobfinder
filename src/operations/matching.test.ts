@@ -4,10 +4,12 @@ import { signUp } from "@/auth";
 import {
   addBoard,
   fetchBoard,
+  listPostings,
   matchAllUsers,
   matchCriteria,
   readDashboard,
   saveCriteria,
+  setStatus,
   type Board,
 } from "@/operations";
 import { getDb } from "@/db";
@@ -277,6 +279,84 @@ describe("the new-today count", () => {
     const dashboard = await readDashboard(userId);
     expect(dashboard.matchedCount).toBe(2);
     expect(dashboard.newTodayCount).toBe(1);
+  });
+});
+
+describe("the review-pipeline counts", () => {
+  /** Four matched openings, so each Status can be given one of its own. */
+  async function fourMatched(): Promise<{
+    userId: string;
+    idFor: (sourceId: string) => string;
+  }> {
+    await corpusHas(
+      [1, 2, 3, 4].map((id) =>
+        greenhouseJob({ id, title: `Staff Engineer ${id}` }),
+      ),
+    );
+    const corpus = await listPostings();
+    const idFor = (sourceId: string) =>
+      corpus.find((posting) => posting.sourceId === sourceId)!.id;
+
+    const userId = await givenAUser();
+    await saveCriteria(userId, statedCriteria({ titles: ["Staff Engineer"] }));
+    return { userId, idFor };
+  }
+
+  it("counts interested, not-interested, and applied openings off Review State", async () => {
+    const { userId, idFor } = await fourMatched();
+
+    await setStatus(userId, idFor("1"), "interested");
+    await setStatus(userId, idFor("2"), "not_interested");
+    await setStatus(userId, idFor("3"), "applied");
+    // Posting 4 is left untouched — it stays `new`.
+
+    const dashboard = await readDashboard(userId);
+    expect(dashboard.interestedCount).toBe(1);
+    expect(dashboard.notInterestedCount).toBe(1);
+    expect(dashboard.appliedCount).toBe(1);
+    expect(dashboard.unreviewedCount).toBe(1);
+  });
+
+  it("holds every count independent of the active filter", async () => {
+    const { userId, idFor } = await fourMatched();
+    await setStatus(userId, idFor("1"), "interested");
+    await setStatus(userId, idFor("2"), "not_interested");
+    await setStatus(userId, idFor("3"), "applied");
+
+    for (const filter of [undefined, "all", "applied", "interested"] as const) {
+      const dashboard = await readDashboard(userId, filter);
+      expect({
+        interested: dashboard.interestedCount,
+        notInterested: dashboard.notInterestedCount,
+        applied: dashboard.appliedCount,
+        unreviewed: dashboard.unreviewedCount,
+      }).toEqual({
+        interested: 1,
+        notInterested: 1,
+        applied: 1,
+        unreviewed: 1,
+      });
+    }
+  });
+
+  it("keeps counting an interested opening after its listing has Expired", async () => {
+    const { userId, idFor } = await fourMatched();
+    await setStatus(userId, idFor("1"), "interested");
+
+    // Two further successful Fetches without Posting 1 mark it Expired (#7);
+    // the User's decision outlives the listing (CONTEXT.md, "Expired").
+    await corpusHas(
+      [2, 3, 4].map((id) => greenhouseJob({ id, title: `Staff Engineer ${id}` })),
+    );
+    await corpusHas(
+      [2, 3, 4].map((id) => greenhouseJob({ id, title: `Staff Engineer ${id}` })),
+    );
+
+    const dashboard = await readDashboard(userId);
+    expect(
+      dashboard.postings.find((posting) => posting.id === idFor("1"))?.expired,
+    ).toBe(true);
+    expect(dashboard.interestedCount).toBe(1);
   });
 });
 
