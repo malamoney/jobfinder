@@ -165,8 +165,9 @@ _Avoid_: Type, mode, work style, job type
 ### Review
 
 **Review State**:
-A User's relationship to a Posting: its Status, their Notes, and when each was set. Owned by the
-User and never recomputed.
+A User's relationship to a Posting: its Status, their Notes, whether they have opened its detail
+page, and when each was set. Owned by the User and never recomputed. Opening a Posting is recorded
+but is not a review decision — it does not touch the Status.
 _Avoid_: Bookmark, flag, interaction
 
 **Status**:

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db";
 import {
@@ -129,6 +129,35 @@ export async function readPosting(
         }
       : UNREVIEWED,
   };
+}
+
+/**
+ * Records that the User has opened this Posting's detail page.
+ *
+ * Writes only `viewed_at`, and keeps the first open (`coalesce`) — not
+ * `status`, not `updated_at`. So a viewed Posting still reads as `new`, viewing
+ * never counts against `unreviewedCount`, and opening one listing of an opening
+ * cannot outrank a decision the User made on another (`latestGroupReview` sorts
+ * on `updated_at`).
+ *
+ * Called fire-and-forget from the detail page, so a Posting that vanished
+ * between the page rendering and this landing is a no-op rather than an error.
+ * Returns nothing — there is no outcome a caller acts on.
+ */
+export async function markViewed(
+  userId: string,
+  postingId: string,
+): Promise<void> {
+  if (await postingMissing(postingId)) return;
+
+  const now = new Date();
+  await getDb()
+    .insert(reviewState)
+    .values({ userId, postingId, viewedAt: now })
+    .onConflictDoUpdate({
+      target: [reviewState.userId, reviewState.postingId],
+      set: { viewedAt: sql`coalesce(${reviewState.viewedAt}, ${now})` },
+    });
 }
 
 /**

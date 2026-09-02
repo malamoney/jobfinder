@@ -5,6 +5,7 @@ import {
   addBoard,
   fetchBoard,
   listPostings,
+  markViewed,
   readDashboard,
   readPosting,
   saveCriteria,
@@ -283,5 +284,21 @@ describe("Review State on a deduped opening", () => {
     await setStatus(userId, card.id, "not_interested");
 
     expect(await listPostings()).toHaveLength(2);
+  });
+
+  it("opening one listing marks the opening viewed", async () => {
+    boardReturns("acme", [atsListing()]);
+    boardReturns("jobwire", [aggregatorListing()]);
+    await sweep();
+
+    const userId = await givenAUser();
+    await saveCriteria(userId, statedCriteria());
+
+    // Open the copy the Dashboard does not present.
+    await markViewed(userId, await idBySourceId("222"));
+
+    const [card] = (await readDashboard(userId)).postings;
+    expect(card.id).toBe(await idBySourceId("111"));
+    expect(card.viewed).toBe(true);
   });
 });

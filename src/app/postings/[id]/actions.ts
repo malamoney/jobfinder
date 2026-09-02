@@ -1,8 +1,9 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { currentUser } from "@/auth";
-import { setNotes, setStatus } from "@/operations";
+import { markViewed, setNotes, setStatus } from "@/operations";
 import type { ReviewOutcome } from "@/review/schema";
 
 /**
@@ -37,4 +38,20 @@ export async function setNotesAction(
   if (!signedIn) return ENDED;
 
   return setNotes(signedIn.id, postingId, notes);
+}
+
+/**
+ * Records that the User opened this Posting.
+ *
+ * Fired once from the detail page when it mounts in the browser (`MarkViewed`),
+ * so it never runs on a route prefetch. Answers nothing — a failed mark changes
+ * nothing the User needs — and revalidates the matches list so its card shows
+ * the "Viewed" tag on the way back.
+ */
+export async function markViewedAction(postingId: string): Promise<void> {
+  const signedIn = await currentUser(await headers());
+  if (!signedIn) return;
+
+  await markViewed(signedIn.id, postingId);
+  revalidatePath("/dashboard");
 }

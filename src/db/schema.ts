@@ -475,6 +475,13 @@ export const reviewState = pgTable(
     statusChangedAt: timestamp("status_changed_at", { withTimezone: true }),
     appliedAt: timestamp("applied_at", { withTimezone: true }),
 
+    // When the User first opened this Posting's detail page — kept as the first
+    // open, not moved by a re-view, and null until they have opened it.
+    // `markViewed` writes only this column: not `status`, not `updated_at`, so
+    // opening a Posting is not a review decision and can never outrank one the
+    // User made on another listing of the same opening.
+    viewedAt: timestamp("viewed_at", { withTimezone: true }),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

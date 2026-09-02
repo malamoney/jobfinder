@@ -65,6 +65,7 @@ export {
   PRUNE_BATCH_SIZE,
 } from "./prune";
 export {
+  markViewed,
   readPosting,
   setNotes,
   setSaved,

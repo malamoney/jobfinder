@@ -9,6 +9,7 @@ import { formatAge, formatSalary } from "../../format";
 import { MonoLabel } from "../../mono-label";
 import { PostingTags } from "../../posting-tags";
 import { BackToMatches } from "./back-to-matches";
+import { MarkViewed } from "./mark-viewed";
 import { ReviewControls } from "./review-controls";
 
 export const metadata: Metadata = { title: "Posting · Jobfinder" };
@@ -36,6 +37,7 @@ export default async function PostingPage({
   return (
     <>
       <AppNav />
+      <MarkViewed postingId={posting.id} />
       {/* The shell is `max-w-6xl` for every page behind the login (ADR 0012).
           This page's sections — the header, the review panel, the description —
           all span it, so no section sits wider than the one stacked under it. */}
