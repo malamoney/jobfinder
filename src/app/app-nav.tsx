@@ -29,7 +29,7 @@ import { ThemeToggle } from "./theme-toggle";
  */
 
 const LINKS = [
-  { key: "dashboard", href: "/dashboard", label: "Dashboard" },
+  { key: "dashboard", href: "/dashboard", label: "Matches" },
   { key: "criteria", href: "/criteria", label: "Criteria" },
 ] as const;
 
