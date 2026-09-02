@@ -216,7 +216,7 @@ export function CriteriaForm({ initial, lastSavedAt }: CriteriaFormProps) {
     // The page shell matches every other page behind the login (`max-w-6xl`,
     // ADR 0012). The form itself stays a single narrow column — a text field
     // 72rem wide helps no one — held to a reading measure and aligned with the
-    // nav's left edge, the way the Posting page holds its description.
+    // nav's left edge.
     <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 pb-16 pt-20">
       <div className="flex w-full max-w-2xl flex-col gap-2">
         {/* Canvas 4c: a mono kicker over the heading. The "LAST SAVED" clause
