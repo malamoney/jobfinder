@@ -1,5 +1,10 @@
 # Geocoding via Nominatim, cached by normalized location string
 
+> **Amended by ADR 0014.** The half of this that covered *the User's home* no longer holds: a home
+> location is geocoded exactly as typed and stored on the User's own Criteria row, never normalized
+> and never cached here. Everything below still stands for a Posting's location, which is what the
+> cache now holds.
+
 The commute-radius funnel stage (#12) needs a coordinate for a Posting's location and for the
 User's home. Locations arrive as messy free text — `Greater Boston Area`, `San Francisco, CA /
 Remote`, `Multiple locations` — so they are normalized to a lowercase, arrangement-stripped key

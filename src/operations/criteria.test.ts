@@ -1,12 +1,27 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { signUp } from "@/auth";
-import { readCriteria, readCriteriaSavedAt, saveCriteria } from "@/operations";
+import {
+  readCriteria,
+  readCriteriaSavedAt,
+  readHomeCoordinate,
+  saveCriteria,
+} from "@/operations";
 import { getDb } from "@/db";
-import { criteria, user } from "@/db/schema";
+import { criteria, geocodes, user } from "@/db/schema";
+import { normalizeLocation } from "@/postings/location";
+import {
+  geocoderIsDown,
+  geocoderKnows,
+  type Coordinate,
+  type Place,
+} from "@/test/fixtures/nominatim";
 import type { CriteriaInput } from "@/criteria/schema";
 
 const PASSWORD = "correct-horse-battery-staple";
+
+const BOSTON: Coordinate = { latitude: 42.3601, longitude: -71.0589 };
+const CAMBRIDGE: Coordinate = { latitude: 42.3736, longitude: -71.1097 };
 
 /** Signs up a User and hands back their id. */
 async function givenAUser(email = "ada@example.com"): Promise<string> {
@@ -52,6 +67,8 @@ describe("stating Criteria", () => {
         radiusMiles: null,
         minSalary: null,
       },
+      // Nothing to place: these Criteria accept remote work and state no home.
+      home: { state: "none" },
     });
     expect(await readCriteria(userId)).toEqual(
       outcome.ok && outcome.criteria,
@@ -214,11 +231,12 @@ describe("home location and radius", () => {
 
     expect(outcome).toEqual({
       ok: false,
-      message: expect.stringMatching(/home location|commute radius/i),
+      message: expect.stringMatching(/home address|commute radius/i),
     });
   });
 
   it("stores both when a distance role is accepted", async () => {
+    geocoderKnows({ "Boston, MA": BOSTON });
     const userId = await givenAUser();
 
     const outcome = await saveCriteria(
@@ -237,6 +255,7 @@ describe("home location and radius", () => {
   });
 
   it("clears a stored location and radius once no distance role remains", async () => {
+    geocoderKnows({ "Boston, MA": BOSTON });
     const userId = await givenAUser();
     await saveCriteria(
       userId,
@@ -256,6 +275,176 @@ describe("home location and radius", () => {
       homeLocation: null,
       radiusMiles: null,
     });
+  });
+});
+
+/**
+ * The home location is asked for as a street address and resolved to a point on
+ * the User's own Criteria row (#100), so the commute radius measures from where
+ * they live rather than from the middle of their city.
+ */
+describe("placing the home location", () => {
+  /** A street address and the front door the geocoder puts it at. */
+  const BEACON_ST = "12 Beacon St, Boston, MA";
+  const AT_THE_DOOR: Place = { ...BOSTON, placeRank: 30 };
+
+  /** Criteria that accept an onsite role, so a home location is asked for. */
+  function commuteCriteria(homeLocation: string): CriteriaInput {
+    return statedCriteria({
+      arrangements: ["full-time", "onsite"],
+      homeLocation,
+      radiusMiles: 30,
+    });
+  }
+
+  it("resolves the stated address to a coordinate and says how precisely", async () => {
+    geocoderKnows({ [BEACON_ST]: AT_THE_DOOR });
+    const userId = await givenAUser();
+
+    const outcome = await saveCriteria(userId, commuteCriteria(BEACON_ST));
+
+    expect(outcome.ok && outcome.home).toEqual({
+      state: "placed",
+      home: { ...BOSTON, precision: "exact" },
+    });
+    expect(await readHomeCoordinate(userId)).toEqual({
+      ...BOSTON,
+      precision: "exact",
+    });
+  });
+
+  it("reports a city-only answer as a city, so the User knows it is approximate", async () => {
+    geocoderKnows({ "Boston, MA": { ...BOSTON, placeRank: 16 } });
+    const userId = await givenAUser();
+
+    const outcome = await saveCriteria(userId, commuteCriteria("Boston, MA"));
+
+    expect(outcome.ok && outcome.home).toMatchObject({
+      state: "placed",
+      home: { precision: "city" },
+    });
+  });
+
+  it("reports an answer broader than a city as an area", async () => {
+    geocoderKnows({ Massachusetts: { ...BOSTON, placeRank: 8 } });
+    const userId = await givenAUser();
+
+    const outcome = await saveCriteria(userId, commuteCriteria("Massachusetts"));
+
+    expect(outcome.ok && outcome.home).toMatchObject({
+      state: "placed",
+      home: { precision: "area" },
+    });
+  });
+
+  it("saves anyway when the address cannot be found, and skips the radius", async () => {
+    geocoderKnows({});
+    const userId = await givenAUser();
+
+    const outcome = await saveCriteria(
+      userId,
+      commuteCriteria("77 Nowhere Ln, Atlantis"),
+    );
+
+    expect(outcome.ok && outcome.home).toEqual({ state: "not-found" });
+    expect((await readCriteria(userId))?.homeLocation).toBe(
+      "77 Nowhere Ln, Atlantis",
+    );
+    expect(await readHomeCoordinate(userId)).toBeNull();
+  });
+
+  it("saves anyway when the geocoder cannot be reached at all", async () => {
+    geocoderIsDown();
+    const userId = await givenAUser();
+
+    const outcome = await saveCriteria(userId, commuteCriteria(BEACON_ST));
+
+    expect(outcome.ok && outcome.home).toEqual({ state: "unchecked" });
+    expect(await readHomeCoordinate(userId)).toBeNull();
+  });
+
+  // The normalizer built for a Posting's location strips a parenthetical and a
+  // trailing "remote" — right for `Austin, TX (Remote)`, and ruinous for an
+  // address. A home location never goes through it.
+  it("geocodes an address the Posting-location normalizer would mangle, intact", async () => {
+    const address = "12 Beacon St (Apt 4), Boston, MA";
+    expect(normalizeLocation(address)).not.toBe(address.toLowerCase());
+
+    const geo = geocoderKnows({ [address]: AT_THE_DOOR });
+    const userId = await givenAUser();
+
+    const outcome = await saveCriteria(userId, commuteCriteria(address));
+
+    expect(geo.queries()).toEqual([address]);
+    expect(outcome.ok && outcome.home).toMatchObject({ state: "placed" });
+  });
+
+  it("never writes the address into the Geocode Cache every User shares", async () => {
+    geocoderKnows({ [BEACON_ST]: AT_THE_DOOR });
+    const userId = await givenAUser();
+
+    await saveCriteria(userId, commuteCriteria(BEACON_ST));
+
+    expect(await getDb().select().from(geocodes)).toEqual([]);
+  });
+
+  it("clears the coordinate when the home location is cleared", async () => {
+    geocoderKnows({ [BEACON_ST]: AT_THE_DOOR });
+    const userId = await givenAUser();
+    await saveCriteria(userId, commuteCriteria(BEACON_ST));
+
+    await saveCriteria(userId, statedCriteria({ arrangements: ["remote"] }));
+
+    expect(await readHomeCoordinate(userId)).toBeNull();
+  });
+
+  it("clears the coordinate when the address is changed for one that cannot be found", async () => {
+    geocoderKnows({ [BEACON_ST]: AT_THE_DOOR });
+    const userId = await givenAUser();
+    await saveCriteria(userId, commuteCriteria(BEACON_ST));
+
+    geocoderKnows({});
+    await saveCriteria(userId, commuteCriteria("77 Nowhere Ln, Atlantis"));
+
+    expect(await readHomeCoordinate(userId)).toBeNull();
+  });
+
+  it("does not ask the geocoder again for an address already placed", async () => {
+    geocoderKnows({ [BEACON_ST]: AT_THE_DOOR });
+    const userId = await givenAUser();
+    await saveCriteria(userId, commuteCriteria(BEACON_ST));
+
+    const geo = geocoderKnows({ [BEACON_ST]: AT_THE_DOOR });
+    const outcome = await saveCriteria(userId, {
+      ...commuteCriteria(BEACON_ST),
+      keywords: ["rust"],
+    });
+
+    expect(geo.queries()).toEqual([]);
+    expect(outcome.ok && outcome.home).toMatchObject({ state: "placed" });
+  });
+
+  it("asks again when the address changes", async () => {
+    geocoderKnows({ [BEACON_ST]: AT_THE_DOOR });
+    const userId = await givenAUser();
+    await saveCriteria(userId, commuteCriteria(BEACON_ST));
+
+    const geo = geocoderKnows({ "Cambridge, MA": CAMBRIDGE });
+    await saveCriteria(userId, commuteCriteria("Cambridge, MA"));
+
+    expect(geo.queries()).toEqual(["Cambridge, MA"]);
+    expect(await readHomeCoordinate(userId)).toMatchObject(CAMBRIDGE);
+  });
+
+  it("asks again when a save follows one the geocoder could not answer", async () => {
+    geocoderIsDown();
+    const userId = await givenAUser();
+    await saveCriteria(userId, commuteCriteria(BEACON_ST));
+
+    geocoderKnows({ [BEACON_ST]: AT_THE_DOOR });
+    const outcome = await saveCriteria(userId, commuteCriteria(BEACON_ST));
+
+    expect(outcome.ok && outcome.home).toMatchObject({ state: "placed" });
   });
 });
 

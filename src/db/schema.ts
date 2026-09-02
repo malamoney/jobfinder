@@ -11,6 +11,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import type { Arrangement } from "@/criteria/schema";
+import type { LocationPrecision } from "@/geocoding/precision";
 import type { Country } from "@/postings/country";
 import type { ReviewStatus } from "@/review/schema";
 import type { SalaryPeriod } from "@/postings/salary";
@@ -372,7 +373,21 @@ export const criteria = pgTable("criteria", {
     .notNull()
     .default([]),
 
+  // Where the User lives, as they stated it — a street address if they gave
+  // one, a city and state if they did not.
   homeLocation: text("home_location"),
+  // That statement resolved to a point, once, at save time (#100), and how
+  // precisely the geocoder placed it. All three are null together: when no
+  // home location is stated, when the geocoder could not place it, and on a row
+  // saved before this existed — which the commute radius reads as "fall back to
+  // the shared Geocode Cache" (`@/operations/matching`), and which
+  // `pnpm resolve-home-locations` fills in without the User re-saving.
+  //
+  // Deliberately not in the `geocodes` cache: that table is keyed by string and
+  // shared by every User, and a street address is not something to pool.
+  homeLatitude: doublePrecision("home_latitude"),
+  homeLongitude: doublePrecision("home_longitude"),
+  homePrecision: text("home_precision").$type<LocationPrecision>(),
   radiusMiles: integer("radius_miles"),
   minSalary: integer("min_salary"),
   // There is no "United States only" Criterion any more: the Corpus holds only

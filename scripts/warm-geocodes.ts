@@ -16,12 +16,16 @@
  * cached — use it once after a geocoder fix so stale coordinates are re-resolved
  * (a bare "Franklin, MA" that used to land on Franklin County, say).
  *
+ * Postings only. A User's home location is resolved onto their own Criteria row
+ * and never enters this cache (#100) — `pnpm resolve-home-locations` is the
+ * equivalent pass for those.
+ *
  * Needs DATABASE_URL. Re-run matching afterwards (the nightly sweep does, or the
  * Dashboard button) for the radius to apply to the newly-placed Postings.
  */
 import { isNotNull, sql } from "drizzle-orm";
 import { closeDb, getDb } from "@/db";
-import { criteria, geocodes, postings } from "@/db/schema";
+import { geocodes, postings } from "@/db/schema";
 import { ensureGeocoded } from "@/operations/geocoding";
 import { normalizeLocation } from "@/postings/location";
 
@@ -38,19 +42,13 @@ async function main(): Promise<void> {
     console.log(`--refresh: cleared ${count} cached location(s).`);
   }
 
-  const [postingLocations, homeLocations] = await Promise.all([
-    db
-      .selectDistinct({ location: postings.location })
-      .from(postings)
-      .where(isNotNull(postings.location)),
-    db
-      .select({ location: criteria.homeLocation })
-      .from(criteria)
-      .where(isNotNull(criteria.homeLocation)),
-  ]);
+  const postingLocations = await db
+    .selectDistinct({ location: postings.location })
+    .from(postings)
+    .where(isNotNull(postings.location));
 
   const keys = new Set<string>();
-  for (const { location } of [...postingLocations, ...homeLocations]) {
+  for (const { location } of postingLocations) {
     const key = normalizeLocation(location);
     if (key) keys.add(key);
   }

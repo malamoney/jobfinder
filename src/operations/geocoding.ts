@@ -1,7 +1,12 @@
 import { eq, inArray } from "drizzle-orm";
 import type { Writer } from "@/db";
 import { geocodes, type Geocode } from "@/db/schema";
-import { geocode, type Coordinate } from "@/geocoding/nominatim";
+import {
+  geocode,
+  pauseBetweenLookups,
+  type Coordinate,
+  type Placement,
+} from "@/geocoding/nominatim";
 
 /**
  * The geocode cache: resolving normalized location strings to coordinates once
@@ -13,23 +18,15 @@ import { geocode, type Coordinate } from "@/geocoding/nominatim";
  * back. The distance funnel stage in `@/operations/matching` joins the
  * `geocodes` table directly for the filter itself.
  *
+ * What never belongs here is a User's home location (#100). This cache is one
+ * table shared by everybody, and an exact street address is not a string to pool
+ * — a home is resolved once at save time and the coordinate kept on that User's
+ * own Criteria row (`@/operations/home-location`).
+ *
  * Tested through the matching seam (`matching.test.ts`) with MSW standing in for
  * Nominatim, the same way Extraction and the Source adapters are — the geocoder
  * is not injected, it calls `fetch` and MSW controls the boundary.
  */
-
-/**
- * The least time between two calls to Nominatim, whose usage policy is one
- * request a second. Zero in tests (`.env.test`), where MSW answers instantly and
- * there is no one to be a good citizen towards.
- */
-function minIntervalMs(): number {
-  const configured = Number(process.env.GEOCODER_MIN_INTERVAL_MS);
-  return Number.isFinite(configured) ? configured : 1000;
-}
-
-const sleep = (ms: number) =>
-  ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
 
 /**
  * The most uncached strings one call will geocode. The rest are left for the
@@ -82,15 +79,14 @@ export async function ensureGeocoded(
   const known = new Set(cached.map((row) => row.location));
   const uncached = wanted.filter((location) => !known.has(location));
 
-  const interval = minIntervalMs();
   let calls = 0;
 
   for (const location of uncached) {
     if (calls >= budget) break;
-    if (calls > 0) await sleep(interval);
+    if (calls > 0) await pauseBetweenLookups();
     calls++;
 
-    let point: Coordinate | null;
+    let point: Placement | null;
     try {
       point = await geocode(location);
     } catch {
