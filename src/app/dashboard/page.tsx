@@ -19,6 +19,7 @@ import { PostingTags } from "../posting-tags";
 import { readTheme } from "../theme-server";
 import type { Theme } from "../theme";
 import { DashboardControls } from "./dashboard-controls";
+import { RefreshMatches } from "./refresh-matches";
 import { SavedToggle } from "./saved-toggle";
 
 export const metadata: Metadata = { title: "Matches · Jobfinder" };
@@ -82,6 +83,7 @@ export default async function DashboardPage({
   return (
     <>
       <AppNav active="dashboard" />
+      <RefreshMatches />
       <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 pb-16 pt-20">
         {/* Canvas 3a: a mono fetch kicker over a weight-500 title, with the
             "Filters" / "Run scan now" pair on the right. The kicker carries the

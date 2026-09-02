@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { currentUser } from "@/auth";
 import { markViewed, setNotes, setStatus } from "@/operations";
@@ -45,13 +44,17 @@ export async function setNotesAction(
  *
  * Fired once from the detail page when it mounts in the browser (`MarkViewed`),
  * so it never runs on a route prefetch. Answers nothing — a failed mark changes
- * nothing the User needs — and revalidates the matches list so its card shows
- * the "Viewed" tag on the way back.
+ * nothing the User needs.
+ *
+ * Deliberately does *not* `revalidatePath("/dashboard")`: that clears the
+ * matches list from the router's back/forward cache, so "← Back to matches"
+ * would re-fetch it and lose the User's scroll position. `MarkViewed` sets a
+ * flag instead and the matches page refreshes itself in place on return
+ * (`RefreshMatches`), which keeps the scroll offset.
  */
 export async function markViewedAction(postingId: string): Promise<void> {
   const signedIn = await currentUser(await headers());
   if (!signedIn) return;
 
   await markViewed(signedIn.id, postingId);
-  revalidatePath("/dashboard");
 }
