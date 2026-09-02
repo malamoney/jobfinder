@@ -12,7 +12,6 @@ import {
   type PostingReview,
   type SettableStatus,
 } from "@/review/schema";
-import { formatDay } from "../../format";
 import { MonoLabel } from "../../mono-label";
 import { setNotesAction, setStatusAction } from "./actions";
 
@@ -23,6 +22,16 @@ type ReviewControlsProps = {
   postingId: string;
   /** The Review State as the server last knew it. */
   review: PostingReview;
+  /**
+   * What sits above the Status buttons: the "YOUR REVIEW" caption and the
+   * Status kicker, on a Posting with no commute tab to switch to.
+   *
+   * Passed in rather than rendered here because a Posting that *is* a commute
+   * puts a tab strip there instead, and a tab strip may not live inside the
+   * panel it controls. Left out, the buttons are the first thing in the panel —
+   * which is what the tabbed layout wants (canvas 4a).
+   */
+  heading?: React.ReactNode;
 };
 
 /**
@@ -37,7 +46,11 @@ type ReviewControlsProps = {
  * same place a validation message would appear, rather than reaching the error
  * boundary and taking the page down.
  */
-export function ReviewControls({ postingId, review }: ReviewControlsProps) {
+export function ReviewControls({
+  postingId,
+  review,
+  heading,
+}: ReviewControlsProps) {
   const router = useRouter();
   const [pendingStatus, startStatus] = useTransition();
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -83,25 +96,10 @@ export function ReviewControls({ postingId, review }: ReviewControlsProps) {
 
   const notesChanged = normalizedNotes(notes) !== review.notes;
 
-  // Canvas 4a: a "APPLIED · AUG 24" status line in `--accent-text`, shown once
-  // the User has actually placed the Posting somewhere — "NEW" in the accent
-  // tone would read as a decision that has not been made.
-  const decided = review.status !== "new";
-
   return (
-    <section className="flex flex-col gap-[22px] rounded-card border border-border bg-surface p-4">
+    <div className="flex flex-col gap-[22px]">
       <div className="flex flex-col gap-2.5">
-        <div className="flex items-baseline justify-between gap-3">
-          <MonoLabel as="p">Your review</MonoLabel>
-          {decided && (
-            <MonoLabel tone="accent">
-              {STATUS_LABELS[review.status]}
-              {review.status === "applied" && review.appliedAt
-                ? ` · ${formatDay(review.appliedAt)}`
-                : ""}
-            </MonoLabel>
-          )}
-        </div>
+        {heading}
         <div className="flex flex-wrap gap-2">
           {SETTABLE_STATUSES.map((status) => {
             const active = review.status === status;
@@ -158,6 +156,6 @@ export function ReviewControls({ postingId, review }: ReviewControlsProps) {
           {pendingNotes ? "Saving…" : "Save notes"}
         </button>
       </label>
-    </section>
+    </div>
   );
 }
