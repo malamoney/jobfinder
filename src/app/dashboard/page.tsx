@@ -352,7 +352,7 @@ function PostingCard({
   const savable = posting.status === "new" || posting.status === "interested";
 
   return (
-    <li className="flex min-h-80 flex-col gap-3 rounded-card border border-border bg-surface p-4">
+    <li className="job-card flex min-h-80 flex-col gap-3 rounded-card border border-border bg-surface p-4">
       <div className="flex items-start justify-between gap-3">
         <CompanyIcon
           // Keyed on the theme so a mark that hit `onError` in one palette gets

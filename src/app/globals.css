@@ -21,6 +21,9 @@
   --chrome: #0c0c0e;
   --rail: #0b0b0d;
   --surface: #191919;
+  /* Where `--surface` lifts to on a job card hover (canvas 3a). Dark only — in
+     light the card holds `--surface` and the hover is border + glow alone. */
+  --surface-lift: #1c1c1c;
   --field: #141418;
   --tag: #1c1c21;
   --border: #232327;
@@ -45,6 +48,7 @@
   --chrome: #ffffff;
   --rail: #fbfbfa;
   --surface: #ffffff;
+  --surface-lift: #ffffff;
   --field: #ffffff;
   --tag: #efeeeb;
   --border: #e2e2dd;
@@ -147,6 +151,34 @@
  */
 .brand-dot {
   box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 75%, transparent);
+}
+
+/*
+ * A Dashboard job card lifts on hover (canvas 3a / 3b, and the mobile cards in
+ * 3c): the edge goes to `--accent-edge`, a hairline `--accent` ring and a soft
+ * `--accent` glow appear beneath it, and in dark the surface itself lifts a
+ * step (`--surface-lift`; a no-op in light, where the border and glow carry it
+ * alone). `color-mix` keeps the ring and glow on the live `--accent`, so they
+ * recolour with the theme. The transition is short — a card is a triage
+ * glance, not something to animate at.
+ */
+.job-card {
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background-color 0.16s ease;
+}
+.job-card:hover {
+  border-color: var(--accent-edge);
+  background-color: var(--surface-lift);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent),
+    0 10px 28px -12px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .job-card {
+    transition: none;
+  }
 }
 
 /*
