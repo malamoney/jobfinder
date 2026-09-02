@@ -110,6 +110,16 @@
 }
 
 /*
+ * The brand mark's dot in the nav (#80) — an 8px `--accent` disc with a soft
+ * glow of the same colour. `color-mix` keeps the glow on the live `--accent`
+ * token, so it recolours with the theme (blurple on the dark ground, a deeper
+ * violet on paper) rather than freezing one hex.
+ */
+.brand-dot {
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 75%, transparent);
+}
+
+/*
  * A Posting's description is sanitized HTML from a Source (see
  * `@/postings/description`). Tailwind's reset strips margins from every element,
  * so the spacing a job description needs to be readable is put back here rather

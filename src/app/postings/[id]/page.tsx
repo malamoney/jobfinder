@@ -35,7 +35,7 @@ export default async function PostingPage({
   return (
     <>
       <AppNav />
-      <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 pb-16 pt-24">
+      <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 pb-16 pt-20">
         <Link href="/dashboard" className="self-start text-sm underline">
           ← Back to dashboard
         </Link>

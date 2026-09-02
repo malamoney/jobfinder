@@ -205,7 +205,7 @@ export function CriteriaForm({ initial }: CriteriaFormProps) {
     // ADR 0012). The form itself stays a single narrow column — a text field
     // 72rem wide helps no one — held to a reading measure and aligned with the
     // nav's left edge, the way the Posting page holds its description.
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 pb-16 pt-24">
+    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 pb-16 pt-20">
       <div className="flex w-full max-w-2xl flex-col gap-2">
         <h1 className="text-2xl font-semibold tracking-tight">
           What are you looking for?
