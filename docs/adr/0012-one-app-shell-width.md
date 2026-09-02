@@ -5,9 +5,10 @@ same outer container: `mx-auto max-w-6xl px-6`, with `pt-24` to clear the fixed 
 inner container is the same `mx-auto max-w-6xl px-6`, so a page's content and the "Jobfinder" mark
 in the nav share a left edge at every viewport.
 
-Content that wants a narrower measure is held inside that shell, not by shrinking it: the Posting
-description is `max-w-2xl`, and the Criteria form is a single `max-w-2xl` column left-aligned within
-the wide shell.
+Content that wants a narrower measure is held inside that shell, not by shrinking it: the Criteria
+form is a single `max-w-2xl` column left-aligned within the wide shell. The Posting page instead
+spans the shell with every section — header, review panel, description — because those sections
+stack, and a narrow description under a full-width review panel does not line up with it.
 
 ## Why write it down
 
@@ -18,8 +19,9 @@ page where the two are most obviously meant to line up. #71 widened its shell to
 rule below.
 
 The rule is now: a page behind the login does not choose its own shell width. If a new page reads
-too wide, hold its *content* narrow inside the `max-w-6xl` shell, the way the Posting description
-and the Criteria form already do.
+too wide, hold its *content* narrow inside the `max-w-6xl` shell, the way the Criteria form does —
+unless the page stacks sections that must align with each other, in which case they all span the
+shell, the way the Posting page does.
 
 ## Not the signed-out pages
 

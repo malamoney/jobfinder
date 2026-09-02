@@ -36,6 +36,9 @@ export default async function PostingPage({
   return (
     <>
       <AppNav />
+      {/* The shell is `max-w-6xl` for every page behind the login (ADR 0012).
+          This page's sections — the header, the review panel, the description —
+          all span it, so no section sits wider than the one stacked under it. */}
       <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 pb-16 pt-20">
         <Link
           href="/dashboard"
@@ -79,7 +82,7 @@ export default async function PostingPage({
         <ReviewControls postingId={posting.id} review={posting.review} />
 
         <article
-          className="description max-w-[620px] text-[13.5px] leading-[1.75]"
+          className="description text-[13.5px] leading-[1.75]"
           // The HTML has been through `sanitizeDescription`: scripts, styles,
           // event handlers, and `javascript:` links do not survive it.
           dangerouslySetInnerHTML={{
