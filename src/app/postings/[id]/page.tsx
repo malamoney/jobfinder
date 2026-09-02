@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { currentUser } from "@/auth";
@@ -9,6 +8,7 @@ import { AppNav } from "../../app-nav";
 import { formatAge, formatSalary } from "../../format";
 import { MonoLabel } from "../../mono-label";
 import { PostingTags } from "../../posting-tags";
+import { BackToMatches } from "./back-to-matches";
 import { ReviewControls } from "./review-controls";
 
 export const metadata: Metadata = { title: "Posting · Jobfinder" };
@@ -40,12 +40,7 @@ export default async function PostingPage({
           This page's sections — the header, the review panel, the description —
           all span it, so no section sits wider than the one stacked under it. */}
       <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 pb-16 pt-20">
-        <Link
-          href="/dashboard"
-          className="self-start text-[12.5px] text-label hover:text-text"
-        >
-          ← Back to matches
-        </Link>
+        <BackToMatches />
 
         {/* The same heading and tag treatment as the Dashboard card (#63), so a
             card and the page it opens read as one product: company and age, a
