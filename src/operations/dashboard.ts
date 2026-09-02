@@ -75,6 +75,29 @@ export type Dashboard = {
    */
   unreviewedCount: number;
   /**
+   * How many matched openings the User has marked `interested` — one of the
+   * review-pipeline totals the Dashboard can show alongside `unreviewedCount`
+   * (#82).
+   *
+   * A grouped count over Review State: an opening is one however many of its
+   * listings carry the mark (#13). Unlike {@link Dashboard.unreviewedCount}
+   * this does *not* drop an Expired opening — a decision the User made outlives
+   * the listing (CONTEXT.md, "Expired"), whereas an unreviewed Expired role is
+   * just noise. Independent of the active filter, like every count here.
+   */
+  interestedCount: number;
+  /**
+   * How many matched openings the User has marked `not_interested` (#82).
+   * Counted like {@link Dashboard.interestedCount}, Expired ones included, so
+   * it holds even though the default view hides these Postings.
+   */
+  notInterestedCount: number;
+  /**
+   * How many matched openings the User has marked `applied` (#82). Counted like
+   * {@link Dashboard.interestedCount}.
+   */
+  appliedCount: number;
+  /**
    * How many live matched openings were first collected in the last 24 hours —
    * the "new today" figure the Dashboard's stat strip leads with (#81). An
    * opening counts only when every one of its matched listings is that recent
@@ -190,12 +213,22 @@ export async function readDashboard(
 
   all.sort(byPresentedPostedDate);
 
+  // The review-pipeline counts (#82) read straight off the group-effective
+  // Status already resolved onto every opening above — one pass over what is
+  // in memory rather than a second trip to the database for figures the
+  // Dashboard read has, in effect, already computed.
+  const countWithStatus = (status: ReviewStatus) =>
+    all.filter((posting) => posting.status === status).length;
+
   return {
     postings: all.filter((posting) => shownBy(filter, posting.status)),
     matchedCount: all.length,
     unreviewedCount: all.filter(
       (posting) => !posting.expired && posting.status === DEFAULT_STATUS,
     ).length,
+    interestedCount: countWithStatus("interested"),
+    notInterestedCount: countWithStatus("not_interested"),
+    appliedCount: countWithStatus("applied"),
     newTodayCount,
   };
 }
