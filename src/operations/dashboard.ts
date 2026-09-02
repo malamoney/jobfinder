@@ -74,7 +74,18 @@ export type Dashboard = {
    * Status but `new` for, are both left out, whatever the User is looking at.
    */
   unreviewedCount: number;
+  /**
+   * How many live matched openings were first collected in the last 24 hours —
+   * the "new today" figure the Dashboard's stat strip leads with (#81). An
+   * opening counts only when every one of its matched listings is that recent
+   * (a long-standing role that merely picked up a second Source today is not
+   * new) and it is not Expired. Independent of the active filter.
+   */
+  newTodayCount: number;
 };
+
+/** How far back "new today" reaches — a rolling 24-hour window. */
+const NEW_TODAY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Reads one User's Dashboard, optionally filtered by Status.
@@ -133,7 +144,8 @@ export async function readDashboard(
   // the opening must still read as marked (#13).
   const marksByKey = await readGroupMarks(db, userId, [...groups.keys()]);
 
-  const all = [...groups.values()].map((members): DashboardPosting => {
+  const groupMembers = [...groups.values()];
+  const all = groupMembers.map((members): DashboardPosting => {
     const representative = chooseRepresentative(
       members.map((member) => member.posting),
     );
@@ -163,6 +175,19 @@ export async function readDashboard(
     };
   });
 
+  // An opening is "new today" when every one of its matched listings was first
+  // collected inside the window, and it is not already Expired — the same "not
+  // worth opening the app for" exclusion `unreviewedCount` makes (#33). Counted
+  // here, against `groupMembers[i]`, before `all` is sorted out of that order.
+  const newSince = Date.now() - NEW_TODAY_WINDOW_MS;
+  const newTodayCount = all.filter(
+    (posting, i) =>
+      !posting.expired &&
+      groupMembers[i].every(
+        (member) => member.posting.firstSeenAt.getTime() >= newSince,
+      ),
+  ).length;
+
   all.sort(byPresentedPostedDate);
 
   return {
@@ -171,6 +196,7 @@ export async function readDashboard(
     unreviewedCount: all.filter(
       (posting) => !posting.expired && posting.status === DEFAULT_STATUS,
     ).length,
+    newTodayCount,
   };
 }
 

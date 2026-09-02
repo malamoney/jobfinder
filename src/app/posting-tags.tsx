@@ -34,7 +34,7 @@ export function PostingTags({
       {labels.map((label) => (
         <Tag key={label}>{label}</Tag>
       ))}
-      {posting.expired && <Tag tone="muted">Expired</Tag>}
+      {posting.expired && <Tag tone="disabled">Expired</Tag>}
       {posting.unresolvedLocation && (
         <Tag tone="warn">Location unresolved</Tag>
       )}
@@ -42,22 +42,27 @@ export function PostingTags({
   );
 }
 
-/** One pill. `warn` is the caution tone the un-geocoded location wears. */
+/**
+ * One pill, in the mono micro-label style the Nocturne direction gives every
+ * structural label (#77, #81): JetBrains Mono at 11px on a `--tag` ground.
+ * `disabled` is the greyed-out tone an Expired listing wears; `warn` is the
+ * caution tone the un-geocoded location wears.
+ */
 function Tag({
   children,
   tone = "default",
 }: {
   children: React.ReactNode;
-  tone?: "default" | "muted" | "warn";
+  tone?: "default" | "disabled" | "warn";
 }) {
   const tones = {
     default: "bg-tag text-text-body",
-    muted: "bg-tag text-label",
+    disabled: "bg-tag text-disabled",
     warn: "bg-warn/15 text-warn",
   } as const;
   return (
     <span
-      className={`rounded-full px-2 py-0.5 text-xs font-medium ${tones[tone]}`}
+      className={`rounded-full px-2.5 py-[3px] font-mono text-[11px] font-medium ${tones[tone]}`}
     >
       {children}
     </span>

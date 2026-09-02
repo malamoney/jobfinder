@@ -54,7 +54,7 @@ export function SavedToggle({
         onClick={toggle}
         disabled={pending}
         aria-pressed={saved}
-        className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium disabled:opacity-60 ${
+        className={`flex items-center gap-1.5 rounded-control border px-2.5 py-1 text-xs font-medium disabled:opacity-60 ${
           saved
             ? "border-accent-edge bg-accent-wash text-accent-text"
             : "border-border text-text-body"

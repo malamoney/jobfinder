@@ -96,6 +96,34 @@
 }
 
 /*
+ * The two radii the Nocturne direction names beyond the 999px pill (#77): 9px
+ * for cards and panels, 7px for controls and inputs. Named here so a component
+ * writes `rounded-card` / `rounded-control` instead of a bare `rounded-[9px]`,
+ * the same way it names a colour token rather than a hex.
+ */
+@theme {
+  --radius-card: 9px;
+  --radius-control: 7px;
+}
+
+/*
+ * The mono micro-label the Nocturne direction puts on every structural caption
+ * (#77): a stat-strip caption, the empty-state kicker, the footer status line,
+ * the loading note. 9.5px JetBrains Mono, uppercase, `.14em` tracking, in
+ * `--label`. Named so the five sites that wear it cannot drift apart on size or
+ * tracking the way hand-inlined values did.
+ */
+@utility micro-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--label);
+}
+
+/*
  * Tailwind v4's Preflight dropped the `button { cursor: pointer }` rule v3
  * shipped, so every <button> (Save, the Dashboard actions, the review Status
  * buttons, Log out) hovered with the default arrow. Anchors are unaffected —
