@@ -167,6 +167,22 @@ much a distance measured from a Home Coordinate is worth, and what the Criteria 
 gave a city.
 _Avoid_: Accuracy, confidence, resolution
 
+**Commute**:
+The journey from a User's Home Coordinate to a Posting's location, shown on the Posting page as a
+second tab beside their review. A Posting has one when its location resolved to a point and its text
+does not offer remote — onsite and hybrid, plus the Postings naming no Arrangement. A remote Posting
+has none, and neither does one with an Unresolved location; the Posting page then shows the review
+panel alone, with no tab strip. What is quoted today is the straight-line distance and whether it
+falls inside the stated radius. A drive is always longer, and no drive time is ever derived from a
+straight line — an unknown is shown as nothing rather than estimated.
+
+Note that this scope is *not* the commute radius's scope. The radius reads the User's stance on
+remote (ADR 0013), so for a User who does not accept remote it measures even a Posting whose text
+offers remote; the tab does not, and shows nothing for that Posting either way. #101 stated the flat
+rule and user story 20 asks for no tab on a remote Posting at all. Scoping the tab by stance as well
+is an open question, not a settled decision.
+_Avoid_: Trip, travel time, distance to work
+
 **Match**:
 The verdict that a Posting satisfies a User's Criteria, carrying the Keywords that hit. Derived, and
 discarded and recomputed when Criteria change.

@@ -26,6 +26,7 @@ import {
   LOCATION_ARRANGEMENTS,
   type Arrangement,
 } from "@/criteria/schema";
+import { EARTH_RADIUS_MILES } from "@/commute/distance";
 import { normalizeLocation } from "@/postings/location";
 import { WORKING_HOURS_PER_YEAR } from "@/postings/salary";
 import type { Coordinate } from "@/geocoding/nominatim";
@@ -53,9 +54,6 @@ import { homeCoordinateOf, placeUnplacedHome } from "./home-location";
  * never the whole Corpus (#11). Distance (#12) is another derived stage: it
  * needs both the extracted Arrangements and the geocoded location.
  */
-
-/** Earth's mean radius in miles, for the great-circle distance in SQL. */
-const EARTH_RADIUS_MILES = 3958.7559;
 
 /**
  * What a derived stage may need beyond the stored Criteria: the User's home

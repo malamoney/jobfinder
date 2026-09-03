@@ -10,7 +10,18 @@
  * utility. Pass `tone="accent"` for a statically-accent label (the Criteria
  * commute caption); for one that turns accent only while its field has focus,
  * leave the tone and add `group-focus-within:text-accent-text` in `className`.
+ *
+ * `tone="warn"` is for a caption stating something the User should notice but
+ * that is not an error — a Posting outside the radius they stated (#101). It is
+ * deliberately not `--danger`: nothing has gone wrong, and a red caption over a
+ * role they can still apply for would say otherwise.
  */
+const TONES = {
+  label: "",
+  accent: "text-accent-text",
+  warn: "text-warn",
+} as const;
+
 export function MonoLabel({
   children,
   tone = "label",
@@ -18,15 +29,13 @@ export function MonoLabel({
   className = "",
 }: {
   children: React.ReactNode;
-  tone?: "label" | "accent";
+  tone?: keyof typeof TONES;
   as?: "span" | "legend" | "p";
   className?: string;
 }) {
   const Component = as;
   return (
-    <Component
-      className={`micro-label ${tone === "accent" ? "text-accent-text" : ""} ${className}`}
-    >
+    <Component className={`micro-label ${TONES[tone]} ${className}`}>
       {children}
     </Component>
   );

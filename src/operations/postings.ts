@@ -1,7 +1,19 @@
 import { asc } from "drizzle-orm";
+import { z } from "zod";
 import { getDb } from "@/db";
 import { postings, type Posting } from "@/db/schema";
 import { DISTANCE_ARRANGEMENTS } from "@/criteria/schema";
+
+/**
+ * Whether a string could be a Posting's id, before it reaches a `uuid` column.
+ *
+ * Every read that takes an id from a URL asks this first: an id that is not
+ * even a UUID is turned away with the same answer as one that names no
+ * Posting, rather than left to error inside the query.
+ */
+export function isPostingId(value: string): boolean {
+  return z.uuid().safeParse(value).success;
+}
 
 /**
  * Reads the whole Corpus, oldest Fetch first.

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { currentUser } from "@/auth";
-import { readPosting } from "@/operations";
+import { readCommute, readPosting } from "@/operations";
 import { sanitizeDescription } from "@/postings/description";
 import { AppNav } from "../../app-nav";
 import { formatAge, formatSalary } from "../../format";
@@ -10,7 +10,7 @@ import { MonoLabel } from "../../mono-label";
 import { PostingTags } from "../../posting-tags";
 import { BackToMatches } from "./back-to-matches";
 import { MarkViewed } from "./mark-viewed";
-import { ReviewControls } from "./review-controls";
+import { PostingPanel } from "./posting-panel";
 
 export const metadata: Metadata = { title: "Posting · Jobfinder" };
 
@@ -31,7 +31,14 @@ export default async function PostingPage({
   if (!signedIn) redirect("/login");
 
   const { id } = await params;
-  const posting = await readPosting(signedIn.id, id);
+  // Both reads at once: the commute is a second pair of queries, not a second
+  // round trip, so the page opens as fast as it did before the tab existed
+  // (#101, user story 25). `readCommute` answers null on a Posting the User
+  // would never travel to, and the panel then shows no tab strip at all.
+  const [posting, commute] = await Promise.all([
+    readPosting(signedIn.id, id),
+    readCommute(signedIn.id, id),
+  ]);
   if (!posting) notFound();
 
   return (
@@ -76,7 +83,11 @@ export default async function PostingPage({
           </a>
         </header>
 
-        <ReviewControls postingId={posting.id} review={posting.review} />
+        <PostingPanel
+          postingId={posting.id}
+          review={posting.review}
+          commute={commute}
+        />
 
         <article
           className="description text-[13.5px] leading-[1.75]"

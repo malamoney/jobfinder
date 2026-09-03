@@ -1,5 +1,4 @@
 import { and, eq, sql } from "drizzle-orm";
-import { z } from "zod";
 import { getDb } from "@/db";
 import {
   criteria,
@@ -18,7 +17,7 @@ import {
   type ReviewStatus,
 } from "@/review/schema";
 import { latestGroupReview } from "./dedup";
-import { hasUnresolvedLocation, isExpired } from "./postings";
+import { hasUnresolvedLocation, isExpired, isPostingId } from "./postings";
 
 /**
  * Reading and writing a User's Review State.
@@ -48,11 +47,6 @@ const UNREVIEWED: PostingReview = {
   statusChangedAt: null,
   appliedAt: null,
 };
-
-/** Whether a string could be a Posting's id, before it reaches a `uuid` column. */
-function isPostingId(value: string): boolean {
-  return z.uuid().safeParse(value).success;
-}
 
 /**
  * Reads one Posting with the User's Review State, or null if no such Posting is
