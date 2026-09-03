@@ -8,6 +8,7 @@ import {
   fetchBoard,
   listPostings,
   readCommute,
+  readDashboard,
   saveCriteria,
   DRIVE_MAX_AGE_DAYS,
   type Board,
@@ -20,7 +21,7 @@ import {
   routerKnows,
   routerRefuses,
 } from "@/test/fixtures/tomtom";
-import type { CriteriaInput } from "@/criteria/schema";
+import type { Arrangement, CriteriaInput } from "@/criteria/schema";
 
 /**
  * The COMMUTE DETAILS tab's read (#101, #102).
@@ -91,12 +92,17 @@ async function corpusHas(
 }
 
 /** One job at a place, with text that names an Arrangement or says nothing. */
-function jobAt(location: string, says = "Join our team."): Record<string, unknown> {
+function jobAt(
+  location: string,
+  says = "Join our team.",
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
     ...greenhouseJob({ id: 1 }),
     title: "Platform Engineer",
     location: { name: location },
     content: `&lt;p&gt;${says}&lt;/p&gt;`,
+    ...overrides,
   };
 }
 
@@ -170,17 +176,25 @@ describe("a Posting the User would have to travel to", () => {
     expect(commute && radiusVerdict(commute)).toBe("within");
   });
 
+  /**
+   * User story 19 — "see when something reached me for another reason" — and
+   * the incident #112 was opened over, which are the same moment. A User who
+   * does not accept remote is shown a role tagged both remote and onsite,
+   * because the funnel could not yet measure it: its location was still being
+   * geocoded when their Matches were computed (ADR 0013's transient window).
+   * They open it to find out why it is there, and the tab is what answers.
+   *
+   * Now that the tab reads the radius's own scope, this is where an "outside"
+   * verdict is read: on a Posting the radius did measure, in the window before
+   * the next match run drops it.
+   */
   it("says the Posting is outside the radius when it is", async () => {
-    // A User who also accepts remote: the funnel leaves a silent-on-arrangement
-    // Posting alone (ADR 0013), so a far one reaches the Posting page and the
-    // tab is what tells them why it is there.
-    const postingId = await corpusHas([jobAt("Austin, TX")]);
+    const postingId = await corpusHas([
+      jobAt("Austin, TX", "This role is remote or onsite."),
+    ]);
     geocoderPlaces("austin, tx", AUSTIN);
     const userId = await givenAUser();
-    await saveCriteria(
-      userId,
-      commuteCriteria({ arrangements: ["full-time", "onsite", "remote"] }),
-    );
+    await saveCriteria(userId, commuteCriteria());
 
     const commute = await readCommute(userId, postingId);
 
@@ -211,16 +225,94 @@ describe("a Posting the User would have to travel to", () => {
 
     expect(await readCommute(userId, postingId)).not.toBeNull();
   });
-});
 
-describe("a Posting that is no journey at all", () => {
-  it("has nothing to show for a remote Posting", async () => {
+  /**
+   * The role #112 was opened over: a Posting whose text offers remote
+   * *alongside* onsite, read by a User who accepts neither remote nor that
+   * distance. The radius measures it — for them it is an onsite role at a
+   * fixed address whatever else the text offers (ADR 0013) — so the tab is the
+   * one screen that says how far away it is.
+   */
+  it("covers a Posting offering remote alongside onsite, for a User who does not accept remote", async () => {
+    const postingId = await corpusHas([
+      jobAt("Seaport, Boston, MA", "This role is remote or onsite."),
+    ]);
+    geocoderPlaces("seaport, boston, ma");
+    const userId = await givenAUser();
+    await saveCriteria(userId, commuteCriteria());
+
+    expect(await readCommute(userId, postingId)).not.toBeNull();
+  });
+
+  /**
+   * And the same for a Posting whose text offers remote and nothing else. The
+   * User cannot take it remotely, so what is left is the address it is based
+   * at — which is exactly what the radius already measured them against.
+   */
+  it("covers a Posting offering only remote, for a User who does not accept remote", async () => {
     const postingId = await corpusHas([
       jobAt("Seaport, Boston, MA", "This role is remote."),
     ]);
     geocoderPlaces("seaport, boston, ma");
     const userId = await givenAUser();
     await saveCriteria(userId, commuteCriteria());
+
+    expect(await readCommute(userId, postingId)).not.toBeNull();
+  });
+});
+
+describe("a Posting that is no journey at all", () => {
+  /**
+   * User story 20, scoped to the User it was written about (#112): someone who
+   * accepts remote will do this job from home, so a commute for it is the
+   * journey they will never make. The same Posting *is* a commute for a User
+   * who does not accept remote — see "a Posting the User would have to travel
+   * to" above.
+   */
+  it("has nothing to show for a remote Posting, for a User who accepts remote", async () => {
+    const postingId = await corpusHas([
+      jobAt("Seaport, Boston, MA", "This role is remote."),
+    ]);
+    geocoderPlaces("seaport, boston, ma");
+    const userId = await givenAUser();
+    await saveCriteria(
+      userId,
+      commuteCriteria({ arrangements: ["full-time", "onsite", "remote"] }),
+    );
+
+    expect(await readCommute(userId, postingId)).toBeNull();
+  });
+
+  /**
+   * The one case #112 narrowed rather than widened. A Posting whose text says
+   * nothing about where the work happens used to get a tab for everyone; the
+   * radius has never measured it for a User who accepts remote, giving it the
+   * same benefit of the doubt the Arrangement stage gives a silent axis
+   * (ADR 0013). The tab now gives it too, so the two cannot disagree about
+   * which Postings were measured — the drift this ticket exists to end.
+   */
+  it("has nothing to show for a Posting silent on where the work happens, for a User who accepts remote", async () => {
+    const postingId = await corpusHas([jobAt("Seaport, Boston, MA")]);
+    geocoderPlaces("seaport, boston, ma");
+    const userId = await givenAUser();
+    await saveCriteria(
+      userId,
+      commuteCriteria({ arrangements: ["full-time", "onsite", "remote"] }),
+    );
+
+    expect(await readCommute(userId, postingId)).toBeNull();
+  });
+
+  it("has nothing to show for a dual-tagged Posting, for a User who accepts remote", async () => {
+    const postingId = await corpusHas([
+      jobAt("Seaport, Boston, MA", "This role is remote or onsite."),
+    ]);
+    geocoderPlaces("seaport, boston, ma");
+    const userId = await givenAUser();
+    await saveCriteria(
+      userId,
+      commuteCriteria({ arrangements: ["full-time", "onsite", "remote"] }),
+    );
 
     expect(await readCommute(userId, postingId)).toBeNull();
   });
@@ -231,6 +323,23 @@ describe("a Posting that is no journey at all", () => {
     ]);
     // The home resolves; the Posting's location resolves to nothing and is
     // cached as unresolved by the match run.
+    geocoderKnows({ [HOME_ADDRESS]: { ...HOME, placeRank: 30 } });
+    const userId = await givenAUser();
+    await saveCriteria(userId, commuteCriteria());
+
+    expect(await readCommute(userId, postingId)).toBeNull();
+  });
+
+  /**
+   * An Unresolved location answers null whatever the stance and whatever the
+   * text says — including the Postings the stance newly brings into scope
+   * (#112). A gap in the data must not become a broken screen (user story 21),
+   * and widening which Postings are journeys must not widen that.
+   */
+  it("has nothing to show for an unplaceable dual-tagged Posting, for a User who does not accept remote", async () => {
+    const postingId = await corpusHas([
+      jobAt("Undisclosed location, USA", "This role is remote or onsite."),
+    ]);
     geocoderKnows({ [HOME_ADDRESS]: { ...HOME, placeRank: 30 } });
     const userId = await givenAUser();
     await saveCriteria(userId, commuteCriteria());
@@ -296,6 +405,37 @@ describe("a User with no home to measure from", () => {
     const commute = await readCommute(userId, postingId);
 
     expect(commute?.home).toEqual({ state: "none" });
+  });
+
+  /**
+   * The one Posting where a Criteria-less User's absent stance decides
+   * something (#112): the scope rule asks a stance only whether it includes
+   * remote, and an unstated one does not, so a Posting offering remote is a
+   * journey for them.
+   *
+   * Pinned deliberately, because it is a change: the tab used to read the
+   * Posting's text alone and gave this User nothing here. Showing it is the
+   * direction that hides nothing — nobody has said this User would take a
+   * remote role, and the radius has no reading of its own to contradict, since
+   * with no Criteria there is no radius to run. What they get is user story
+   * 22's prompt to state a home location, never an invented distance. User
+   * story 20 is scoped to a User who accepts remote, and this is not yet one.
+   */
+  it("shows the tab on a remote Posting to a User who has stated no Criteria", async () => {
+    const postingId = await corpusHas([
+      jobAt("Seaport, Boston, MA", "This role is remote."),
+    ]);
+    // Placed by a User who does commute there: a Criteria-less User's own match
+    // run geocodes nothing, because there is no radius to warm the cache for.
+    geocoderPlaces("seaport, boston, ma");
+    const commuter = await givenAUser("commuter@example.com");
+    await saveCriteria(commuter, commuteCriteria());
+
+    const userId = await givenAUser();
+
+    expect((await readCommute(userId, postingId))?.home).toEqual({
+      state: "none",
+    });
   });
 
   /**
@@ -369,6 +509,163 @@ describe("a User with no home to measure from", () => {
     });
     expect(commute?.radiusMiles).toBe(30);
     expect(commute && radiusVerdict(commute)).toBeNull();
+  });
+});
+
+/**
+ * Which Postings are a journey at all, and why that is the commute radius's
+ * own question (#112).
+ *
+ * ADR 0013 scopes the radius by the User's stance on remote, and #111 put that
+ * rule in one place — `radiusApplies` (`@/commute/radius-scope`) — after it
+ * drifted between the funnel stage and the **Location unresolved** flag. This
+ * tab was the third statement of it, and it read the Posting's text alone: a
+ * role tagged both remote and hybrid was measured by the radius, dropped from
+ * the Dashboard for being too far, and then offered no screen that said how
+ * far. That is the defect, and these two tests are what stop it recurring.
+ *
+ * They are deliberately different in kind. The first writes out by hand which
+ * Postings each stance gets a tab on, so the behaviour is pinned without
+ * reference to any of the code that decides it. The second asks the funnel
+ * itself: over a Posting outside the radius, the tab appears exactly where the
+ * funnel dropped the Posting. That equivalence is the whole point of the
+ * ticket, and it breaks the moment either reader of the rule drifts again.
+ */
+describe("the tab and the commute radius ask the same question", () => {
+  /** Every shape a Posting's text can take on the location axis. */
+  const ARRANGEMENT_TEXTS = {
+    "says nothing": "Join our team.",
+    onsite: "This is an onsite role.",
+    hybrid: "A hybrid role, three days in the office.",
+    "onsite or hybrid": "An onsite or hybrid role, team by team.",
+    remote: "This role is remote.",
+    "remote or onsite": "This role is remote or onsite.",
+    "remote or hybrid": "This role is remote or hybrid.",
+    "remote, onsite or hybrid": "This role is remote, onsite or hybrid.",
+  } as const;
+
+  type ArrangementText = keyof typeof ARRANGEMENT_TEXTS;
+
+  const SHAPES = Object.keys(ARRANGEMENT_TEXTS) as ArrangementText[];
+
+  /** Far enough from home that a 30-mile radius drops every one of them. */
+  const FAR = "Austin, TX";
+
+  const STANCES: Array<[string, Arrangement[]]> = [
+    ["a User who does not accept remote", ["full-time", "onsite", "hybrid"]],
+    ["a User who accepts remote", ["full-time", "onsite", "hybrid", "remote"]],
+  ];
+
+  /**
+   * The tab each stance gets, per shape of text — written out rather than
+   * derived, so it says what a User sees instead of restating the rule the
+   * code already holds.
+   *
+   * A User who does not accept remote gets every one of them: every role is a
+   * commute for them, so every resolved address is a distance worth reading.
+   * A User who accepts remote gets only the roles their own remote option
+   * cannot rescue — and, as the radius does, is given the benefit of the doubt
+   * on a Posting that says nothing about where the work happens.
+   */
+  const TAB_SHOWN: Record<string, Record<ArrangementText, boolean>> = {
+    "a User who does not accept remote": {
+      "says nothing": true,
+      onsite: true,
+      hybrid: true,
+      "onsite or hybrid": true,
+      remote: true,
+      "remote or onsite": true,
+      "remote or hybrid": true,
+      "remote, onsite or hybrid": true,
+    },
+    "a User who accepts remote": {
+      "says nothing": false,
+      onsite: true,
+      hybrid: true,
+      "onsite or hybrid": true,
+      remote: false,
+      "remote or onsite": false,
+      "remote or hybrid": false,
+      "remote, onsite or hybrid": false,
+    },
+  };
+
+  /** One Posting per shape of text, all at the same far place. */
+  async function corpusOfEveryArrangement(): Promise<
+    Record<ArrangementText, string>
+  > {
+    boardReturns(
+      "acme",
+      SHAPES.map((shape, index) =>
+        jobAt(FAR, ARRANGEMENT_TEXTS[shape], {
+          id: index + 1,
+          // Distinct titles keep these eight openings eight Dedup Keys, so the
+          // Dashboard presents each rather than a Representative of them all.
+          title: `Platform Engineer ${index + 1}`,
+        }),
+      ),
+    );
+    await fetchBoard(acme);
+
+    const placed = await listPostings();
+    const byShape = {} as Record<ArrangementText, string>;
+    SHAPES.forEach((shape, index) => {
+      const posting = placed.find((p) => p.sourceId === String(index + 1));
+      if (!posting) throw new Error(`No Posting saying "${shape}" in the Corpus`);
+      byShape[shape] = posting.id;
+    });
+    return byShape;
+  }
+
+  /** A User of the given stance, with a corpus of far Postings behind them. */
+  async function givenAStance(arrangements: Arrangement[]) {
+    const postings = await corpusOfEveryArrangement();
+    geocoderPlaces("austin, tx", AUSTIN);
+    const userId = await givenAUser();
+    await saveCriteria(userId, commuteCriteria({ arrangements }));
+    return { userId, postings };
+  }
+
+  /** Which shapes of Posting this User is shown the tab on. */
+  async function tabsShown(
+    userId: string,
+    postings: Record<ArrangementText, string>,
+  ): Promise<Record<ArrangementText, boolean>> {
+    const shown = {} as Record<ArrangementText, boolean>;
+    for (const shape of SHAPES) {
+      shown[shape] = (await readCommute(userId, postings[shape])) !== null;
+    }
+    return shown;
+  }
+
+  describe.each(STANCES)("%s", (stance, arrangements) => {
+    it("gets the tab on exactly the Postings that are a journey for them", async () => {
+      const { userId, postings } = await givenAStance(arrangements);
+
+      expect(await tabsShown(userId, postings)).toEqual(TAB_SHOWN[stance]);
+    });
+
+    /**
+     * Every Posting here is outside the stated radius, so the funnel drops
+     * precisely the ones the radius acted on — and the tab appears on precisely
+     * those too. Read the other way: a Posting the User was never shown,
+     * because it was too far, is one they can still open and be told why, and a
+     * Posting the funnel left alone offers no journey to invent.
+     */
+    it("is shown the tab on exactly the Postings the funnel dropped", async () => {
+      const { userId, postings } = await givenAStance(arrangements);
+
+      const matched = new Set(
+        (await readDashboard(userId)).postings.map((posting) => posting.id),
+      );
+
+      const dropped = {} as Record<ArrangementText, boolean>;
+      for (const shape of SHAPES) {
+        dropped[shape] = !matched.has(postings[shape]);
+      }
+
+      expect(await tabsShown(userId, postings)).toEqual(dropped);
+    });
   });
 });
 

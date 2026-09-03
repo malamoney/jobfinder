@@ -14,11 +14,14 @@ import { ReviewControls } from "./review-controls";
  * The panel under a Posting's header: the User's review, and — on a Posting
  * they would have to travel to — the commute beside it (#101, canvas 4a / 5a).
  *
- * The tab strip exists only when there is a second tab to reach. A remote
- * Posting, or one whose location never resolved, renders exactly what this page
- * rendered before the tab existed: the YOUR REVIEW caption, the Status kicker,
- * and the controls, with no tab strip and no `tablist` in the accessibility
- * tree at all (user stories 20 and 21).
+ * The tab strip exists only when there is a second tab to reach. A Posting the
+ * commute radius does not act on for this User — which depends on their stance
+ * on remote, not on the Posting's text alone (ADR 0013, #112) — or one whose
+ * location never resolved, renders exactly what this page rendered before the
+ * tab existed: the YOUR REVIEW caption, the Status kicker, and the controls,
+ * with no tab strip and no `tablist` in the accessibility tree at all (user
+ * stories 20 and 21). Which Postings those are is `readCommute`'s to decide;
+ * this component reads only whether it was handed a commute.
  *
  * Both panels stay mounted, the inactive one `hidden`. Notes are typed into
  * local state, and unmounting the review panel to look at the commute would

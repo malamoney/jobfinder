@@ -107,6 +107,15 @@ is not remote. That is onsite and hybrid as asked, plus the Postings whose text 
 but which the commute radius already measures — the same reading ADR 0013 settled. Everything else
 renders the review panel exactly as today.
 
+> **Superseded by #112.** This decision, and the summary above it, read the Posting's text alone —
+> which turned out not to be "the same reading ADR 0013 settled". The tab now asks the radius's own
+> question, scoped by the User's stance on remote: a User who does not accept remote gets a tab on
+> every placed Posting, including a dual-tagged one; a User who accepts remote gets none on a Posting
+> offering remote *or* on one silent about where the work happens. User story 20 is read as scoped to
+> the User it was written about. The live statement is ADR 0013 and the **Commute** entry in
+> `CONTEXT.md`; the rule itself is `radiusApplies` (`src/commute/radius-scope.ts`). Left standing
+> here because a spec records what was asked for, not what the code went on to do.
+
 **The map is real tiles.** The design canvas draws a schematic SVG captioned "not a street map",
 which is a limitation of the canvas medium — a design canvas cannot load tiles — and its own turn
 title says "route overlay on a real map". Built with a client-side map library over a keyless tile

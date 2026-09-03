@@ -172,18 +172,23 @@ _Avoid_: Accuracy, confidence, resolution
 
 **Commute**:
 The journey from a User's Home Coordinate to a Posting's location, shown on the Posting page as a
-second tab beside their review. A Posting has one when its location resolved to a point and its text
-does not offer remote — onsite and hybrid, plus the Postings naming no Arrangement. A remote Posting
-has none, and neither does one with an Unresolved location; the Posting page then shows the review
-panel alone, with no tab strip. What is quoted is the straight-line distance, whether it falls inside
-the stated radius, and the Drive Windows. A drive is always longer than the line, and no drive time is
-ever derived from one — an unknown is shown as nothing rather than estimated.
+second tab beside their review. A Posting has one when its location resolved to a point and the
+commute radius acts on it for this User — which Postings those are is the radius's own question, read
+from the one statement of it (ADR 0013). So a User who does not accept remote has a Commute to every placed
+Posting, including one whose text offers remote alongside onsite: they could only ever take that role
+at its address. A User who accepts remote has one to the roles their own remote option cannot rescue
+— onsite and hybrid — and to neither a Posting offering remote nor one silent about where the work
+happens. A Posting with an Unresolved location has none either way. Where there is none the Posting
+page shows the review panel alone, with no tab strip. What is quoted is the straight-line distance,
+whether it falls inside the stated radius, and the Drive Windows. A drive is always longer than the
+line, and no drive time is ever derived from one — an unknown is shown as nothing rather than
+estimated.
 
-Note that this scope is *not* the commute radius's scope. The radius reads the User's stance on
-remote (ADR 0013), so for a User who does not accept remote it measures even a Posting whose text
-offers remote; the tab does not, and shows nothing for that Posting either way. #101 stated the flat
-rule and user story 20 asks for no tab on a remote Posting at all. Scoping the tab by stance as well
-is an open question, not a settled decision.
+The tab first read the Posting's text alone, which is how a role tagged both remote and hybrid could
+be measured by the radius, dropped from a no-remote User's Dashboard as too far, and then offer that
+User no screen saying how far (#112). User story 20 — no commute tab on a remote Posting — is read as
+scoped to the User it was written about: someone who accepts remote, and for whom the journey really
+is fiction.
 _Avoid_: Trip, travel time, distance to work
 
 **Drive Window**:

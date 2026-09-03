@@ -81,10 +81,11 @@ export type CommuteDestination = {
 /**
  * One Posting's commute, as far as this slice can describe it.
  *
- * A Posting that is not a commute at all — remote, or a location no geocoder
- * could place — has no value of this type: `readCommute` answers null, and the
- * Posting page shows the review panel exactly as it did before, with no tab
- * strip (user stories 20 and 21).
+ * A Posting that is not a commute at all — one the commute radius does not act
+ * on for this User (ADR 0013, `@/commute/radius-scope`), or one whose location
+ * no geocoder could place — has no value of this type: `readCommute` answers
+ * null, and the Posting page shows the review panel exactly as it did before,
+ * with no tab strip (user stories 20 and 21).
  */
 export type CommuteDetails = {
   destination: CommuteDestination;

@@ -2,12 +2,12 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { criteria, geocodes, postings, type CriteriaRow } from "@/db/schema";
 import { greatCircleMiles } from "@/commute/distance";
+import { radiusAppliesTo } from "@/commute/radius-scope";
 import type {
   CommuteDestination,
   CommuteDetails,
   CommuteHome,
 } from "@/commute/schema";
-import type { Arrangement } from "@/criteria/schema";
 import { normalizeLocation } from "@/postings/location";
 import { readDriveTimes } from "./drive-times";
 import { readGeocode } from "./geocoding";
@@ -30,38 +30,48 @@ import { isPostingId } from "./postings";
  * as fast as it was before the tab existed (user story 25).
  */
 
-/** The Arrangement that means there is no journey to describe. */
-const REMOTE: Arrangement = "remote";
-
 /**
  * The commute from the User's home to one Posting, or null when the Posting is
- * not a journey the User would make.
+ * not a journey that User would make.
  *
  * Two things make it null, and both mean "show the review panel exactly as it
  * was, with no tab strip":
  *
- * - **The Posting's text offers remote.** There is no journey to describe, and
- *   inventing one would be inventing a commute the User will never make (user
- *   story 20).
+ * - **The commute radius would not have measured the Posting for this User.**
+ *   That is the rule `radiusApplies` states once for everything that needs it
+ *   (`@/commute/radius-scope`), read here as a plain boolean. For a User who
+ *   accepts remote it excludes any Posting whose text offers remote, and any
+ *   Posting silent on where the work happens; for a User who does not, it
+ *   excludes nothing, because every role they can take is a commute.
  * - **Its location resolved to no point.** Either the text named no place, or
  *   the geocoder knew none. A distance cannot be measured to nowhere, and a gap
  *   in the data must not become a broken screen (user story 21).
  *
- * Everything else with an address is a commute: onsite and hybrid as asked, and
- * also a Posting whose text names no Arrangement at all — it has an address and
- * that address geocoded, which is the reading ADR 0013 settled for the radius.
+ * **Why the stance, and what user story 20 was really asking (#112).** That
+ * story — "as a User looking at a remote Posting, I want no commute tab at all,
+ * so that the page does not invent a journey I will never make" — was first
+ * built flatly, off the Posting's text alone, and this doc argued for that. It
+ * was wrong, and the way it was wrong is worth keeping: the story describes a
+ * User who *accepts* remote. They will do the job from home, so a commute for
+ * it is fiction. A User who does not accept remote can only ever take that same
+ * role onsite; the journey is real, and the radius has always treated it that
+ * way, measuring the Posting and dropping it from the Dashboard when it is too
+ * far. Reading the Posting's text alone meant the one screen that would have
+ * explained the distance was the one screen that refused to appear. The stance
+ * is what tells the two Users apart — the argument ADR 0013 makes — so the tab
+ * now asks the radius's own question rather than a second version of it.
  *
- * **Where this departs from ADR 0013, deliberately.** That ADR scopes the radius
- * by the User's stance on remote: for a User who does not accept remote, even a
- * Posting whose text offers remote is measured, because they could only ever
- * take it onsite. This gate does not read the User's stance — a Posting whose
- * text says "remote or onsite" gets no tab either way. #101 states the rule
- * flatly ("whose Arrangement is not remote") and user story 20 asks for no tab
- * on a remote Posting at all, so the flat reading is what is built; scoping it
- * by stance is a change to make deliberately, not one to slip in here. The cost
- * is that a no-remote User loses a distance on a dual-tagged role. The cost of
- * the other reading would be a remote-accepting User shown a commute they will
- * never make, which is the one story 20 forbids.
+ * **What that costs, deliberately.** A Posting silent about where the work
+ * happens used to get a tab for every User. It now gets none for a User who
+ * accepts remote, because the radius has never measured it for them — the same
+ * benefit of the doubt the Arrangement stage gives a silent axis. So user story
+ * 19, "know whether a Posting falls inside the radius I stated, so that I can
+ * see when something reached me for another reason", is read on a narrower set:
+ * an "outside" verdict now lands on a Posting the radius did measure, in the
+ * window before the next match run drops it — which is exactly the moment #112
+ * was reported from. Two rules that disagree about which Postings were measured
+ * is what produced #111 and #112; one rule with a smaller reach is the price of
+ * not keeping a third.
  *
  * Note what is *not* a reason to answer null: a User who stated no home
  * location, or one whose address could not be placed. They still get the tab,
@@ -94,7 +104,17 @@ export async function readCommute(
   ]);
 
   if (!postingRow) return null;
-  if (postingRow.arrangements.includes(REMOTE)) return null;
+
+  // A User who has stated no Criteria has stated no stance on remote either,
+  // and the rule below asks a stance only one thing — whether it includes
+  // remote — which an unstated one does not. So they get the tab: nobody has
+  // said this User would take a remote role, and the radius has no reading of
+  // its own to disagree with, since with no Criteria there is no radius to run.
+  // What they are shown is user story 22's "state a home location" prompt, not
+  // an invented distance — there is no home to measure one from.
+  const accepted = criteriaRow?.arrangements ?? [];
+  if (!radiusAppliesTo(accepted, postingRow.arrangements)) return null;
+
   // One fact stated three ways: a Posting with no location has no normalized
   // key, so it joins no geocode row and has no point to travel to. Narrowed in
   // one guard because a coordinate without the key it was cached under would
