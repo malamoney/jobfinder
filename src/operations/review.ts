@@ -2,7 +2,6 @@ import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   criteria,
-  geocodes,
   postings,
   reviewState,
   type Posting,
@@ -17,6 +16,7 @@ import {
   type ReviewStatus,
 } from "@/review/schema";
 import { latestGroupReview } from "./dedup";
+import { anyPlaceResolved } from "./geocoding";
 import {
   hasUnresolvedLocation,
   isExpired,
@@ -83,13 +83,10 @@ export async function readPosting(
   const [row] = await db
     .select({
       posting: postings,
-      coordinate: {
-        latitude: geocodes.latitude,
-        longitude: geocodes.longitude,
-      },
+      // Whether any of the Posting's places resolved to a point (#113).
+      placed: anyPlaceResolved,
     })
     .from(postings)
-    .leftJoin(geocodes, eq(geocodes.location, postings.normalizedLocation))
     .where(eq(postings.id, postingId));
 
   if (!row) return null;
@@ -115,11 +112,7 @@ export async function readPosting(
   return {
     ...row.posting,
     expired: isExpired(row.posting),
-    unresolvedLocation: hasUnresolvedLocation(
-      row.posting,
-      row.coordinate,
-      radius,
-    ),
+    unresolvedLocation: hasUnresolvedLocation(row.posting, row.placed, radius),
     review: effective
       ? {
           status: effective.status,

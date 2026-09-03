@@ -15,7 +15,7 @@ import {
 } from "@/operations";
 import { signUp } from "@/auth";
 import { getDb } from "@/db";
-import { fetchRuns, user } from "@/db/schema";
+import { fetchRuns, postings, user } from "@/db/schema";
 import {
   boardRefuses,
   boardReturns,
@@ -191,6 +191,38 @@ describe("draining and re-matching every User", () => {
     // The Posting is in the Corpus, but the re-match is deferred until the
     // sweep is done, so the Dashboard has not picked it up yet.
     expect((await readDashboard(userId)).postings).toHaveLength(0);
+  });
+
+  /**
+   * A Posting a Fetch still returns re-derives its places on its own, because a
+   * re-Fetch clears the derived fields. One nothing returns any more would keep
+   * whatever reading it was last stored under — so the sweep re-reads the whole
+   * Corpus, the same argument that puts `reclassifyCountries` here (#67, #113).
+   */
+  it("re-reads the places of a Posting stored under an older reading", async () => {
+    await addBoard({ source: "greenhouse", slug: "acme" });
+    boardReturns("acme", [
+      greenhouseJob({
+        id: 1,
+        title: "Platform Engineer",
+        location: { name: "Boston, MA / New York, NY" },
+      }),
+    ]);
+    await startFetchRun();
+    await drainAndRematch();
+
+    // The one key the old reading gave a location naming two places: a string
+    // no geocoder can place, so the radius could never drop the Posting.
+    const [stored] = await listPostings();
+    await getDb()
+      .update(postings)
+      .set({ normalizedLocations: ["boston, ma / new york, ny"] })
+      .where(eq(postings.id, stored.id));
+
+    await drainAndRematch();
+
+    const [reread] = await listPostings();
+    expect(reread.normalizedLocations).toEqual(["boston, ma", "new york, ny"]);
   });
 });
 

@@ -1,6 +1,6 @@
-import { eq, inArray } from "drizzle-orm";
+import { inArray, sql, type SQL } from "drizzle-orm";
 import type { Writer } from "@/db";
-import { geocodes, type Geocode } from "@/db/schema";
+import { geocodes, postings, type Geocode } from "@/db/schema";
 import {
   geocode,
   pauseBetweenLookups,
@@ -112,6 +112,69 @@ export async function ensureGeocoded(
 }
 
 /**
+ * Whether the Posting in scope has a resolved place that `of` holds of, as SQL.
+ *
+ * A Posting names one place or several (#113), and everything that measures one
+ * asks a question of this shape: is any of its places resolved at all, is any of
+ * them within the radius. Built here, beside the cache it reads, so what
+ * "resolved" means is written once — the drift between two hand-written copies
+ * of a location rule is what produced #111.
+ *
+ * The resolved cache row is in scope as `g`, which is what `of` reads: the
+ * radius stage measures `g.latitude` / `g.longitude` against the User's home.
+ * `sql\`true\`` asks nothing more of it than that it resolved.
+ */
+export function anyPlaceWhere(of: SQL): SQL<boolean> {
+  return sql<boolean>`
+    exists (
+      select 1 from ${geocodes} as g
+      where g.location = any(${postings.normalizedLocations})
+        and g.latitude is not null
+        and (${of})
+    )
+  `;
+}
+
+/**
+ * Whether any of the Posting in scope's places resolved to a point.
+ *
+ * The radius stage keeps a Posting it could place nowhere, and the **Location
+ * unresolved** flag announces exactly that Posting, so both read this. False for
+ * a Posting whose text named no place at all: an empty list is placed nowhere,
+ * which is the same answer the single key's null gave before it.
+ */
+export const anyPlaceResolved: SQL<boolean> = anyPlaceWhere(sql`true`);
+
+/**
+ * The coordinates the cache holds for these normalized strings, keyed by the
+ * string.
+ *
+ * One query for a Posting's whole list of places, so reading a Posting that
+ * names three costs what reading one that names a single place costs. Strings
+ * with no row, and strings cached as a negative result, are simply absent — the
+ * map holds places, not entries.
+ */
+export async function readGeocodes(
+  writer: Writer,
+  locations: readonly string[],
+): Promise<Map<string, Coordinate>> {
+  const wanted = [...new Set(locations)];
+  if (wanted.length === 0) return new Map();
+
+  const rows = await writer
+    .select()
+    .from(geocodes)
+    .where(inArray(geocodes.location, wanted));
+
+  const placed = new Map<string, Coordinate>();
+  for (const row of rows) {
+    const at = toCoordinate(row);
+    if (at) placed.set(row.location, at);
+  }
+  return placed;
+}
+
+/**
  * The coordinate a normalized string resolved to, or null when it has no cache
  * row yet or resolved to no place.
  */
@@ -119,12 +182,7 @@ export async function readGeocode(
   writer: Writer,
   location: string,
 ): Promise<Coordinate | null> {
-  const [row] = await writer
-    .select()
-    .from(geocodes)
-    .where(eq(geocodes.location, location));
-
-  return toCoordinate(row);
+  return (await readGeocodes(writer, [location])).get(location) ?? null;
 }
 
 /** The coordinate a cache row carries, or null when it is a negative result. */

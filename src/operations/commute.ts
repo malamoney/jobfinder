@@ -1,16 +1,14 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { criteria, geocodes, postings, type CriteriaRow } from "@/db/schema";
+import { criteria, postings, type CriteriaRow } from "@/db/schema";
 import { greatCircleMiles } from "@/commute/distance";
 import { radiusAppliesTo } from "@/commute/radius-scope";
-import type {
-  CommuteDestination,
-  CommuteDetails,
-  CommuteHome,
-} from "@/commute/schema";
-import { normalizeLocation } from "@/postings/location";
+import type { CommuteDetails, CommuteHome } from "@/commute/schema";
+import type { HomeCoordinate } from "@/criteria/schema";
+import type { Coordinate } from "@/geocoding/nominatim";
+import { normalizeLocation, placesNamed } from "@/postings/location";
 import { readDriveTimes } from "./drive-times";
-import { readGeocode } from "./geocoding";
+import { readGeocode, readGeocodes } from "./geocoding";
 import { homeCoordinateOf } from "./home-location";
 import { isPostingId } from "./postings";
 
@@ -43,9 +41,12 @@ import { isPostingId } from "./postings";
  *   accepts remote it excludes any Posting whose text offers remote, and any
  *   Posting silent on where the work happens; for a User who does not, it
  *   excludes nothing, because every role they can take is a commute.
- * - **Its location resolved to no point.** Either the text named no place, or
- *   the geocoder knew none. A distance cannot be measured to nowhere, and a gap
- *   in the data must not become a broken screen (user story 21).
+ * - **None of the places it names resolved to a point.** Either the text named
+ *   no place, or the geocoder knew none of the ones it named. A distance cannot
+ *   be measured to nowhere, and a gap in the data must not become a broken
+ *   screen (user story 21). A Posting naming several places where only one
+ *   resolved has a Commute — to that one, which is what the radius measured it
+ *   on (#113).
  *
  * **Why the stance, and what user story 20 was really asking (#112).** That
  * story — "as a User looking at a remote Posting, I want no commute tab at all,
@@ -90,15 +91,13 @@ export async function readCommute(
     db
       .select({
         location: postings.location,
-        // The drive-time cache is keyed by this, the same string `geocodes` is
-        // keyed by, so every Posting in one place shares one stored journey.
-        normalizedLocation: postings.normalizedLocation,
+        // The places the Posting names, as the keys `geocodes` holds and the
+        // drive-time cache keys a journey by — so every Posting in one place
+        // shares one stored journey, whether or not it names others too.
+        normalizedLocations: postings.normalizedLocations,
         arrangements: postings.arrangements,
-        latitude: geocodes.latitude,
-        longitude: geocodes.longitude,
       })
       .from(postings)
-      .leftJoin(geocodes, eq(geocodes.location, postings.normalizedLocation))
       .where(eq(postings.id, postingId)),
     db.select().from(criteria).where(eq(criteria.userId, userId)),
   ]);
@@ -115,35 +114,106 @@ export async function readCommute(
   const accepted = criteriaRow?.arrangements ?? [];
   if (!radiusAppliesTo(accepted, postingRow.arrangements)) return null;
 
-  // One fact stated three ways: a Posting with no location has no normalized
-  // key, so it joins no geocode row and has no point to travel to. Narrowed in
-  // one guard because a coordinate without the key it was cached under would
-  // leave the drive-time cache nothing to key a journey by.
-  const { normalizedLocation, latitude, longitude } = postingRow;
-  if (latitude == null || longitude == null || normalizedLocation == null) {
-    return null;
-  }
+  // Where the User lives is resolved before the destination is picked, because
+  // which place the tab describes is "the closest one" and there is nothing to
+  // measure closeness from without it (#113).
+  const at = await homeCoordinate(criteriaRow);
 
-  const destination: CommuteDestination = {
-    stated: postingRow.location,
-    at: { latitude, longitude },
-  };
+  const chosen = await nearestPlace(postingRow, at);
+  if (!chosen) return null;
 
   return {
-    destination,
-    home: await homeOf(criteriaRow, destination, normalizedLocation),
+    destination: {
+      stated: postingRow.location,
+      place: chosen.place,
+      at: chosen.at,
+    },
+    home: await homeOf(criteriaRow, at, chosen),
     radiusMiles: criteriaRow?.radiusMiles ?? null,
   };
 }
 
+/** The place a journey ends at: its cache key, its name, and its point. */
+type NearestPlace = {
+  /** The normalized key, which is what the drive-time cache keys a journey by. */
+  key: string;
+  /**
+   * The employer's words for it, or null when there are none worth showing —
+   * the Posting names one place, or its stored places no longer line up with
+   * its text.
+   */
+  place: string | null;
+  at: Coordinate;
+};
+
 /**
- * What the tab can say about where the User lives, and how far that is from the
- * role.
+ * The Posting's place closest to the User, or null when none of the places it
+ * names resolved to a point.
  *
- * The stated text and the stored point are separate facts: an address the
- * geocoder could not reach or could not find is kept and shown, so a User can
- * see the address they gave and recognise the typo in it, rather than being told
- * only that something is missing.
+ * The closest is the one the radius judged the Posting on (#113) — a role
+ * offered in Boston and Seattle is a Boston role to somebody in Franklin, MA —
+ * so it is the one every figure on the tab has to describe, or the tab would
+ * quote a distance the Dashboard did not act on.
+ *
+ * Null is the "no tab strip at all" answer the single-place version gave for a
+ * location that resolved to nothing: the text named no place, or no geocoder
+ * knew any of the places it named. A Posting where only some places resolved is
+ * measured on those, exactly as the radius measures it.
+ *
+ * With no home to measure from — a User who stated none, or one whose address
+ * could not be placed — the first place the Posting names wins. There is no
+ * "closest" to be had, and the tab is showing user story 22's prompt rather
+ * than a distance, so the choice only decides which place is named.
+ */
+async function nearestPlace(
+  posting: { location: string | null; normalizedLocations: string[] },
+  home: HomeCoordinate | null,
+): Promise<NearestPlace | null> {
+  const cached = await readGeocodes(getDb(), posting.normalizedLocations);
+
+  const placed = posting.normalizedLocations.flatMap((key) => {
+    const at = cached.get(key);
+    return at ? [{ key, at }] : [];
+  });
+  if (placed.length === 0) return null;
+
+  const nearest = home
+    ? placed.reduce((closest, candidate) =>
+        greatCircleMiles(home, candidate.at) < greatCircleMiles(home, closest.at)
+          ? candidate
+          : closest,
+      )
+    : placed[0];
+
+  return { ...nearest, place: nameOf(nearest.key, posting) };
+}
+
+/**
+ * The employer's words for the place a journey ends at, or null when the tab
+ * should not name one.
+ *
+ * Null when the Posting names a single place, because its stated text already
+ * is that place and naming it again would suggest there were others. Null too
+ * when the key is not one the location text reads as today — a row whose stored
+ * places predate a change to how a location is read, until
+ * `renormalizeLocations` catches it. The distance is still the right one; there
+ * is simply nothing honest to call it, and a raw cache key (`seaport, boston,
+ * ma`) is not something to show somebody.
+ */
+function nameOf(
+  key: string,
+  posting: { location: string | null; normalizedLocations: string[] },
+): string | null {
+  if (posting.normalizedLocations.length <= 1) return null;
+  return (
+    placesNamed(posting.location).find((named) => named.key === key)?.stated ??
+    null
+  );
+}
+
+/**
+ * The point the User's home resolved to, or null when there is none to be had —
+ * no home stated, or one no geocoder could place.
  *
  * The fallback to the shared Geocode Cache is the one the commute radius already
  * makes (`resolveHomeCoordinate` in `@/operations/matching`): a Criteria row
@@ -158,15 +228,29 @@ export async function readCommute(
  * street address a User may since have typed. Understating the Precision is the
  * direction that does not mislead.
  */
+async function homeCoordinate(
+  row: CriteriaRow | undefined,
+): Promise<HomeCoordinate | null> {
+  if (!row?.homeLocation) return null;
+  return homeCoordinateOf(row) ?? (await cachedHome(row.homeLocation));
+}
+
+/**
+ * What the tab can say about where the User lives, and how far that is from the
+ * role.
+ *
+ * The stated text and the stored point are separate facts: an address the
+ * geocoder could not reach or could not find is kept and shown, so a User can
+ * see the address they gave and recognise the typo in it, rather than being told
+ * only that something is missing.
+ */
 async function homeOf(
   row: CriteriaRow | undefined,
-  destination: CommuteDestination,
-  destinationKey: string,
+  at: HomeCoordinate | null,
+  destination: NearestPlace,
 ): Promise<CommuteHome> {
   const stated = row?.homeLocation;
   if (!row || !stated) return { state: "none" };
-
-  const at = homeCoordinateOf(row) ?? (await cachedHome(stated));
   if (!at) return { state: "unplaced", stated };
 
   return {
@@ -177,7 +261,7 @@ async function homeOf(
     // Null on everything from "no provider is configured" to "the provider
     // knows no route", because the tab says the same thing — nothing — for all
     // of them. A straight line is never scaled up to stand in for a drive.
-    drive: await readDriveTimes(at, destination.at, destinationKey),
+    drive: await readDriveTimes(at, destination.at, destination.key),
   };
 }
 

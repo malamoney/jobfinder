@@ -134,6 +134,20 @@
       "when": 1788407177653,
       "tag": "0018_charming_stardust",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788463988154,
+      "tag": "0019_multi_place_locations",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1788463993429,
+      "tag": "0020_drop_single_normalized_location",
+      "breakpoints": true
     }
   ]
 }

@@ -85,20 +85,30 @@ A Posting that a Source stopped returning across consecutive successful Fetches.
 than deleted, so Review State outlives the listing.
 _Avoid_: Dead, stale, closed, removed
 
+**Place**:
+One location a Posting's text names. Most Postings name one; an employer offering a role in two
+cities names two — `San Francisco Bay Area, CA / Seattle, WA` is two Places, not one unplaceable
+string (ADR 0016). Each is held as its own normalized key and geocoded under it, the Corpus storing
+the list; the commute radius measures a User against the closest of them and drops the Posting only
+when every Place it could put on a map is out of range.
+_Avoid_: Office, site, city, location string
+
 **Geocode Cache**:
 Normalized location strings paired with the coordinate each resolves to, keyed by the string rather
-than the Posting — the same handful of strings recur across thousands of Postings. A negative result
+than the Posting — the same handful of strings recur across thousands of Postings, and a Posting
+naming several Places shares each one's row with every Posting that names only it. A negative result
 is cached too; a geocoder outage is not (ADR 0005). Postings only: a User's Home Coordinate is never
 pooled here (ADR 0014).
 _Avoid_: Geo table, location index
 
 **Unresolved location**:
-A Posting the commute radius would have measured and could not, because no geocoder could place the
-location it names. Surfaced and flagged, never dropped — silently dropping is how a User loses a
-role they wanted and never finds out. Which Postings the radius would have measured follows the
-User's stance on remote, not the Posting's text alone (ADR 0013): a Posting offering remote is not
-unresolved for a User who accepts remote — it needs no place — but it is for one who does not,
-because they could only ever take it onsite.
+A Posting the commute radius would have measured and could not, because no geocoder could place any
+of the Places it names — one where a single Place of two resolved was measured properly, on that
+one, and is not unresolved (ADR 0016). Surfaced and flagged, never dropped — silently dropping is
+how a User loses a role they wanted and never finds out. Which Postings the radius would have
+measured follows the User's stance on remote, not the Posting's text alone (ADR 0013): a Posting
+offering remote is not unresolved for a User who accepts remote — it needs no place — but it is for
+one who does not, because they could only ever take it onsite.
 _Avoid_: Ungeocoded, bad location, missing location
 
 ### Slug discovery
@@ -173,16 +183,18 @@ _Avoid_: Accuracy, confidence, resolution
 **Commute**:
 The journey from a User's Home Coordinate to a Posting's location, shown on the Posting page as a
 second tab beside their review. A Posting has one when its location resolved to a point and the
-commute radius acts on it for this User — which Postings those are is the radius's own question, read
-from the one statement of it (ADR 0013). So a User who does not accept remote has a Commute to every placed
-Posting, including one whose text offers remote alongside onsite: they could only ever take that role
-at its address. A User who accepts remote has one to the roles their own remote option cannot rescue
-— onsite and hybrid — and to neither a Posting offering remote nor one silent about where the work
-happens. A Posting with an Unresolved location has none either way. Where there is none the Posting
-page shows the review panel alone, with no tab strip. What is quoted is the straight-line distance,
-whether it falls inside the stated radius, and the Drive Windows. A drive is always longer than the
-line, and no drive time is ever derived from one — an unknown is shown as nothing rather than
-estimated.
+commute radius acts on it for this User — which Postings those are is the radius's own question,
+read from the one statement of it (ADR 0013). So a User who does not accept remote has a Commute to
+every placed Posting, including one whose text offers remote alongside onsite: they could only ever
+take that role at its address. A User who accepts remote has one to the roles their own remote
+option cannot rescue — onsite and hybrid — and to neither a Posting offering remote nor one silent
+about where the work happens. A Posting with an Unresolved location has none either way. Where there
+is none the Posting page shows the review panel alone, with no tab strip. What is quoted is the
+straight-line distance, whether it falls inside the stated radius, and the Drive Windows. A Posting
+naming several Places has one Commute, to the closest of them — the Place the radius judged it on —
+and the tab says which Place that is, so a User does not read the one distance as the only one (ADR
+0016). A drive is always longer than the line, and no drive time is ever derived from one — an
+unknown is shown as nothing rather than estimated.
 
 The tab first read the Posting's text alone, which is how a role tagged both remote and hybrid could
 be measured by the radius, dropped from a no-remote User's Dashboard as too far, and then offer that
@@ -203,8 +215,8 @@ it knows no route — never estimated from the straight line.
 _Avoid_: Rush hour, peak time, ETA, commute time
 
 **Journey**:
-A distinct home-to-Posting pair, which is what drive times are cached by: a Home Coordinate and a
-Posting's normalized location, not a Posting and not a User (ADR 0015). Thousands of Postings across
+A distinct home-to-Posting pair, which is what drive times are cached by: a Home Coordinate and one
+of a Posting's Places, not a Posting and not a User (ADR 0015). Thousands of Postings across
 one metro are a hundred-odd Journeys, so the routing provider is asked once per Journey and never per
 Posting or per page view. A stored answer is refreshed once it is a month old. A Journey the provider
 knows no route for is remembered as such; a provider that could not be reached is not.

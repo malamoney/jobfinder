@@ -1240,4 +1240,142 @@ describe("the commute radius", () => {
       expect(posting.unresolvedLocation).toBe(false);
     });
   });
+  /**
+   * A Posting whose location names more than one place (#113). It used to
+   * normalize to a single key — `san francisco bay area, ca / seattle, wa` —
+   * that no geocoder could place, so the radius kept it for every User at any
+   * distance, permanently: the report behind the ticket was a Bay Area/Seattle
+   * role reaching somebody in Franklin, MA.
+   *
+   * The closest place is the one that decides. A role offered in Boston and
+   * Seattle is a Boston role to somebody outside Boston, and that is the
+   * distance the radius judges it on.
+   */
+  describe("a Posting naming more than one place", () => {
+    const SEATTLE = { latitude: 47.6062, longitude: -122.3321 };
+    const SAN_FRANCISCO = { latitude: 37.7749, longitude: -122.4194 };
+
+    it("keeps a Posting when one of its places is inside the radius", async () => {
+      geocoderKnows({
+        "Boston, MA": BOSTON,
+        "san francisco, ca": SAN_FRANCISCO,
+        "cambridge, ma": CAMBRIDGE,
+      });
+      await corpusHas([
+        jobAt(1, "Platform Engineer", "San Francisco, CA / Cambridge, MA", "onsite"),
+      ]);
+      const userId = await givenAUser();
+
+      await saveCriteria(userId, commuteCriteria());
+
+      const [posting] = (await readDashboard(userId)).postings;
+      expect(posting.title).toBe("Platform Engineer");
+      expect(posting.unresolvedLocation).toBe(false);
+    });
+
+    it("drops a Posting when every place it names is outside the radius", async () => {
+      geocoderKnows({
+        "Boston, MA": BOSTON,
+        "san francisco bay area, ca": SAN_FRANCISCO,
+        "seattle, wa": SEATTLE,
+      });
+      await corpusHas([
+        jobAt(
+          1,
+          "Staff Data Engineer",
+          "Hybrid - San Francisco Bay Area, CA / Seattle, WA",
+          "hybrid",
+        ),
+      ]);
+      const userId = await givenAUser();
+
+      await saveCriteria(userId, commuteCriteria());
+
+      expect((await readDashboard(userId)).postings).toHaveLength(0);
+    });
+
+    it("geocodes each place under its own key", async () => {
+      const geo = geocoderKnows({
+        "Boston, MA": BOSTON,
+        "san francisco bay area, ca": SAN_FRANCISCO,
+        "seattle, wa": SEATTLE,
+      });
+      await corpusHas([
+        jobAt(
+          1,
+          "Staff Data Engineer",
+          "Hybrid - San Francisco Bay Area, CA / Seattle, WA",
+          "hybrid",
+        ),
+      ]);
+      const userId = await givenAUser();
+
+      await saveCriteria(userId, commuteCriteria());
+
+      // Two lookups, each a key a single-place Posting elsewhere in the Corpus
+      // shares for free — never the pair strung together, which is the string
+      // nothing could place.
+      expect(geo.queries()).toEqual([
+        "Boston, MA",
+        "san francisco bay area, ca",
+        "seattle, wa",
+      ]);
+    });
+
+    it("measures a Posting on the places that resolved, dropping it when they are all too far", async () => {
+      geocoderKnows({ "Boston, MA": BOSTON, "new york, ny": NEW_YORK });
+      await corpusHas([
+        jobAt(
+          1,
+          "Platform Engineer",
+          "New York, NY / Undisclosed location, USA",
+          "onsite",
+        ),
+      ]);
+      const userId = await givenAUser();
+
+      await saveCriteria(userId, commuteCriteria());
+
+      expect((await readDashboard(userId)).postings).toHaveLength(0);
+    });
+
+    it("does not flag a Posting where one place resolved and another did not", async () => {
+      geocoderKnows({ "Boston, MA": BOSTON, "cambridge, ma": CAMBRIDGE });
+      await corpusHas([
+        jobAt(
+          1,
+          "Platform Engineer",
+          "Cambridge, MA / Undisclosed location, USA",
+          "onsite",
+        ),
+      ]);
+      const userId = await givenAUser();
+
+      await saveCriteria(userId, commuteCriteria());
+
+      // It was measured properly — against Cambridge — so there is no miss to
+      // announce.
+      const [posting] = (await readDashboard(userId)).postings;
+      expect(posting.unresolvedLocation).toBe(false);
+    });
+
+    it("keeps and flags a Posting where no place resolved at all", async () => {
+      geocoderKnows({ "Boston, MA": BOSTON });
+      await corpusHas([
+        jobAt(
+          1,
+          "Platform Engineer",
+          "Undisclosed location, USA / Somewhere else, USA",
+          "onsite",
+        ),
+      ]);
+      const userId = await givenAUser();
+
+      await saveCriteria(userId, commuteCriteria());
+
+      const [posting] = (await readDashboard(userId)).postings;
+      expect(posting.title).toBe("Platform Engineer");
+      expect(posting.unresolvedLocation).toBe(true);
+    });
+  });
 });

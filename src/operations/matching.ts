@@ -14,7 +14,6 @@ import {
 import { getDb } from "@/db";
 import {
   criteria,
-  geocodes,
   matches,
   postings,
   type CriteriaRow,
@@ -28,11 +27,11 @@ import {
 } from "@/criteria/schema";
 import { EARTH_RADIUS_MILES } from "@/commute/distance";
 import { radiusApplies, type Logic } from "@/commute/radius-scope";
-import { normalizeLocation } from "@/postings/location";
+import { normalizeLocations } from "@/postings/location";
 import { WORKING_HOURS_PER_YEAR } from "@/postings/salary";
 import type { Coordinate } from "@/geocoding/nominatim";
 import { extractPostings } from "./extraction";
-import { ensureGeocoded } from "./geocoding";
+import { anyPlaceResolved, anyPlaceWhere, ensureGeocoded } from "./geocoding";
 import { placeUnplacedHome, radiusOrigin } from "./home-location";
 
 /**
@@ -202,6 +201,12 @@ function axisClause(
  * dropped: silently dropping it is how a User loses a role they wanted and
  * never finds out (#12). The Dashboard flags it as unresolved instead.
  *
+ * A Posting may name several places (#113), and the one that decides is the
+ * closest: a role offered in Boston and Seattle is a Boston role to somebody in
+ * Franklin, MA. So the radius drops a Posting only when *every* place it could
+ * put on a map is too far, and keeps it when any one of them is in range —
+ * which is the same rule a single-place Posting has always been read by.
+ *
  * The distance is a great-circle computation in SQL against the `geocodes`
  * cache, which `matchCriteria` has already filled for every surviving location.
  */
@@ -224,24 +229,26 @@ const withinCommuteRadius: FunnelStage = {
       SQL_LOGIC,
     );
 
-    // The only Postings the radius drops: those whose location the cache
-    // resolved to a point that is too far. A location with no resolved point —
-    // no cache row, or a negative result — matches nothing here and is kept, so
-    // an unresolvable location is surfaced rather than lost.
-    const outsideRadius = sql`
-      exists (
-        select 1 from ${geocodes} as g
-        where g.location = ${postings.normalizedLocation}
-          and g.latitude is not null
-          and ${EARTH_RADIUS_MILES} * acos(least(1, greatest(-1,
-            sin(radians(${home.latitude})) * sin(radians(g.latitude))
-            + cos(radians(${home.latitude})) * cos(radians(g.latitude))
-              * cos(radians(g.longitude) - radians(${home.longitude}))
-          ))) > ${radiusMiles}
-      )
-    `;
+    // Any one of the Posting's places that the cache resolved to a point inside
+    // the radius. A place with no resolved point — no cache row, or a negative
+    // result — is not a place this can be true of, so a Posting nothing could
+    // place matches nothing here. `anyPlaceWhere` is the same statement of
+    // "a resolved place of this Posting" that `anyPlaceResolved` is built from,
+    // with the distance asked of it.
+    const somewhereInRange = anyPlaceWhere(sql`
+      ${EARTH_RADIUS_MILES} * acos(least(1, greatest(-1,
+        sin(radians(${home.latitude})) * sin(radians(g.latitude))
+        + cos(radians(${home.latitude})) * cos(radians(g.latitude))
+          * cos(radians(g.longitude) - radians(${home.longitude}))
+      ))) <= ${radiusMiles}
+    `);
 
-    return or(not(measured), not(outsideRadius));
+    // Three ways to survive the stage, and the middle one is what keeps an
+    // unplaceable Posting surfaced: the radius does not act on this Posting for
+    // this User; nothing it names could be placed at all; or something it names
+    // is close enough. Only a Posting whose every resolved place is too far is
+    // dropped.
+    return or(not(measured), not(anyPlaceResolved), somewhereInRange);
   },
 };
 
@@ -336,8 +343,7 @@ async function warmGeocodesForMatch(userId: string): Promise<void> {
 
   const keys = new Set<string>();
   for (const row of located) {
-    const key = normalizeLocation(row.location);
-    if (key) keys.add(key);
+    for (const key of normalizeLocations(row.location)) keys.add(key);
   }
 
   await ensureGeocoded(db, [...keys]);

@@ -100,12 +100,28 @@ export const postings = pgTable(
     // Free text as the Source wrote it — `Greater Boston Area`,
     // `San Francisco, CA / Remote`, `Multiple locations`.
     location: text("location"),
-    // Extraction (#12) derives this from `location`: the normalized key the
-    // geocode cache (`geocodes`) is looked up by, or null when the text names no
-    // geocodable place. Cleared and recomputed on a re-Fetch with the other
-    // derived fields, so a place a company corrected does not keep its old
-    // coordinates. The distance funnel stage joins `geocodes` on this.
-    normalizedLocation: text("normalized_location"),
+    // Extraction (#12) derives this from `location`: the normalized keys the
+    // geocode cache (`geocodes`) is looked up by, one per place the text names,
+    // and empty when it names no geocodable place. Recomputed on a re-Fetch with
+    // the other derived fields, so a place a company corrected does not keep its
+    // old coordinates.
+    //
+    // A list rather than one key because an employer may offer a role in more
+    // than one place — `San Francisco Bay Area, CA / Seattle, WA` — and the two
+    // concatenated are a string no geocoder can place (#113). Each place is
+    // cached under its own key, shared with every single-place Posting that
+    // names it, and the radius measures a User against the closest of them.
+    //
+    // Deliberately unindexed. Everything that reads it — the distance funnel
+    // stage (#12), the **Location unresolved** flag — asks "does the cache hold
+    // a resolved row for any of these keys", which is driven from the Posting
+    // and answered on the `geocodes` side by that table's primary key. An index
+    // here would be on the wrong side of that question; the btree the single
+    // key carried was for the join this replaced.
+    normalizedLocations: text("normalized_locations")
+      .array()
+      .notNull()
+      .default([]),
     applyUrl: text("apply_url").notNull(),
     // Null where the Source published no date, which is not the same as the
     // epoch and must not be sorted as though it were.
@@ -178,9 +194,6 @@ export const postings = pgTable(
     // it. #7 reads the Corpus a Board at a time, so this is the index that
     // query needs.
     index("postings_board").on(table.boardId),
-    // The distance funnel stage (#12) joins `geocodes` onto this column, and
-    // the Dashboard joins it again to flag an unresolved location.
-    index("postings_normalized_location").on(table.normalizedLocation),
     // The Dashboard groups a User's matched Postings by this to present one per
     // opening (#13), and the Posting page looks up a Posting's group by it.
     index("postings_dedup_key").on(table.dedupKey),

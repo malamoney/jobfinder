@@ -2,7 +2,6 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getDb, type Database } from "@/db";
 import {
   criteria,
-  geocodes,
   matches,
   postings,
   reviewState,
@@ -10,6 +9,7 @@ import {
 } from "@/db/schema";
 import { DEFAULT_STATUS, type ReviewStatus } from "@/review/schema";
 import { chooseRepresentative, latestGroupReview } from "./dedup";
+import { anyPlaceResolved } from "./geocoding";
 import { hasUnresolvedLocation, isExpired, radiusInEffect } from "./postings";
 
 /**
@@ -150,14 +150,13 @@ export async function readDashboard(
     .select({
       posting: postings,
       matchedKeywords: matches.matchedKeywords,
-      coordinate: {
-        latitude: geocodes.latitude,
-        longitude: geocodes.longitude,
-      },
+      // Whether any of the Posting's places resolved (#113) — a value rather
+      // than a join, because a Posting naming three places would otherwise come
+      // back as three rows and be counted as three openings.
+      placed: anyPlaceResolved,
     })
     .from(matches)
     .innerJoin(postings, eq(postings.id, matches.postingId))
-    .leftJoin(geocodes, eq(geocodes.location, postings.normalizedLocation))
     .where(eq(matches.userId, userId));
 
   const groups = new Map<string, typeof rows>();
@@ -196,7 +195,7 @@ export async function readDashboard(
       expired: isExpired(representative),
       unresolvedLocation: hasUnresolvedLocation(
         representative,
-        shown.coordinate,
+        shown.placed,
         radius,
       ),
       status: effective?.status ?? DEFAULT_STATUS,

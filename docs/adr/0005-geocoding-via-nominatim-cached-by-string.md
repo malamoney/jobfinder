@@ -1,5 +1,11 @@
 # Geocoding via Nominatim, cached by normalized location string
 
+> **Extended by [ADR 0016](0016-a-posting-names-several-places.md).** A Posting's location text is
+> read as the list of Places it names, so one Posting may look up several keys in this cache. Nothing
+> about the cache changes — it is still keyed by the normalized string, and each Place shares its row
+> with every Posting naming only that Place — but "the Posting's key" is now "the Posting's keys",
+> and the radius measures against the closest of them.
+
 > **Amended by ADR 0014.** The half of this that covered *the User's home* no longer holds: a home
 > location is geocoded exactly as typed and stored on the User's own Criteria row, never normalized
 > and never cached here. Everything below still stands for a Posting's location, which is what the

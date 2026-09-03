@@ -64,6 +64,27 @@ const NO_DISTANCE: Record<
   },
 };
 
+/**
+ * What the tab says when the role is offered in more than one place (#113).
+ *
+ * Everything else on the tab describes one journey, and a User reading a single
+ * distance against a location that names two would reasonably take it for the
+ * only one. So the place is named: the closest, because that is the one the
+ * commute radius judged the Posting on.
+ *
+ * "Of the places that could be placed on a map" rather than "of the places this
+ * role names", because a place no geocoder knew was never in the comparison —
+ * claiming it was would be the tab asserting a measurement nobody made, which
+ * is the habit this whole area keeps having to unlearn (#111, #112). With no
+ * home to measure from there is no "closest" to claim at all, and the sentence
+ * says only which place is being shown.
+ */
+function measuredPlace(place: string, home: CommuteHome): string {
+  return home.state === "placed"
+    ? `This role names more than one place. Measured to ${place} — the closest of the ones we could put on a map.`
+    : `This role names more than one place; ${place} is the one shown here.`;
+}
+
 export function CommuteDetails({ commute }: { commute: Commute }) {
   // Every `home.state === "placed"` below is a narrowing guard, not a repeated
   // decision: it is what gives TypeScript the coordinate and the distance, and
@@ -89,6 +110,7 @@ export function CommuteDetails({ commute }: { commute: Commute }) {
           end="posting"
           label="Posting location"
           value={destination.stated ?? "Not given"}
+          note={destination.place && measuredPlace(destination.place, home)}
         />
       </div>
 
@@ -237,10 +259,13 @@ function Place({
   end,
   label,
   value,
+  note,
 }: {
   end: keyof typeof END_DOT;
   label: string;
   value: string;
+  /** A sentence qualifying the value, where one is owed — see `measuredPlace`. */
+  note?: string | null;
 }) {
   const home = end === "home";
 
@@ -263,6 +288,9 @@ function Place({
         </span>
         {home && <span className="text-[11px] text-disabled">locked</span>}
       </div>
+      {note && (
+        <p className="text-[12px] leading-relaxed text-label">{note}</p>
+      )}
     </div>
   );
 }
