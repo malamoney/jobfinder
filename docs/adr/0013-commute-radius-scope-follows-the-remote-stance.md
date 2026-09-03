@@ -53,5 +53,15 @@ questions.
   the amber flag. #111 closed that: the scope rule above is now stated once
   (`radiusApplies`, `src/commute/radius-scope.ts`) and read both as SQL by the stage and as a plain
   boolean by the flag, so the pill lands on exactly the Postings the radius could not place.
+- The COMMUTE DETAILS tab on the Posting page follows this scope too, since #112. It used to read
+  the Posting's text alone, which put it out of step in both directions: a dual-tagged role was
+  measured for a no-remote User and then offered them no screen saying how far away it was, while a
+  role silent about where the work happens was given a tab for a User who accepts remote, whose
+  radius had never measured it. Both now follow the rule above, so all three readers — the stage,
+  the flag, and the tab — take this scope from the one statement in `radiusApplies`, each still
+  deciding for itself when to ask at all: the flag only where a radius actually ran, the tab even
+  for a User with no home to measure from. The narrowing has a cost worth naming: user story 19's "outside the radius" verdict is now read on a Posting the radius did
+  measure, in the window before the next match run drops it, rather than on any far Posting that
+  reached the User for another reason.
 - No schema or data change. Matches are derived; the next match run (a Criteria save, the nightly
   sweep, or "Run matching now") applies the new scope.
