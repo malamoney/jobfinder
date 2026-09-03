@@ -75,6 +75,17 @@ export type CommuteHome =
 export type CommuteDestination = {
   /** The location text as the employer wrote it, or null where they wrote none. */
   stated: string | null;
+  /**
+   * Which of the places that text names this journey ends at, in the employer's
+   * words — the closest one to the User, since that is the one the radius judged
+   * the Posting on (#113).
+   *
+   * Null when the text names a single place, because the stated text already is
+   * that place and repeating it would only suggest there were others. So a tab
+   * naming a place is a tab saying "there is more than one, and this is the one
+   * everything below is measured to".
+   */
+  place: string | null;
   at: Coordinate;
 };
 

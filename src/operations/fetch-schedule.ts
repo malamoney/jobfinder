@@ -8,6 +8,7 @@ import {
   type FetchBatchOptions,
   type FetchRunId,
 } from "./fetch-run";
+import { renormalizeLocations } from "./extraction";
 import { matchAllUsers } from "./matching";
 import { pruneNonUsPostings, reclassifyCountries } from "./prune";
 
@@ -151,8 +152,9 @@ export async function drainFetchQueue(
 
 /**
  * Drives the queue forward, and — only once the whole queue is drained —
- * re-derives every Posting's `country` from its location text
- * (`reclassifyCountries`), prunes the non-US roles that no User has acted on
+ * re-derives every Posting's `country` and its list of places from its location
+ * text (`reclassifyCountries`, `renormalizeLocations`), prunes the non-US roles
+ * that no User has acted on
  * (`pruneNonUsPostings`), then rebuilds every User's Matches so overnight
  * Postings reach their Dashboard (#2, user story 20; #17).
  *
@@ -177,6 +179,11 @@ export async function drainAndRematch(
     // classifier reaches rows stored under the old reading (#67); the prune
     // then removes any that are now non-US and unreviewed.
     await reclassifyCountries();
+    // And the places that text names, for the same reason (#113): a Posting a
+    // Fetch still returns re-derives them on its own, but an Expired one would
+    // otherwise keep the reading of the day it was last collected — and the
+    // radius would go on measuring it against places nobody could geocode.
+    await renormalizeLocations(getDb());
     const pruned = await prunePendingNonUs();
     if (pruned > 0) await recordNonUsPruned(pruned);
     await matchAllUsers();

@@ -144,7 +144,9 @@ describe("a Posting the User would have to travel to", () => {
     const commute = await readCommute(userId, postingId);
 
     expect(commute).toEqual({
-      destination: { stated: "Seaport, Boston, MA", at: SEAPORT },
+      // `place` is null because the Posting names one place: the stated text
+      // already is that place, so the tab has nothing to tell apart (#113).
+      destination: { stated: "Seaport, Boston, MA", place: null, at: SEAPORT },
       home: {
         state: "placed",
         stated: HOME_ADDRESS,
@@ -391,7 +393,9 @@ describe("a User with no home to measure from", () => {
     const commute = await readCommute(userId, postingId);
 
     expect(commute).toEqual({
-      destination: { stated: "Seaport, Boston, MA", at: SEAPORT },
+      // `place` is null because the Posting names one place: the stated text
+      // already is that place, so the tab has nothing to tell apart (#113).
+      destination: { stated: "Seaport, Boston, MA", place: null, at: SEAPORT },
       home: { state: "none" },
       radiusMiles: null,
     });
@@ -863,6 +867,7 @@ describe("when there are no times to be had", () => {
   function expectTheTabIsIntact(commute: Awaited<ReturnType<typeof readCommute>>) {
     expect(commute?.destination).toEqual({
       stated: "Seaport, Boston, MA",
+      place: null,
       at: SEAPORT,
     });
     expect(commute?.radiusMiles).toBe(30);
@@ -995,6 +1000,143 @@ describe("when there are no times to be had", () => {
 
     expect((await readCommute(userId, postingId))?.home).toEqual({
       state: "none",
+    });
+  });
+});
+
+/**
+ * A Posting offered in more than one place (#113).
+ *
+ * The radius judges such a Posting on the place closest to the User, so that is
+ * the place the tab has to describe — a tab quoting the distance to Seattle for
+ * a role the Dashboard kept because of its Boston office would be explaining a
+ * decision nobody made. And it says which place that is, because a User reading
+ * one distance against a location naming two would otherwise assume it was the
+ * only one.
+ */
+describe("a Posting offered in more than one place", () => {
+  const TWO_OFFICES = "Austin, TX / Seaport, Boston, MA";
+
+  /** The home, and both of the Posting's places. */
+  function geocoderPlacesBoth() {
+    return geocoderKnows({
+      [HOME_ADDRESS]: { ...HOME, placeRank: 30 },
+      "austin, tx": AUSTIN,
+      "seaport, boston, ma": SEAPORT,
+    });
+  }
+
+  it("measures the closest place, whichever order the text names them in", async () => {
+    const postingId = await corpusHas([
+      jobAt(TWO_OFFICES, "This is an onsite role."),
+    ]);
+    geocoderPlacesBoth();
+    const userId = await givenAUser();
+    await saveCriteria(userId, commuteCriteria());
+
+    const commute = await readCommute(userId, postingId);
+
+    expect(commute?.destination.at).toEqual(SEAPORT);
+    // Boston is the second place the text names, and the only one that decides
+    // anything: Austin is 1,700 miles away and would have read "outside".
+    expect(commute?.home).toMatchObject({
+      distanceMiles: expect.closeTo(4.6255312, 6),
+    });
+    expect(commute && radiusVerdict(commute)).toBe("within");
+  });
+
+  it("says which of the places it is describing, in the employer's words", async () => {
+    const postingId = await corpusHas([
+      jobAt(TWO_OFFICES, "This is an onsite role."),
+    ]);
+    geocoderPlacesBoth();
+    const userId = await givenAUser();
+    await saveCriteria(userId, commuteCriteria());
+
+    const commute = await readCommute(userId, postingId);
+
+    expect(commute?.destination.place).toBe("Seaport, Boston, MA");
+    // The employer's whole text is still what the tab shows as the Posting's
+    // location: naming the measured place adds to that rather than replacing it.
+    expect(commute?.destination.stated).toBe(TWO_OFFICES);
+  });
+
+  it("asks the router about the closest place rather than the first one", async () => {
+    const postingId = await corpusHas([
+      jobAt(TWO_OFFICES, "This is an onsite role."),
+    ]);
+    geocoderPlacesBoth();
+    const userId = await givenAUser();
+    await saveCriteria(userId, commuteCriteria());
+
+    routingIsConfigured();
+    const router = routerKnows({
+      arriving: { minutes: 24 },
+      leaving: { minutes: 31 },
+    });
+    await readCommute(userId, postingId);
+
+    for (const request of router.requests()) {
+      expect(request.journey).toContain(
+        `${SEAPORT.latitude},${SEAPORT.longitude}`,
+      );
+    }
+  });
+
+  it("describes the one place that could be placed when the others could not", async () => {
+    const postingId = await corpusHas([
+      jobAt(
+        "Undisclosed location, USA / Seaport, Boston, MA",
+        "This is an onsite role.",
+      ),
+    ]);
+    geocoderPlaces("seaport, boston, ma");
+    const userId = await givenAUser();
+    await saveCriteria(userId, commuteCriteria());
+
+    const commute = await readCommute(userId, postingId);
+
+    expect(commute?.destination).toMatchObject({
+      place: "Seaport, Boston, MA",
+      at: SEAPORT,
+    });
+  });
+
+  it("shows no tab at all when none of its places could be placed", async () => {
+    const postingId = await corpusHas([
+      jobAt(
+        "Undisclosed location, USA / Somewhere else, USA",
+        "This is an onsite role.",
+      ),
+    ]);
+    geocoderKnows({ [HOME_ADDRESS]: { ...HOME, placeRank: 30 } });
+    const userId = await givenAUser();
+    await saveCriteria(userId, commuteCriteria());
+
+    expect(await readCommute(userId, postingId)).toBeNull();
+  });
+
+  /**
+   * There is no closest without somewhere to measure from, and the tab is
+   * showing the "state a home location" prompt rather than a distance (user
+   * story 22). So the first place the Posting names is the one it is named
+   * after — a stable answer rather than an arbitrary one.
+   */
+  it("names the first place when there is no home to measure from", async () => {
+    const postingId = await corpusHas([
+      jobAt(TWO_OFFICES, "This is an onsite role."),
+    ]);
+    geocoderPlacesBoth();
+    const commuter = await givenAUser("commuter@example.com");
+    await saveCriteria(commuter, commuteCriteria());
+
+    const userId = await givenAUser();
+    const commute = await readCommute(userId, postingId);
+
+    expect(commute?.home).toEqual({ state: "none" });
+    expect(commute?.destination).toMatchObject({
+      place: "Austin, TX",
+      at: AUSTIN,
     });
   });
 });

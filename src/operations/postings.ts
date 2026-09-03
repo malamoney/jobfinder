@@ -120,17 +120,23 @@ export async function radiusInEffect(
  * neither remote nor that commute, was measured by nothing and announced by
  * nothing (#111).
  *
- * `coordinate` is the joined `geocodes` row for the Posting's location — its
- * `latitude` null on a negative result, the whole value null/undefined when no
- * row was joined.
+ * A Posting naming several places is unresolved only when *none* of them could
+ * be placed (#113). One that named Boston and Seattle and resolved only Boston
+ * was measured properly — against Boston — and wearing the flag would tell a
+ * User a distance was missed that was not.
+ *
+ * `placed` is that question already asked of the geocode cache: whether any of
+ * the Posting's places resolved to a point (`anyPlaceResolved` in
+ * `./geocoding`), which is the reader's to select rather than this function's
+ * to go looking for.
  */
 export function hasUnresolvedLocation(
   posting: Pick<Posting, "location" | "arrangements">,
-  coordinate: { latitude: number | null } | null | undefined,
+  placed: boolean,
   radius: RadiusInEffect,
 ): boolean {
   if (radius == null || posting.location == null) return false;
   if (!radiusAppliesTo(radius.arrangements, posting.arrangements)) return false;
 
-  return coordinate == null || coordinate.latitude == null;
+  return !placed;
 }
