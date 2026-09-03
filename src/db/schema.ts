@@ -216,6 +216,57 @@ export const geocodes = pgTable("geocodes", {
 export type Geocode = typeof geocodes.$inferSelect;
 
 /**
+ * The drive-time cache: one row per distinct journey, whoever looks at it
+ * (#102, ADR 0015).
+ *
+ * Keyed by the journey rather than by the Posting, for the reason the geocode
+ * cache is keyed by string rather than by Posting (ADR 0005): the same handful
+ * of locations recur across thousands of Postings, so a User working through a
+ * metro's Corpus touches a hundred distinct journeys and not a request per
+ * Posting or per page view. `origin` is the User's Home Coordinate written out
+ * to five decimal places — about a metre, far finer than a drive time can
+ * distinguish — and `destination` is the Posting's normalized location, the
+ * same key `geocodes` holds.
+ *
+ * A row means the provider was asked. The three answer columns null means it
+ * was asked and knew no route — a negative result, cached so an unroutable
+ * journey is not retried on every page open. They are only ever all set or all
+ * null. A provider *failure* is not cached: the adapter throws, no row is
+ * written, and the journey is asked about again next time.
+ *
+ * `checked_at` is what makes a row expire. Historic traffic patterns move with
+ * roadworks and new roads, so a stored answer is refreshed once it is old
+ * enough to have drifted (`DRIVE_MAX_AGE_DAYS`).
+ *
+ * There is no `user_id`. A journey between two points is the same journey for
+ * everybody, and the origin is a coordinate rather than the address the User
+ * typed — so this table holds no more about where somebody lives than the
+ * Corpus already holds about where the roles are (ADR 0014's concern was the
+ * *address*, which never leaves the Criteria row).
+ */
+export const commuteDrives = pgTable(
+  "commute_drives",
+  {
+    origin: text("origin").notNull(),
+    destination: text("destination").notNull(),
+
+    /** The drive that arrives in time for a 9am start, and the time to leave. */
+    morningSeconds: integer("morning_seconds"),
+    morningLeaveMinutes: integer("morning_leave_minutes"),
+    /** The drive home, leaving at 5:30pm. */
+    eveningSeconds: integer("evening_seconds"),
+
+    checkedAt: timestamp("checked_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.origin, table.destination] })],
+);
+
+/** A cached journey as stored. */
+export type CommuteDriveRow = typeof commuteDrives.$inferSelect;
+
+/**
  * The curated set of Boards a Fetch sweeps.
  *
  * Curation rather than harvesting is a cost decision: ADR 0003 records that

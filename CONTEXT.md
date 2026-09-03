@@ -172,9 +172,9 @@ The journey from a User's Home Coordinate to a Posting's location, shown on the 
 second tab beside their review. A Posting has one when its location resolved to a point and its text
 does not offer remote — onsite and hybrid, plus the Postings naming no Arrangement. A remote Posting
 has none, and neither does one with an Unresolved location; the Posting page then shows the review
-panel alone, with no tab strip. What is quoted today is the straight-line distance and whether it
-falls inside the stated radius. A drive is always longer, and no drive time is ever derived from a
-straight line — an unknown is shown as nothing rather than estimated.
+panel alone, with no tab strip. What is quoted is the straight-line distance, whether it falls inside
+the stated radius, and the Drive Windows. A drive is always longer than the line, and no drive time is
+ever derived from one — an unknown is shown as nothing rather than estimated.
 
 Note that this scope is *not* the commute radius's scope. The radius reads the User's stance on
 remote (ADR 0013), so for a User who does not accept remote it measures even a Posting whose text
@@ -182,6 +182,25 @@ offers remote; the tab does not, and shows nothing for that Posting either way. 
 rule and user story 20 asks for no tab on a remote Posting at all. Scoping the tab by stance as well
 is an open question, not a settled decision.
 _Avoid_: Trip, travel time, distance to work
+
+**Drive Window**:
+One of the two moments a Commute is measured at: the morning, solved for arriving in time for a 9am
+start, and the evening, solved for leaving at 5:30pm. Both are constants a User does not set, both
+read the routing provider's historic speed profile rather than live traffic, and both are anchored in
+the journey's own local time rather than the server's (ADR 0015). The morning also carries the clock
+time the User would have to leave home. The two answer together or not at all: a morning shown
+without an evening would read as "the evening is fine", which is the asymmetry the pair exists to
+expose. Absent entirely when no routing provider is configured, when one cannot be reached, or when
+it knows no route — never estimated from the straight line.
+_Avoid_: Rush hour, peak time, ETA, commute time
+
+**Journey**:
+A distinct home-to-Posting pair, which is what drive times are cached by: a Home Coordinate and a
+Posting's normalized location, not a Posting and not a User (ADR 0015). Thousands of Postings across
+one metro are a hundred-odd Journeys, so the routing provider is asked once per Journey and never per
+Posting or per page view. A stored answer is refreshed once it is a month old. A Journey the provider
+knows no route for is remembered as such; a provider that could not be reached is not.
+_Avoid_: Route, trip, lookup
 
 **Match**:
 The verdict that a Posting satisfies a User's Criteria, carrying the Keywords that hit. Derived, and

@@ -9,23 +9,25 @@ import type {
 } from "@/commute/schema";
 import type { Arrangement } from "@/criteria/schema";
 import { normalizeLocation } from "@/postings/location";
+import { readDriveTimes } from "./drive-times";
 import { readGeocode } from "./geocoding";
 import { homeCoordinateOf } from "./home-location";
 import { isPostingId } from "./postings";
 
 /**
- * The read behind the COMMUTE DETAILS tab (#101).
+ * The read behind the COMMUTE DETAILS tab (#101, #102).
  *
  * Part of the primary seam (see `./index.ts`), sitting beside `readPosting` and
  * `readCriteria` rather than inside either: the Posting page asks for both at
  * once, and a Posting that is no journey answers null here without changing
  * anything about the Posting itself.
  *
- * Reads only. Nothing on this path calls a geocoder: a Posting's location is
- * placed by the match run that surfaced it (ADR 0005), and the User's home when
- * they saved their Criteria (ADR 0014), so opening a Posting costs a couple of
- * queries and no external call — which is what keeps the page as fast as it was
- * before the tab existed (user story 25).
+ * No geocoder is ever called here: a Posting's location is placed by the match
+ * run that surfaced it (ADR 0005), and the User's home when they saved their
+ * Criteria (ADR 0014). The routing provider is the one external call this path
+ * can make, and only on the first look at a given journey — after that the
+ * drive-time cache answers it (`./drive-times`), which is what keeps the page
+ * as fast as it was before the tab existed (user story 25).
  */
 
 /** The Arrangement that means there is no journey to describe. */
@@ -78,6 +80,9 @@ export async function readCommute(
     db
       .select({
         location: postings.location,
+        // The drive-time cache is keyed by this, the same string `geocodes` is
+        // keyed by, so every Posting in one place shares one stored journey.
+        normalizedLocation: postings.normalizedLocation,
         arrangements: postings.arrangements,
         latitude: geocodes.latitude,
         longitude: geocodes.longitude,
@@ -90,16 +95,23 @@ export async function readCommute(
 
   if (!postingRow) return null;
   if (postingRow.arrangements.includes(REMOTE)) return null;
-  if (postingRow.latitude == null || postingRow.longitude == null) return null;
+  // One fact stated three ways: a Posting with no location has no normalized
+  // key, so it joins no geocode row and has no point to travel to. Narrowed in
+  // one guard because a coordinate without the key it was cached under would
+  // leave the drive-time cache nothing to key a journey by.
+  const { normalizedLocation, latitude, longitude } = postingRow;
+  if (latitude == null || longitude == null || normalizedLocation == null) {
+    return null;
+  }
 
   const destination: CommuteDestination = {
     stated: postingRow.location,
-    at: { latitude: postingRow.latitude, longitude: postingRow.longitude },
+    at: { latitude, longitude },
   };
 
   return {
     destination,
-    home: await homeOf(criteriaRow, destination),
+    home: await homeOf(criteriaRow, destination, normalizedLocation),
     radiusMiles: criteriaRow?.radiusMiles ?? null,
   };
 }
@@ -129,6 +141,7 @@ export async function readCommute(
 async function homeOf(
   row: CriteriaRow | undefined,
   destination: CommuteDestination,
+  destinationKey: string,
 ): Promise<CommuteHome> {
   const stated = row?.homeLocation;
   if (!row || !stated) return { state: "none" };
@@ -141,6 +154,10 @@ async function homeOf(
     stated,
     at,
     distanceMiles: greatCircleMiles(at, destination.at),
+    // Null on everything from "no provider is configured" to "the provider
+    // knows no route", because the tab says the same thing — nothing — for all
+    // of them. A straight line is never scaled up to stand in for a drive.
+    drive: await readDriveTimes(at, destination.at, destinationKey),
   };
 }
 
