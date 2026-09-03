@@ -48,8 +48,10 @@ questions.
   User onsite, at a place they cannot reach, so this is correct.
 - The transient window while a Fetch's new locations are still being geocoded (ADR 0005, bounded
   per run) now also covers silent-on-arrangement roles: they show unfiltered until their location
-  resolves, then drop if it is far. `hasUnresolvedLocation` still only flags roles whose text
-  places them onsite/hybrid, so a silent role in that window shows without the amber flag — a small
-  cosmetic gap, self-correcting within a night, left for a follow-up.
+  resolves, then drop if it is far. `hasUnresolvedLocation` at first still only flagged roles whose
+  text placed them onsite/hybrid, so a silent or remote-tagged role in that window showed without
+  the amber flag. #111 closed that: the scope rule above is now stated once
+  (`radiusApplies`, `src/commute/radius-scope.ts`) and read both as SQL by the stage and as a plain
+  boolean by the flag, so the pill lands on exactly the Postings the radius could not place.
 - No schema or data change. Matches are derived; the next match run (a Criteria save, the nightly
   sweep, or "Run matching now") applies the new scope.

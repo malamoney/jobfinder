@@ -11,7 +11,7 @@ import {
   type Column,
   type SQL,
 } from "drizzle-orm";
-import { getDb, type Transaction } from "@/db";
+import { getDb } from "@/db";
 import {
   criteria,
   geocodes,
@@ -27,12 +27,13 @@ import {
   type Arrangement,
 } from "@/criteria/schema";
 import { EARTH_RADIUS_MILES } from "@/commute/distance";
+import { radiusApplies, type Logic } from "@/commute/radius-scope";
 import { normalizeLocation } from "@/postings/location";
 import { WORKING_HOURS_PER_YEAR } from "@/postings/salary";
 import type { Coordinate } from "@/geocoding/nominatim";
 import { extractPostings } from "./extraction";
-import { ensureGeocoded, readGeocode } from "./geocoding";
-import { homeCoordinateOf, placeUnplacedHome } from "./home-location";
+import { ensureGeocoded } from "./geocoding";
+import { placeUnplacedHome, radiusOrigin } from "./home-location";
 
 /**
  * The matching funnel: the ordered, deterministic stages that turn a User's
@@ -192,18 +193,10 @@ function axisClause(
  * "A hybrid role four hundred miles away is exactly as uncommutable as an
  * onsite one" (#12): a role at a fixed address that is too far to reach is
  * excluded. What counts as "at a fixed address" depends on whether the User
- * accepts remote work:
- *
- * - **The User accepts remote.** The radius is left off any Posting whose text
- *   offers remote — that role can be done from home wherever it is based. A
- *   Posting silent on its location mode is left alone too, the same way the
- *   Arrangement stage never excludes on a silent axis.
- * - **The User does not accept remote** (they ticked only onsite and/or
- *   hybrid). Then every Posting with a resolved location must be within the
- *   radius. A Posting in Austin whose text never says "remote" is an Austin
- *   role, whether or not its text also says "onsite" — and the User asked for
- *   work they can get to (#73: silent-on-arrangement roles were bypassing the
- *   radius entirely and filling the Dashboard from across the country).
+ * accepts remote work, and that rule is stated once — `radiusApplies`
+ * (`@/commute/radius-scope`), read here as SQL and by the **Location
+ * unresolved** flag as a plain boolean, so the two cannot disagree about which
+ * Postings were measured (#111).
  *
  * A Posting whose location could not be geocoded is *kept* either way, not
  * dropped: silently dropping it is how a User loses a role they wanted and
@@ -218,16 +211,18 @@ const withinCommuteRadius: FunnelStage = {
   narrow({ radiusMiles, arrangements }, { home }) {
     if (radiusMiles == null || !home) return undefined;
 
-    // When the User accepts remote, a Posting that offers remote escapes the
-    // radius — and one that also names no location mode, like the Arrangement
-    // stage, gets the benefit of the doubt. When the User does not accept
-    // remote, nothing escapes: every resolved location is measured.
-    const radiusDoesNotApply = arrangements.includes("remote")
-      ? or(
-          not(arrayOverlaps(postings.arrangements, [...DISTANCE_ARRANGEMENTS])),
-          arrayOverlaps(postings.arrangements, ["remote"] satisfies Arrangement[]),
-        )
-      : sql`false`;
+    const measured = radiusApplies(
+      arrangements,
+      {
+        namesDistanceArrangement: arrayOverlaps(postings.arrangements, [
+          ...DISTANCE_ARRANGEMENTS,
+        ]),
+        offersRemote: arrayOverlaps(postings.arrangements, [
+          "remote",
+        ] satisfies Arrangement[]),
+      },
+      SQL_LOGIC,
+    );
 
     // The only Postings the radius drops: those whose location the cache
     // resolved to a point that is too far. A location with no resolved point —
@@ -246,8 +241,17 @@ const withinCommuteRadius: FunnelStage = {
       )
     `;
 
-    return or(radiusDoesNotApply, not(outsideRadius));
+    return or(not(measured), not(outsideRadius));
   },
+};
+
+/** The radius rule's boolean algebra, in SQL. */
+const SQL_LOGIC: Logic<SQL> = {
+  // Two defined operands always combine to a clause; `and` is only `undefined`
+  // when it is given nothing to combine.
+  and: (left, right) => and(left, right)!,
+  not,
+  always: sql`true`,
 };
 
 /** The stages, in the order they run. */
@@ -340,35 +344,6 @@ async function warmGeocodesForMatch(userId: string): Promise<void> {
 }
 
 /**
- * The User's home coordinate: the point their Criteria row carries, resolved
- * from the address they stated when they saved it (#100).
- *
- * `warmGeocodesForMatch` has already placed a row that reached this run without
- * one, so the only rows still lacking a point are those the geocoder could not
- * be reached about. Those fall back to the pre-#100 path — the shared cache,
- * keyed by the normalized home string — so a Criteria row stated before this,
- * met by a geocoder outage in the same run, still bounds by distance. The
- * fallback only ever reads that cache: nothing writes a home location into it
- * any more.
- *
- * Null when the User set no radius, or when their home location has no point
- * either way — the distance stage then does not run, because showing every role
- * beats hiding a commutable one.
- */
-async function resolveHomeCoordinate(
-  tx: Transaction,
-  stated: CriteriaRow,
-): Promise<Coordinate | null> {
-  if (stated.radiusMiles == null) return null;
-
-  const home = homeCoordinateOf(stated);
-  if (home) return { latitude: home.latitude, longitude: home.longitude };
-
-  const cachedKey = normalizeLocation(stated.homeLocation);
-  return cachedKey ? readGeocode(tx, cachedKey) : null;
-}
-
-/**
  * Which of the User's keywords occur literally in a Posting's title or
  * description — the same substring, case-insensitive test `contains` makes in
  * SQL, so what the Dashboard shows against a Posting cannot disagree with why
@@ -433,7 +408,7 @@ export async function matchCriteria(userId: string): Promise<void> {
     // Distance (#12): the radius stage measures in SQL against the geocode
     // cache `warmGeocodesForMatch` has already filled.
     const context: MatchContext = {
-      home: await resolveHomeCoordinate(tx, stated),
+      home: await radiusOrigin(tx, stated),
     };
 
     const full = combine(FUNNEL, stated, context);

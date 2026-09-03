@@ -93,9 +93,12 @@ pooled here (ADR 0014).
 _Avoid_: Geo table, location index
 
 **Unresolved location**:
-A Posting that names a place no geocoder could place. Surfaced and flagged, never dropped — silently
-dropping is how a User loses a role they wanted and never finds out. A remote Posting is not
-unresolved: it names no place because it needs none.
+A Posting the commute radius would have measured and could not, because no geocoder could place the
+location it names. Surfaced and flagged, never dropped — silently dropping is how a User loses a
+role they wanted and never finds out. Which Postings the radius would have measured follows the
+User's stance on remote, not the Posting's text alone (ADR 0013): a Posting offering remote is not
+unresolved for a User who accepts remote — it needs no place — but it is for one who does not,
+because they could only ever take it onsite.
 _Avoid_: Ungeocoded, bad location, missing location
 
 ### Slug discovery
