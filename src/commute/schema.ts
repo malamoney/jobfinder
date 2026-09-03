@@ -2,6 +2,7 @@
 // runs unchanged in the browser.
 import type { HomeCoordinate } from "@/criteria/schema";
 import type { Coordinate } from "@/geocoding/nominatim";
+import type { Clock } from "./drive";
 
 /**
  * What the COMMUTE DETAILS tab knows about one journey (#101).
@@ -11,11 +12,34 @@ import type { Coordinate } from "@/geocoding/nominatim";
  * what lets the client component import it without dragging Postgres into the
  * browser bundle.
  *
- * This is the walking skeleton: where the User lives, where the role is, how far
- * apart they are in a straight line, and whether that falls inside the radius
- * they stated. No routing provider is involved yet (#102), and nothing here is
- * ever multiplied up into a pretend drive time.
+ * Where the User lives, where the role is, how far apart they are in a straight
+ * line, whether that falls inside the radius they stated (#101), and how long
+ * the drive typically takes in each direction (#102).
+ *
+ * Nothing here is ever derived from the straight line. A drive time is a figure
+ * a routing provider gave us or it is absent, and absent is what a User sees
+ * when no provider is configured or it could not be reached — never a distance
+ * multiplied by a guess.
  */
+
+/**
+ * How long the drive takes in each of the two windows, as the tab quotes them.
+ *
+ * Both windows or neither. A single window would raise a question the tab
+ * cannot answer — a User told the morning is forty minutes and shown nothing
+ * for the evening would reasonably read that as "the evening is fine", and it
+ * is exactly the asymmetry user story 3 exists to expose. The provider is asked
+ * about both at once, so the two answer together or the drive is simply unknown.
+ */
+export type CommuteDrive = {
+  /**
+   * The drive that arrives in time for a 9am start, and the local clock time
+   * the User would have to leave home to make it (user story 4).
+   */
+  morning: { seconds: number; leaveAt: Clock };
+  /** The drive home, leaving at 5:30pm. */
+  evening: { seconds: number };
+};
 
 /**
  * Where the User lives, as the tab is able to state it.
@@ -35,6 +59,16 @@ export type CommuteHome =
       at: HomeCoordinate;
       /** Straight-line miles to the Posting. */
       distanceMiles: number;
+      /**
+       * How long the journey takes by car, or null when nobody could tell us —
+       * no routing provider configured, one that could not be reached, or a
+       * journey it knows no route for.
+       *
+       * Hung off the placed home for the reason `distanceMiles` is: a drive
+       * time and somewhere to drive from are one fact, and a journey measured
+       * from nowhere is not a journey. Null is silence, never an estimate.
+       */
+      drive: CommuteDrive | null;
     };
 
 /** Where the role is: the Source's own words, and the point they resolved to. */

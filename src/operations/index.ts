@@ -20,6 +20,7 @@ export {
   type CuratedBoard,
 } from "./boards";
 export { readCommute } from "./commute";
+export { DRIVE_MAX_AGE_DAYS } from "./drive-times";
 export { readCriteria, readCriteriaSavedAt, saveCriteria } from "./criteria";
 export {
   readDashboard,

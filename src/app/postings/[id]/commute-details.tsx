@@ -2,24 +2,36 @@ import Link from "next/link";
 // The schema half of `@/commute`, with nothing behind it: pure types and pure
 // arithmetic, so it runs here as readily as it does on the server.
 import { formatMiles } from "@/commute/distance";
+import {
+  formatClock,
+  formatDriveTime,
+  EVENING_DEPARTURE,
+  MORNING_ARRIVAL,
+} from "@/commute/drive";
 import { directionsUrl, MAPPING_SERVICE } from "@/commute/mapping";
-import type { CommuteDetails as Commute, CommuteHome } from "@/commute/schema";
+import type {
+  CommuteDetails as Commute,
+  CommuteDrive,
+  CommuteHome,
+} from "@/commute/schema";
 import type { LocationPrecision } from "@/geocoding/precision";
 import { MonoLabel } from "../../mono-label";
 
 /**
- * The COMMUTE DETAILS tab (#101, canvas 5a / 5b).
+ * The COMMUTE DETAILS tab (#101, #102, canvas 5a / 5b).
  *
- * Where the User lives, where the role is, how far apart they are, and a way
- * into the journey on a real map. The home is read-only here — a Posting page
- * is no place to change the origin of every distance in the product by
- * mistyping into what looked like a scratch field (user story 12) — so the way
- * to change it is a link through to Criteria (user story 13).
+ * Where the User lives, where the role is, how far apart they are, how long the
+ * drive typically takes each way, and a way into the journey on a real map. The
+ * home is read-only here — a Posting page is no place to change the origin of
+ * every distance in the product by mistyping into what looked like a scratch
+ * field (user story 12) — so the way to change it is a link through to Criteria
+ * (user story 13).
  *
- * What is deliberately absent: drive times. This slice has no routing provider
- * (#102), and the whole feature's rule is that a missing time is shown as
- * nothing rather than estimated from the distance. A straight line is a fact;
- * a straight line multiplied by a guess is a fabricated number.
+ * A drive time is a figure the routing provider gave us or it is absent. With
+ * no provider configured, or one that could not be reached, the two windows
+ * simply do not appear and the rest of the tab is unchanged (user story 23). A
+ * straight line is a fact; a straight line multiplied by a guess is a
+ * fabricated number.
  */
 
 /** How much a distance measured from this home is worth trusting. */
@@ -81,15 +93,31 @@ export function CommuteDetails({ commute }: { commute: Commute }) {
       </div>
 
       {home.state === "placed" ? (
-        <div className="flex flex-col gap-[7px] rounded-card border border-border bg-field p-3.5">
-          <MonoLabel>Straight-line distance</MonoLabel>
-          <span className="font-mono text-[25px] font-medium leading-none text-text">
-            {formatMiles(home.distanceMiles)}
-          </span>
-          <p className="text-[12.5px] leading-relaxed text-label">
-            {PRECISION_NOTE[home.at.precision]} A driving route is always
-            longer.
-          </p>
+        <div className="flex flex-col gap-2.5">
+          {/* One row: the measured line, then the two drive windows beside it
+              where there are any. Three figures across the panel is what fills
+              the card the design draws (canvas 5a); with no provider behind the
+              tab the distance simply spans the row on its own. */}
+          <div className="flex flex-wrap gap-3">
+            <Figure
+              label="Straight-line distance"
+              value={formatMiles(home.distanceMiles)}
+            >
+              {PRECISION_NOTE[home.at.precision]} A driving route is always
+              longer.
+            </Figure>
+            {home.drive && <DriveWindows drive={home.drive} />}
+          </div>
+
+          {home.drive && (
+            /* User story 5. Said plainly and next to the figures, because a
+               time read as a forecast for this morning is worse than no time:
+               it would be acted on. */
+            <p className="text-[12.5px] leading-relaxed text-label">
+              Typical weekday times from a routing provider, not live traffic.
+              Your own morning will differ.
+            </p>
+          )}
         </div>
       ) : (
         <p className="text-[13.5px] leading-relaxed text-text-body">
@@ -121,6 +149,64 @@ export function CommuteDetails({ commute }: { commute: Commute }) {
           </Link>
         </span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The two drive windows, side by side (user story 3).
+ *
+ * Separately rather than as one "commute time", because a role that is easy to
+ * reach and miserable to leave must not look easy. The morning carries the time
+ * to set an alarm for (user story 4) — the figure a User actually plans their
+ * day around, and the one the straight-line distance could never give them.
+ */
+function DriveWindows({ drive }: { drive: CommuteDrive }) {
+  return (
+    <>
+      <Figure
+        label="Morning drive"
+        value={formatDriveTime(drive.morning.seconds)}
+      >
+        Leave home by{" "}
+        <span className="font-medium text-text-body">
+          {formatClock(drive.morning.leaveAt)}
+        </span>{" "}
+        to be there for {formatClock(MORNING_ARRIVAL)}.
+      </Figure>
+      <Figure
+        label="Evening drive"
+        value={formatDriveTime(drive.evening.seconds)}
+      >
+        The journey home, leaving at {formatClock(EVENING_DEPARTURE)}.
+      </Figure>
+    </>
+  );
+}
+
+/**
+ * One figure on the tab: a mono caption, the number large, and the sentence
+ * that says what it is worth (canvas 5a).
+ *
+ * `flex-1` over a shared minimum, so one figure spans the row and three share
+ * it without either layout being written down twice.
+ */
+function Figure({
+  label,
+  value,
+  children,
+}: {
+  label: string;
+  value: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex min-w-[13rem] flex-1 flex-col gap-[7px] rounded-card border border-border bg-field p-3.5">
+      <MonoLabel>{label}</MonoLabel>
+      <span className="font-mono text-[25px] font-medium leading-none text-text">
+        {value}
+      </span>
+      <p className="text-[12.5px] leading-relaxed text-label">{children}</p>
     </div>
   );
 }
