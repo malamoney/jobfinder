@@ -10,7 +10,7 @@ import {
 } from "@/db/schema";
 import { DEFAULT_STATUS, type ReviewStatus } from "@/review/schema";
 import { chooseRepresentative, latestGroupReview } from "./dedup";
-import { hasUnresolvedLocation, isExpired } from "./postings";
+import { hasUnresolvedLocation, isExpired, radiusInEffect } from "./postings";
 
 /**
  * Reading a User's Dashboard: the Postings their Criteria matched, in the order
@@ -138,13 +138,13 @@ export async function readDashboard(
 ): Promise<Dashboard> {
   const db = getDb();
 
-  // Whether this User bounds their search by distance — the one condition under
-  // which an un-geocoded location is worth flagging (#12).
+  // The commute radius as it actually ran for this User — the one condition
+  // under which an un-geocoded location is worth flagging (#12, #111).
   const [stated] = await db
-    .select({ radiusMiles: criteria.radiusMiles })
+    .select()
     .from(criteria)
     .where(eq(criteria.userId, userId));
-  const filtersByDistance = stated?.radiusMiles != null;
+  const radius = await radiusInEffect(db, stated);
 
   const rows = await db
     .select({
@@ -197,7 +197,7 @@ export async function readDashboard(
       unresolvedLocation: hasUnresolvedLocation(
         representative,
         shown.coordinate,
-        filtersByDistance,
+        radius,
       ),
       status: effective?.status ?? DEFAULT_STATUS,
       appliedAt: effective?.appliedAt ?? null,

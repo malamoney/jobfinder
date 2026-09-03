@@ -1,9 +1,12 @@
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
-import { getDb } from "@/db";
+import { getDb, type Writer } from "@/db";
 import { criteria, type CriteriaRow } from "@/db/schema";
 import type { HomeCoordinate, HomeOutcome } from "@/criteria/schema";
+import type { Coordinate } from "@/geocoding/nominatim";
 import { geocode, pauseBetweenLookups } from "@/geocoding/nominatim";
 import type { LocationPrecision } from "@/geocoding/precision";
+import { normalizeLocation } from "@/postings/location";
+import { readGeocode } from "./geocoding";
 
 /**
  * The Home Coordinate: resolving a User's stated home location to a point on
@@ -182,6 +185,40 @@ export async function readHomeCoordinate(
     .where(eq(criteria.userId, userId));
 
   return row ? homeCoordinateOf(row) : null;
+}
+
+/**
+ * The point the commute radius measures from, or null when it has none — the
+ * two conditions under which the radius does not run at all.
+ *
+ * Null when the User set no radius, and null when their home location has no
+ * point: the distance stage cannot filter without somewhere to measure from,
+ * and showing every role beats hiding a commutable one.
+ *
+ * The point is the one their Criteria row carries, resolved from the address
+ * they stated when they saved it (#100). A match run's `warmGeocodesForMatch`
+ * has already placed a row that reached it without one, so the only rows still
+ * lacking a point are those the geocoder could not be reached about. Those fall
+ * back to the pre-#100 path — the shared cache, keyed by the normalized home
+ * string — so a Criteria row stated before this, met by a geocoder outage in
+ * the same run, still bounds by distance. The fallback only ever reads that
+ * cache: nothing writes a home location into it any more.
+ *
+ * Read by the radius stage and by the **Location unresolved** flag, which must
+ * agree about whether the radius ran before they can agree about what it
+ * measured (#111).
+ */
+export async function radiusOrigin(
+  writer: Writer,
+  stated: CriteriaRow,
+): Promise<Coordinate | null> {
+  if (stated.radiusMiles == null) return null;
+
+  const home = homeCoordinateOf(stated);
+  if (home) return { latitude: home.latitude, longitude: home.longitude };
+
+  const cachedKey = normalizeLocation(stated.homeLocation);
+  return cachedKey ? readGeocode(writer, cachedKey) : null;
 }
 
 /** What one pass of `resolveHomeLocations` did. */

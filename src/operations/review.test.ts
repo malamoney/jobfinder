@@ -427,6 +427,58 @@ describe("an unresolved location on the Posting page", () => {
     expect((await readPosting(userId, postingId))?.unresolvedLocation).toBe(true);
   });
 
+  // The production report on #111: a Posting tagged both remote and hybrid,
+  // shown to a User who accepts neither remote nor a 2,700-mile commute. The
+  // radius measured it (ADR 0013) and could not place it, and the pill that
+  // would have said so never rendered.
+  it("flags a Posting offering remote for a User who does not accept remote", async () => {
+    const postingId = await corpusHas([
+      greenhouseJob({
+        id: 1,
+        location: { name: "Undisclosed location, USA" },
+        content: "&lt;p&gt;This is a remote or hybrid role.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+    geocoderKnows({
+      "Boston, MA": { latitude: 42.3601, longitude: -71.0589 },
+    });
+    await saveCriteria(userId, {
+      titles: ["Staff Engineer"],
+      keywords: [],
+      arrangements: ["full-time", "onsite", "hybrid"],
+      homeLocation: "Boston, MA",
+      radiusMiles: 25,
+    });
+
+    expect((await readPosting(userId, postingId))?.unresolvedLocation).toBe(true);
+  });
+
+  it("leaves a Posting offering remote unflagged for a User who accepts remote", async () => {
+    const postingId = await corpusHas([
+      greenhouseJob({
+        id: 1,
+        location: { name: "Undisclosed location, USA" },
+        content: "&lt;p&gt;This is a remote or hybrid role.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+    geocoderKnows({
+      "Boston, MA": { latitude: 42.3601, longitude: -71.0589 },
+    });
+    await saveCriteria(userId, {
+      titles: ["Staff Engineer"],
+      keywords: [],
+      arrangements: ["full-time", "onsite", "hybrid", "remote"],
+      homeLocation: "Boston, MA",
+      radiusMiles: 25,
+    });
+
+    expect((await readPosting(userId, postingId))?.unresolvedLocation).toBe(
+      false,
+    );
+  });
+
   // A Posting the Source gave no location for is dropped at ingestion now — a
   // null location classifies as `unknown`, and the Corpus keeps only `us`
   // (ADR 0010) — so there is no such Posting to flag or not flag.

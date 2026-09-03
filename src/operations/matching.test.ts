@@ -906,6 +906,113 @@ describe("the commute radius", () => {
     expect(posting.unresolvedLocation).toBe(true);
   });
 
+  // #111: the flag used to read its own rule — "onsite or hybrid and not
+  // remote" — while the radius read the User's stance (ADR 0013). So it went
+  // silent on precisely the Postings it exists for: the ones the radius meant
+  // to measure and could not.
+  describe("the Location unresolved flag follows the same rule the radius does", () => {
+    it("flags a dual-tagged Posting for a User who does not accept remote", async () => {
+      geocoderKnows({ "Boston, MA": BOSTON });
+      await corpusHas([
+        jobAt(
+          1,
+          "Staff Data Engineer",
+          "Undisclosed location, USA",
+          "remote or hybrid",
+        ),
+      ]);
+      const userId = await givenAUser();
+
+      await saveCriteria(userId, commuteCriteria());
+
+      const [posting] = (await readDashboard(userId)).postings;
+      expect(posting.title).toBe("Staff Data Engineer");
+      expect(posting.unresolvedLocation).toBe(true);
+    });
+
+    it("flags a silent-on-arrangement Posting for a User who does not accept remote", async () => {
+      geocoderKnows({ "Boston, MA": BOSTON });
+      await corpusHas([
+        greenhouseJob({
+          id: 1,
+          title: "Platform Engineer",
+          location: { name: "Undisclosed location, USA" },
+          content: "&lt;p&gt;Join our team.&lt;/p&gt;",
+        }),
+      ]);
+      const userId = await givenAUser();
+
+      await saveCriteria(userId, commuteCriteria());
+
+      const [posting] = (await readDashboard(userId)).postings;
+      expect(posting.unresolvedLocation).toBe(true);
+    });
+
+    it("leaves a Posting offering remote unflagged for a User who accepts remote", async () => {
+      geocoderKnows({ "Boston, MA": BOSTON });
+      await corpusHas([
+        jobAt(
+          1,
+          "Staff Data Engineer",
+          "Undisclosed location, USA",
+          "remote or hybrid",
+        ),
+      ]);
+      const userId = await givenAUser();
+
+      await saveCriteria(
+        userId,
+        commuteCriteria({
+          arrangements: ["full-time", "onsite", "hybrid", "remote"],
+        }),
+      );
+
+      const [posting] = (await readDashboard(userId)).postings;
+      expect(posting.unresolvedLocation).toBe(false);
+    });
+
+    it("leaves a silent-on-arrangement Posting unflagged for a User who accepts remote", async () => {
+      geocoderKnows({ "Boston, MA": BOSTON });
+      await corpusHas([
+        greenhouseJob({
+          id: 1,
+          title: "Platform Engineer",
+          location: { name: "Undisclosed location, USA" },
+          content: "&lt;p&gt;Join our team.&lt;/p&gt;",
+        }),
+      ]);
+      const userId = await givenAUser();
+
+      await saveCriteria(
+        userId,
+        commuteCriteria({
+          arrangements: ["full-time", "onsite", "hybrid", "remote"],
+        }),
+      );
+
+      const [posting] = (await readDashboard(userId)).postings;
+      expect(posting.unresolvedLocation).toBe(false);
+    });
+
+    it("still flags an onsite Posting for a User who accepts remote", async () => {
+      geocoderKnows({ "Boston, MA": BOSTON });
+      await corpusHas([
+        jobAt(1, "Platform Engineer", "Undisclosed location, USA", "onsite"),
+      ]);
+      const userId = await givenAUser();
+
+      await saveCriteria(
+        userId,
+        commuteCriteria({
+          arrangements: ["full-time", "onsite", "hybrid", "remote"],
+        }),
+      );
+
+      const [posting] = (await readDashboard(userId)).postings;
+      expect(posting.unresolvedLocation).toBe(true);
+    });
+  });
+
   it("geocodes each distinct location once, however many Postings share it", async () => {
     const geo = geocoderKnows({ "Boston, MA": BOSTON, "boston, ma": BOSTON });
     await corpusHas([
@@ -1111,6 +1218,26 @@ describe("the commute radius", () => {
       expect((await readDashboard(userId)).postings.map((p) => p.title)).toEqual(
         ["Platform Engineer"],
       );
+    });
+
+    // The radius never ran for this User, so nothing about their Dashboard was
+    // measured — and an amber pill on every unplaceable location would be
+    // announcing a miss against a bound that was never applied (ADR 0005).
+    it("flags no location as unresolved while the home has no point", async () => {
+      geocoderKnows({ "Boston, MA": BOSTON });
+      await corpusHas([
+        jobAt(1, "Platform Engineer", "Undisclosed location, USA", "onsite"),
+      ]);
+      const userId = await givenAUser();
+      await saveCriteria(userId, commuteCriteria());
+      await asStatedBeforeTheCoordinateExisted(userId);
+
+      geocoderIsDown();
+      await matchCriteria(userId);
+
+      const [posting] = (await readDashboard(userId)).postings;
+      expect(posting.title).toBe("Platform Engineer");
+      expect(posting.unresolvedLocation).toBe(false);
     });
   });
 });

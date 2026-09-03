@@ -17,7 +17,12 @@ import {
   type ReviewStatus,
 } from "@/review/schema";
 import { latestGroupReview } from "./dedup";
-import { hasUnresolvedLocation, isExpired, isPostingId } from "./postings";
+import {
+  hasUnresolvedLocation,
+  isExpired,
+  isPostingId,
+  radiusInEffect,
+} from "./postings";
 
 /**
  * Reading and writing a User's Review State.
@@ -68,11 +73,12 @@ export async function readPosting(
 
   const db = getDb();
 
+  // The commute radius as it actually ran for this User (#111).
   const [stated] = await db
-    .select({ radiusMiles: criteria.radiusMiles })
+    .select()
     .from(criteria)
     .where(eq(criteria.userId, userId));
-  const filtersByDistance = stated?.radiusMiles != null;
+  const radius = await radiusInEffect(db, stated);
 
   const [row] = await db
     .select({
@@ -112,7 +118,7 @@ export async function readPosting(
     unresolvedLocation: hasUnresolvedLocation(
       row.posting,
       row.coordinate,
-      filtersByDistance,
+      radius,
     ),
     review: effective
       ? {

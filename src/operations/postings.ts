@@ -1,8 +1,9 @@
 import { asc } from "drizzle-orm";
 import { z } from "zod";
-import { getDb } from "@/db";
-import { postings, type Posting } from "@/db/schema";
-import { DISTANCE_ARRANGEMENTS } from "@/criteria/schema";
+import { getDb, type Writer } from "@/db";
+import { postings, type CriteriaRow, type Posting } from "@/db/schema";
+import { radiusAppliesTo } from "@/commute/radius-scope";
+import { radiusOrigin } from "./home-location";
 
 /**
  * Whether a string could be a Posting's id, before it reaches a `uuid` column.
@@ -72,19 +73,52 @@ export function isExpired(
 }
 
 /**
+ * The commute radius as it actually ran for a User, or null when it did not run
+ * at all.
+ *
+ * It carries the Arrangements the User accepts, because those are what decide
+ * which Postings the radius acts on (`radiusApplies`). Null covers both ways
+ * the stage declines to run: no radius stated, and no home point to measure
+ * from.
+ */
+export type RadiusInEffect = Pick<CriteriaRow, "arrangements"> | null;
+
+/**
+ * The radius in effect for a User, read from their stored Criteria.
+ *
+ * Asks `radiusOrigin` the same question the stage asks, rather than testing
+ * `radiusMiles` alone: a User whose stated home could not be placed has a
+ * radius that never ran, and a flag that fired for them would announce a miss
+ * that nothing was ever measured against.
+ */
+export async function radiusInEffect(
+  writer: Writer,
+  stated: CriteriaRow | undefined,
+): Promise<RadiusInEffect> {
+  if (!stated) return null;
+  return (await radiusOrigin(writer, stated)) ? stated : null;
+}
+
+/**
  * Whether the commute radius was meant to place this Posting but could not (#12).
  *
- * Only meaningful for a User who bounds by distance (`filtersByDistance`): for
- * anyone else the radius never runs and nothing was geocoded, so there is
- * nothing to flag. Among distance-bounded Users, a Posting is unresolved when
- * its text places it onsite or hybrid — the Arrangements the radius acts on —
- * and the geocode cache holds no coordinate for its location: normalization
- * found no place, or the geocoder resolved it to none. Such a Posting is
- * surfaced rather than dropped, and the Dashboard flags it so the miss is
- * visible.
+ * Only meaningful for a User whose radius actually ran (`radiusInEffect`):
+ * without a radius, or without a home point to measure from, the stage never
+ * runs and an absent coordinate means nothing (ADR 0005). For the rest, a
+ * Posting is unresolved when the radius would have measured it and the geocode
+ * cache holds no coordinate for its location — normalization found no place, or
+ * the geocoder resolved it to none. Such a Posting is surfaced rather than
+ * dropped, and the Dashboard flags it so the miss is visible.
  *
- * A remote Posting, or one whose text names no location mode, is never flagged:
- * the radius does not act on it, so an absent coordinate costs it nothing.
+ * Which Postings the radius would have measured is `radiusApplies`
+ * (`@/commute/radius-scope`), the same statement the stage itself reads, so the
+ * pill lands on precisely the Postings the radius could not place. It used to
+ * ask its own question — "onsite or hybrid, and not remote" — which stopped
+ * being the radius's question when ADR 0013 scoped the radius by the User's
+ * stance on remote. The flag then went silent on exactly the Postings it exists
+ * for: a role tagged both remote and hybrid, shown to a User who accepts
+ * neither remote nor that commute, was measured by nothing and announced by
+ * nothing (#111).
  *
  * `coordinate` is the joined `geocodes` row for the Posting's location — its
  * `latitude` null on a negative result, the whole value null/undefined when no
@@ -93,15 +127,10 @@ export function isExpired(
 export function hasUnresolvedLocation(
   posting: Pick<Posting, "location" | "arrangements">,
   coordinate: { latitude: number | null } | null | undefined,
-  filtersByDistance: boolean,
+  radius: RadiusInEffect,
 ): boolean {
-  if (!filtersByDistance || posting.location == null) return false;
-
-  const commuteRole =
-    posting.arrangements.some((arrangement) =>
-      (DISTANCE_ARRANGEMENTS as readonly string[]).includes(arrangement),
-    ) && !posting.arrangements.includes("remote");
-  if (!commuteRole) return false;
+  if (radius == null || posting.location == null) return false;
+  if (!radiusAppliesTo(radius.arrangements, posting.arrangements)) return false;
 
   return coordinate == null || coordinate.latitude == null;
 }
