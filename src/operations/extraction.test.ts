@@ -78,6 +78,18 @@ describe("re-reading the locations the Corpus already holds", () => {
     ]);
   });
 
+  it("splits a location whose places a word stood between", async () => {
+    // The #113 catch-up reached the marks; a word between two places is the
+    // same unplaceable key reached by a different spelling (#119), and the
+    // same pass has to reach it without a re-Fetch.
+    const id = await storedRole("1", "Denver, CO or Menlo Park, CA", [
+      "denver, co or menlo park, ca",
+    ]);
+
+    expect(await renormalizeLocations(getDb())).toBe(1);
+    expect(await placesOf(id)).toEqual(["denver, co", "menlo park, ca"]);
+  });
+
   it("leaves a Posting already holding the right places alone", async () => {
     const id = await storedRole("1", "Boston, MA", ["boston, ma"]);
 
