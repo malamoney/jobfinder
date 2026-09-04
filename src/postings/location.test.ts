@@ -165,3 +165,116 @@ describe("a slash between two halves of one metro", () => {
     ]);
   });
 });
+
+/**
+ * A word between two places (#119, ADR 0016). Employers join two places with
+ * `or` as readily as with a slash — `Denver, CO or Menlo Park, CA` — and the
+ * key that made was one no geocoder could place, which is the exact condition
+ * #113 was opened about reached by a different spelling.
+ *
+ * The word `or` is also Oregon's postal code, so the rule has to tell the
+ * separator from the state: after a comma, `OR` is the state.
+ */
+describe("a word between two places", () => {
+  it("splits a location whose places are joined by 'or'", () => {
+    expect(normalizeLocations("Denver, CO or Menlo Park, CA")).toEqual([
+      "denver, co",
+      "menlo park, ca",
+    ]);
+    expect(normalizeLocations("Herndon, VA OR Columbia, MD")).toEqual([
+      "herndon, va",
+      "columbia, md",
+    ]);
+    expect(
+      normalizeLocations("Massachusetts OR Maryland OR Greater Austin, TX"),
+    ).toEqual(["massachusetts", "maryland", "greater austin, tx"]);
+  });
+
+  it("reads Oregon's postal code as the state, not as a separator", () => {
+    expect(normalizeLocations("Portland, OR")).toEqual(["portland, or"]);
+    expect(normalizeLocations("Portland, OR or Seattle, WA")).toEqual([
+      "portland, or",
+      "seattle, wa",
+    ]);
+    expect(normalizeLocations("Portland,  OR  or  Seattle, WA")).toEqual([
+      "portland, or",
+      "seattle, wa",
+    ]);
+    expect(normalizeLocations("Eugene, OR or Bend, OR")).toEqual([
+      "eugene, or",
+      "bend, or",
+    ]);
+  });
+
+  it("still reads a remote alternative as no second place", () => {
+    expect(normalizeLocations("Boston, MA or Remote")).toEqual(["boston, ma"]);
+    // A country-wide remote alternative reads as the country, exactly as
+    // `Remote - US` has always read — the split does not change that, it just
+    // reaches it one part at a time.
+    expect(normalizeLocations("Houston, TX or Remote, USA")).toEqual([
+      "houston, tx",
+      "usa",
+    ]);
+    expect(placesNamed("Boston, MA or Remote")).toEqual([
+      { stated: "Boston, MA", key: "boston, ma" },
+    ]);
+  });
+
+  it("drops the conjunction a preceding separator left at the front", () => {
+    expect(
+      normalizeLocations("San Diego, CA; Seattle, WA; or New York, NY"),
+    ).toEqual(["san diego, ca", "seattle, wa", "new york, ny"]);
+    expect(placesNamed("Boston, MA; or Austin, TX")).toEqual([
+      { stated: "Boston, MA", key: "boston, ma" },
+      { stated: "Austin, TX", key: "austin, tx" },
+    ]);
+  });
+
+  it("keeps the opening word of a place whose name begins with one", () => {
+    // Nothing separated the first part, so its `Or` is the place's own name.
+    expect(normalizeLocations("Or Yehuda, Israel")).toEqual([
+      "or yehuda, israel",
+    ]);
+    expect(normalizeLocations("Or Yehuda, Israel; Boston, MA")).toEqual([
+      "or yehuda, israel",
+      "boston, ma",
+    ]);
+  });
+
+  it("leaves the separators it was not taught alone", () => {
+    expect(
+      normalizeLocations("San Fernando Valley & Pasadena, CA"),
+    ).toEqual(["san fernando valley & pasadena, ca"]);
+    expect(normalizeLocations("Fort Wayne, IN. Mooresville, IN.")).toEqual([
+      "fort wayne, in. mooresville, in.",
+    ]);
+    expect(normalizeLocations("Wilkes-Barre, PA, Reno, NV, or Batesville, IN")).toEqual([
+      "wilkes-barre, pa, reno, nv, or batesville, in",
+    ]);
+  });
+});
+
+/**
+ * A separator inside a parenthetical aside is not a separator: the aside is
+ * taken off the whole text before it is split, so a bracket cannot be broken
+ * across two places (#119). `Remote - US (East / Central)` used to normalize to
+ * `us (east` and `central)`, two keys a geocoder answered with a point that
+ * described neither.
+ */
+describe("a separator inside a parenthetical aside", () => {
+  it("splits nothing inside the brackets, and keeps the place outside them", () => {
+    expect(normalizeLocations("Remote - US (East / Central)")).toEqual(["us"]);
+    expect(normalizeLocations("Remote (East Coast USA or Canada) / UK")).toEqual([
+      "uk",
+    ]);
+    expect(normalizeLocations("United States (Remote or Hybrid)")).toEqual([
+      "united states",
+    ]);
+  });
+
+  it("still splits the separators outside the brackets", () => {
+    expect(
+      normalizeLocations("Boston, MA (HQ) / Austin, TX (3 days in office)"),
+    ).toEqual(["boston, ma", "austin, tx"]);
+  });
+});

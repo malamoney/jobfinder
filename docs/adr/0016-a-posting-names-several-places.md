@@ -7,16 +7,32 @@ Posting's places: it drops the Posting only when every place it could put on a m
 
 The splitting rule is deliberately narrow (`normalizeLocations`, `src/postings/location.ts`). A
 semicolon or a pipe separates two places wherever it appears; a slash does only with whitespace
-around it, because `Dallas/Fort Worth, TX` is one place. A comma never separates anything —
-`Franklin, MA` is one place, and splitting on commas would destroy every location in the Corpus. A
-text the rule does not split behaves exactly as it did before this existed, which is the direction to
-be wrong in.
+around it, because `Dallas/Fort Worth, TX` is one place; and the word `or` does except where it is
+Oregon's postal code (#119, below). A comma never separates anything — `Franklin, MA` is one place,
+and splitting on commas would destroy every location in the Corpus. A text the rule does not split
+behaves exactly as it did before this existed, which is the direction to be wrong in.
 
 The one reading the rule gets "wrong" it gets wrong harmlessly: a metro written with the spaces in,
 `Dallas / Fort Worth, TX`, is read as two places, and nothing short of a gazetteer distinguishes it
 from `Boston, MA / New York, NY`. Both halves are real places a geocoder knows, they sit inside the
 same metro, and the radius keeps a Posting when any place is in range — so a User near either half
 keeps the role, which is what the unsplit reading would have given them.
+
+`Truth or Consequences, NM` is the same reading in the same direction, and so is a fragment that
+names nothing — `Tukwila, WA or short-term remote` yields Tukwila and a scrap. Splitting never drops
+a Posting that would have survived: a part the geocoder cannot place is an unplaceable key, which is
+what the whole string was, and one it places wrongly can only *keep* a Posting the unsplit reading
+kept for everybody anyway.
+
+The radius is not the only reader, though, and the scrap costs something on the way past. It becomes
+a Geocode Cache key of its own, so the provider is called once for a string that names nothing; and
+if it comes back with a point nearer the User than the real place, the COMMUTE DETAILS tab names
+*that* one as the place it measured, because the tab names the closest (below). A distance to a
+fabricated coordinate, labelled with the employer's own scrap. Telling a scrap from `Boston` or
+`NYC` on the right of the word needs the gazetteer this rule does without, so the answer is the
+census rather than a heuristic: across 12,252 Postings the word produced four such fragments
+(`cst`, `short-term`, `within usa`, `availability`), against 54 Postings it placed properly. That is
+the trade being made, not one being overlooked.
 
 ## Why (#113)
 
@@ -30,6 +46,52 @@ radius was 40 miles.
 
 Keeping a Posting nobody could place is right and stays (CONTEXT.md, "Unresolved location"). What was
 wrong is that this Posting *could* be placed — twice — and the codebase declined to read it.
+
+## Which separators the rule takes (#119)
+
+`or` is one. An employer joins two places with a word as readily as with a mark — `Denver, CO or
+Menlo Park, CA`, `Herndon, VA OR Columbia, MD` — and those made exactly the key this ADR was written
+about: unplaceable, so the radius kept the Posting for every User at any distance, forever. A census
+of the Corpus on 2026-09-03, after the catch-up pass for the marks had run, found the three
+separators shipped above had gone to zero and ` or ` had become the single largest remaining cause of
+an unplaceable key naming perfectly findable places: 33 keys across 54 Postings, `palo alto, ca or
+san francisco, ca` thirteen of them.
+
+The word carries one trap the marks do not: `or` is Oregon's postal code. The rule reads it as the
+state whenever it directly follows a comma, so `Portland, OR or Seattle, WA` splits once — between
+the two places — and `Portland, OR` is not touched at all. What that costs is the Oxford comma:
+`Reno, NV, or Batesville, IN` is not split, because nothing in the text distinguishes that `or` from
+Oregon's. Both keys shaped that way in the Corpus are comma-separated lists that stay unplaceable
+either way, and an unsplit text behaves as it did before this existed — the direction to be wrong in.
+
+The aside now comes off the whole text **before** it is split, which the word forced and which was
+already wrong for the marks. `Remote - US (East / Central)` was being broken into `us (east` and
+`central)` — two strings the geocoder answered with a point that described neither, which is worse
+than an unplaceable key, because a bad coordinate is measured and an unplaceable one is flagged. A
+separator inside a bracket is not a separator. For the same reason a conjunction a preceding
+separator stranded at the front of a place is dropped: `Seattle, WA; or New York, NY` names New York,
+and `or new york, ny` is a string a geocoder will answer.
+
+## The separators the rule does not take
+
+Recorded so the next person meets a decision rather than a gap. Each was measured against the same
+census.
+
+- **`and`** — not taken. Zero occurrences in the Corpus, so this is a guess about tomorrow rather
+  than a fix, and the rule is evidence-driven by design. It costs nothing to add later, on the day a
+  key shows up wanting it.
+- **`&`** — not taken. Two keys, three Postings, and they point opposite ways: `brentwood town &
+  country, los angeles, ca` is one place whose *name* holds the ampersand, `san fernando valley &
+  pasadena, ca` is two places. Evidence one-for-one against is a good reason not to guess.
+- **A period between two places** — not taken here, and costed rather than waved off. It is the
+  largest remaining shape: 32 keys across 55 Postings write their places as `Fort Wayne, IN.
+  Mooresville, IN.` or `Richmond, VA. Culpeper, VA. Herndon, VA.` But a period is the comma's trap
+  again. Splitting on `. ` destroys `Lake St. Louis, MO` and every `Mt.`, `Ft.` and `St.` in the
+  Corpus, and narrowing it to "a period after a two-letter code following a comma" — the shape both
+  examples share — still destroys `Plaza at Frotenac, St. Louis, MO`, five Postings, because `St.`
+  follows a comma too. The only rule that separates them is one that knows `IN` and `VA` are states
+  and `St` is not, which means a state-code table this codebase does not have. Worth having; too big
+  to smuggle in beside a regex, so it is its own ticket (#120).
 
 ## Why the closest place
 

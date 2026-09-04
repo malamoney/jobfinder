@@ -87,8 +87,8 @@ _Avoid_: Dead, stale, closed, removed
 
 **Place**:
 One location a Posting's text names. Most Postings name one; an employer offering a role in two
-cities names two — `San Francisco Bay Area, CA / Seattle, WA` is two Places, not one unplaceable
-string (ADR 0016). Each is held as its own normalized key and geocoded under it, the Corpus storing
+cities names two — `San Francisco Bay Area, CA / Seattle, WA` and `Denver, CO or Menlo Park, CA` are
+two Places each, not one unplaceable string (ADR 0016). Each is held as its own normalized key and geocoded under it, the Corpus storing
 the list; the commute radius measures a User against the closest of them and drops the Posting only
 when every Place it could put on a map is out of range.
 _Avoid_: Office, site, city, location string

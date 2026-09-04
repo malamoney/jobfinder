@@ -65,7 +65,7 @@ const NOT_A_PLACE = new Set([
 ]);
 
 /**
- * The characters that stand between two places and never inside one.
+ * What stands between two places and never inside one.
  *
  * A semicolon or a pipe is a separator wherever it appears; a slash is one only
  * with whitespace around it, because a metro is written `Dallas/Fort Worth, TX`
@@ -73,18 +73,39 @@ const NOT_A_PLACE = new Set([
  * separator at all — `Franklin, MA` is one place, and splitting on commas would
  * destroy every location in the Corpus.
  *
+ * An employer joins two places with a word as readily as with a mark —
+ * `Denver, CO or Menlo Park, CA` — so `or` is a separator too (#119), with one
+ * exception: `or` is also Oregon's postal code. After a comma it is the state,
+ * which is why `Portland, OR or Seattle, WA` splits once rather than twice and
+ * `Portland, OR` is not touched at all. The cost of reading it that way is the
+ * Oxford comma — `Reno, NV, or Batesville, IN` stays one string — which is the
+ * direction to be wrong in, and is what those texts did before this existed.
+ *
  * A metro written with the spaces in — `Dallas / Fort Worth, TX` — is read as
  * two places, and nothing distinguishes it from `Boston, MA / New York, NY`
  * without a gazetteer. That is the safe way round: both halves are real places
  * a geocoder knows, they sit within the same metro, and the radius measures the
  * closest — so a User near either one keeps the role, which is the answer the
- * unsplit reading would have given.
+ * unsplit reading would have given. `Truth or Consequences, NM` is the same
+ * reading in the same direction: a real place whose name holds the word.
  *
  * Wrong in the safe direction, deliberately: a separator this does not
  * recognise leaves the text as one string, which is exactly how it behaved
  * before splitting existed (#113).
  */
-const PLACE_SEPARATOR_RE = /\s*;\s*|\s*\|\s*|\s+\/\s+/;
+const PLACE_SEPARATOR_RE = /\s*;\s*|\s*\|\s*|\s+\/\s+|(?<!,\s*)\s+or\s+/i;
+
+/**
+ * The conjunction a preceding separator left stranded at the front of a place —
+ * the `or` in `Seattle, WA; or New York, NY`, which the semicolon split off
+ * with the place rather than with the list before it (#119).
+ *
+ * Worth stripping rather than leaving: `or new york, ny` is a string a geocoder
+ * answers, with a point that is not New York. Only ever from a part something
+ * separated, though — a text that opens with the word opens with a place name,
+ * and `Or Yehuda, Israel` is not in Yehuda.
+ */
+const LEADING_CONJUNCTION_RE = /^\s*(?:or|and)\s+/i;
 
 /** One place a location text names: the employer's words for it, and its key. */
 export type NamedPlace = {
@@ -114,11 +135,19 @@ export function placesNamed(raw: string | null | undefined): NamedPlace[] {
   const places: NamedPlace[] = [];
   const seen = new Set<string>();
 
-  for (const part of raw.split(PLACE_SEPARATOR_RE)) {
-    const key = normalizeLocation(part);
+  // The aside comes off the whole text before it is split, so a separator
+  // inside one cannot break a bracket across two places: `Remote - US (East /
+  // Central)` is one place with a note about it, not `us (east` and `central)`
+  // — two strings the geocoder answered with a point describing neither (#119).
+  const parts = raw.replace(PARENTHETICAL_RE, "").split(PLACE_SEPARATOR_RE);
+  for (const [index, part] of parts.entries()) {
+    // A stranded conjunction only ever follows a separator, so the first part
+    // keeps its opening word: it is part of the place's name, not a join.
+    const place = index === 0 ? part : part.replace(LEADING_CONJUNCTION_RE, "");
+    const key = normalizeLocation(place);
     if (!key || seen.has(key)) continue;
     seen.add(key);
-    places.push({ stated: statedPlace(part), key });
+    places.push({ stated: statedPlace(place), key });
   }
 
   return places;
