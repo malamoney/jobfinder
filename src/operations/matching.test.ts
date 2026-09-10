@@ -360,6 +360,54 @@ describe("the review-pipeline counts", () => {
     ).toBe(true);
     expect(dashboard.interestedCount).toBe(1);
   });
+
+  it("reports every count together for a fixed Corpus and Criteria", async () => {
+    // One fixed scenario exercising all six counts at once, so the read that no
+    // longer carries the description (#138) is pinned against changing any of
+    // them: five matched openings, one of them Expired, the rest fresh and live;
+    // one marked in each pipeline Status, two left `new`.
+    await corpusHas(
+      [1, 2, 3, 4, 5].map((id) =>
+        greenhouseJob({ id, title: `Staff Engineer ${id}` }),
+      ),
+    );
+    // Two further Fetches without Posting 5 mark it Expired (#7).
+    const withoutFive = [1, 2, 3, 4].map((id) =>
+      greenhouseJob({ id, title: `Staff Engineer ${id}` }),
+    );
+    await corpusHas(withoutFive);
+    await corpusHas(withoutFive);
+
+    const corpus = await listPostings();
+    const idFor = (sourceId: string) =>
+      corpus.find((posting) => posting.sourceId === sourceId)!.id;
+    const userId = await givenAUser();
+    await saveCriteria(userId, statedCriteria({ titles: ["Staff Engineer"] }));
+
+    await setStatus(userId, idFor("1"), "interested");
+    await setStatus(userId, idFor("2"), "not_interested");
+    await setStatus(userId, idFor("3"), "applied");
+    // Postings 4 and 5 are left `new`; 5 is Expired.
+
+    const dashboard = await readDashboard(userId);
+    expect({
+      matched: dashboard.matchedCount,
+      unreviewed: dashboard.unreviewedCount,
+      interested: dashboard.interestedCount,
+      notInterested: dashboard.notInterestedCount,
+      applied: dashboard.appliedCount,
+      newToday: dashboard.newTodayCount,
+    }).toEqual({
+      matched: 5,
+      // Posting 4 is the only live, untouched match — 5 is Expired.
+      unreviewed: 1,
+      interested: 1,
+      notInterested: 1,
+      applied: 1,
+      // Postings 1-4 are fresh and live; 5 is Expired, so it does not count.
+      newToday: 4,
+    });
+  });
 });
 
 describe("re-matching when Criteria change", () => {

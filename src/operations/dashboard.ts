@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb, type Database } from "@/db";
 import {
   criteria,
@@ -23,10 +23,43 @@ import { hasUnresolvedLocation, isExpired, radiusInEffect } from "./postings";
  */
 
 /**
+ * The Posting facts one Dashboard card renders, plus the few the Dashboard
+ * needs but does not show.
+ *
+ * Spelled out rather than `Posting & {…}` so the read fetches only these
+ * columns (#138). The card renders company, title, age, salary, location and
+ * Arrangement tags; `dedupKey` groups, `firstSeenAt` / `source` / `sourceId`
+ * order and break ties, `absentFetches` / `expiresAt` decide Expired, and
+ * `location` / `arrangements` decide the Location-unresolved flag. `description`
+ * is the one column left behind — 95% of the row, and nothing here shows it.
+ * Every downstream component already takes its own `Pick`, so the card compiles
+ * against this narrower type unchanged.
+ */
+type DashboardPostingFacts = Pick<
+  Posting,
+  | "id"
+  | "company"
+  | "title"
+  | "postedAt"
+  | "applyUrl"
+  | "location"
+  | "arrangements"
+  | "salaryMin"
+  | "salaryMax"
+  | "salaryPeriod"
+  | "dedupKey"
+  | "firstSeenAt"
+  | "source"
+  | "sourceId"
+  | "absentFetches"
+  | "expiresAt"
+>;
+
+/**
  * One opening as the Dashboard shows it: the presented member of its Dedup Key
  * group (#13), carrying what the Dashboard adds beyond the Corpus facts.
  */
-export type DashboardPosting = Posting & {
+export type DashboardPosting = DashboardPostingFacts & {
   /**
    * The User's keywords found in the title or description of any matched member
    * of the group — the union, so a keyword that hit only a listing the
@@ -117,6 +150,70 @@ export type Dashboard = {
 const NEW_TODAY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * The Posting columns the Dashboard read selects — exactly the
+ * {@link DashboardPostingFacts}, no more.
+ *
+ * {@link DashboardPostingFacts} is written first, as the specification of what
+ * the read must fetch; this map is derived from it, and the `satisfies` fails
+ * to compile if the two drift apart. `description` is not here — 95% of the row
+ * and nothing shows it (#138); its length rides alongside, not within (see
+ * {@link dashboardMatchQuery}).
+ */
+const dashboardPostingColumns = {
+  id: postings.id,
+  company: postings.company,
+  title: postings.title,
+  postedAt: postings.postedAt,
+  applyUrl: postings.applyUrl,
+  location: postings.location,
+  arrangements: postings.arrangements,
+  salaryMin: postings.salaryMin,
+  salaryMax: postings.salaryMax,
+  salaryPeriod: postings.salaryPeriod,
+  dedupKey: postings.dedupKey,
+  firstSeenAt: postings.firstSeenAt,
+  source: postings.source,
+  sourceId: postings.sourceId,
+  absentFetches: postings.absentFetches,
+  expiresAt: postings.expiresAt,
+} satisfies Record<keyof DashboardPostingFacts, unknown>;
+
+/**
+ * The Dashboard's Posting read, as a query (not yet run — callers `await` it,
+ * and the regression test calls `.toSQL()` on it).
+ *
+ * `descriptionLength` is `length(description)` computed in SQL and returned
+ * beside the Posting facts rather than among them: `chooseRepresentative` still
+ * prefers the fullest listing in a Dedup Key group, but weighs four bytes where
+ * selecting the text sent four kilobytes a row (#138), and the number never
+ * reaches the card. `length()` counts characters where the old in-JS rule
+ * counted UTF-16 units — the two differ only on astral characters, never by
+ * enough to change which of two listings is the fuller one.
+ *
+ * Exposed so a test can assert against its generated SQL that it does not
+ * select the description text — the point of #138 is a property, so something
+ * has to hold it, and a test that only checked the rendered cards would pass
+ * just as well with the column back.
+ */
+export function dashboardMatchQuery(db: Database, userId: string) {
+  return db
+    .select({
+      posting: dashboardPostingColumns,
+      descriptionLength: sql<number>`length(${postings.description})`.mapWith(
+        Number,
+      ),
+      matchedKeywords: matches.matchedKeywords,
+      // Whether any of the Posting's places resolved (#113) — a value rather
+      // than a join, because a Posting naming three places would otherwise come
+      // back as three rows and be counted as three openings.
+      placed: anyPlaceResolved,
+    })
+    .from(matches)
+    .innerJoin(postings, eq(postings.id, matches.postingId))
+    .where(eq(matches.userId, userId));
+}
+
+/**
  * Reads one User's Dashboard, optionally filtered by Status.
  *
  * Ordered by posted date, newest first, with a Posting whose Source published
@@ -146,18 +243,7 @@ export async function readDashboard(
     .where(eq(criteria.userId, userId));
   const radius = await radiusInEffect(db, stated);
 
-  const rows = await db
-    .select({
-      posting: postings,
-      matchedKeywords: matches.matchedKeywords,
-      // Whether any of the Posting's places resolved (#113) — a value rather
-      // than a join, because a Posting naming three places would otherwise come
-      // back as three rows and be counted as three openings.
-      placed: anyPlaceResolved,
-    })
-    .from(matches)
-    .innerJoin(postings, eq(postings.id, matches.postingId))
-    .where(eq(matches.userId, userId));
+  const rows = await dashboardMatchQuery(db, userId);
 
   const groups = new Map<string, typeof rows>();
   for (const row of rows) {
@@ -174,12 +260,17 @@ export async function readDashboard(
 
   const groupMembers = [...groups.values()];
   const all = groupMembers.map((members): DashboardPosting => {
-    const representative = chooseRepresentative(
-      members.map((member) => member.posting),
+    // `descriptionLength` rides on the row, not the Posting, so it weighs the
+    // tie-break here and never reaches the card, which is built from the chosen
+    // member's Posting facts alone.
+    const winner = chooseRepresentative(
+      members.map((member) => ({
+        ...member.posting,
+        descriptionLength: member.descriptionLength,
+      })),
     );
-    const shown = members.find(
-      (member) => member.posting.id === representative.id,
-    )!;
+    const shown = members.find((member) => member.posting.id === winner.id)!;
+    const representative = shown.posting;
     // Representative first, so the union of matched keywords reads in the order
     // the card's own text would suggest.
     const ordered = [shown, ...members.filter((member) => member !== shown)];
