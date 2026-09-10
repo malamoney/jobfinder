@@ -12,16 +12,23 @@ import { isExpired } from "./postings";
  * Board.
  */
 
-/** What `chooseRepresentative` weighs — a stored `Posting` supplies all of it. */
-type Presentable = Pick<
+/**
+ * What `chooseRepresentative` weighs.
+ *
+ * `descriptionLength` rather than `description`: the rule prefers the fullest
+ * listing, and length is all it needs to do that. A stored `Posting` no longer
+ * satisfies this directly, which is the point — the Dashboard read that once
+ * shipped every description to derive one number now asks the database for the
+ * number (#138), and the type is what stops a future caller handing the whole
+ * row back.
+ */
+export type Presentable = Pick<
   Posting,
-  | "description"
-  | "applyUrl"
-  | "absentFetches"
-  | "expiresAt"
-  | "source"
-  | "sourceId"
->;
+  "applyUrl" | "absentFetches" | "expiresAt" | "source" | "sourceId"
+> & {
+  /** The length of the listing's description — the fuller listing wins (#13). */
+  descriptionLength: number;
+};
 
 /**
  * The member of a Dedup Key group to present on the Dashboard and Posting page.
@@ -47,7 +54,7 @@ export function chooseRepresentative<T extends Presentable>(
 function byPresentationPreference(a: Presentable, b: Presentable): number {
   return (
     Number(isExpired(a)) - Number(isExpired(b)) ||
-    b.description.length - a.description.length ||
+    b.descriptionLength - a.descriptionLength ||
     applyUrlIndirectness(a.applyUrl) - applyUrlIndirectness(b.applyUrl) ||
     compareStrings(a.source, b.source) ||
     compareStrings(a.sourceId, b.sourceId)

@@ -138,8 +138,36 @@ describe("an opening published to two Boards", () => {
 
     const [card] = (await readDashboard(userId)).postings;
     expect(card.applyUrl).toBe("https://job-boards.greenhouse.io/acme/jobs/111");
-    expect(card.description).toContain("multi-region platform");
+    // The Dashboard read no longer carries the description text (#138); that the
+    // ATS copy — the one with the fuller description — is the presented listing
+    // is the assertion that the tie-break still ran.
     expect(card.id).toBe(await idBySourceId("111"));
+  });
+
+  it("presents the longest description when that is the only thing separating the copies", async () => {
+    // Both listings link straight to the employer, so apply-URL directness ties
+    // and the description length alone decides (#13, #138).
+    boardReturns("acme", [
+      atsListing({
+        id: 111,
+        absolute_url: "https://job-boards.greenhouse.io/acme/jobs/111",
+        content: "&lt;p&gt;Short.&lt;/p&gt;",
+      }),
+    ]);
+    boardReturns("jobwire", [
+      atsListing({
+        id: 222,
+        absolute_url: "https://job-boards.greenhouse.io/jobwire/jobs/222",
+        content: RICH_DESCRIPTION,
+      }),
+    ]);
+    await sweep();
+
+    const userId = await givenAUser();
+    await saveCriteria(userId, statedCriteria());
+
+    const [card] = (await readDashboard(userId)).postings;
+    expect(card.id).toBe(await idBySourceId("222"));
   });
 
   it("prefers a live copy when the other has Expired", async () => {
