@@ -20,6 +20,7 @@ import { boardReturns, greenhouseJob } from "@/test/fixtures/greenhouse";
 import {
   geocoderIsDown,
   geocoderKnows,
+  geocoderPlacesAbroad,
   type Coordinate,
   type Place,
 } from "@/test/fixtures/nominatim";
@@ -1424,6 +1425,25 @@ describe("the commute radius", () => {
       const [posting] = (await readDashboard(userId)).postings;
       expect(posting.title).toBe("Platform Engineer");
       expect(posting.unresolvedLocation).toBe(true);
+    });
+
+    it("judges a Posting on its real office alone when its other place could only be found abroad", async () => {
+      // `Denver, CO or Melo Park, CA` — an employer's typo for Menlo Park, which
+      // an unconstrained geocoder placed in Rio de Janeiro (#122). The foreign
+      // point is put inside the radius here so that measuring it would show:
+      // the Posting must be judged on Denver, and dropped, not kept on a
+      // coordinate it was never at.
+      const DENVER: Coordinate = { latitude: 39.7392, longitude: -104.9903 };
+      geocoderKnows({ "Boston, MA": BOSTON, "denver, co": DENVER });
+      geocoderPlacesAbroad("melo park, ca", CAMBRIDGE);
+      await corpusHas([
+        jobAt(1, "Senior Software Engineer", "Denver, CO or Melo Park, CA", "onsite"),
+      ]);
+      const userId = await givenAUser();
+
+      await saveCriteria(userId, commuteCriteria());
+
+      expect((await readDashboard(userId)).postings).toHaveLength(0);
     });
   });
 });

@@ -103,8 +103,8 @@ _Avoid_: Geo table, location index
 
 **Unresolved location**:
 A Posting the commute radius would have measured and could not, because no geocoder could place any
-of the Places it names — one where a single Place of two resolved was measured properly, on that
-one, and is not unresolved (ADR 0016). Surfaced and flagged, never dropped — silently dropping is
+of the Places it names in the United States (ADR 0005, #122) — one where a single Place of two
+resolved was measured properly, on that one, and is not unresolved (ADR 0016). Surfaced and flagged, never dropped — silently dropping is
 how a User loses a role they wanted and never finds out. Which Postings the radius would have
 measured follows the User's stance on remote, not the Posting's text alone (ADR 0013): a Posting
 offering remote is not unresolved for a User who accepts remote — it needs no place — but it is for

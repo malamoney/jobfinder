@@ -42,6 +42,17 @@ a secret to provision in CI and Vercel for no benefit at this scale.
 If call volume ever outgrows Nominatim's policy, the provider is one adapter (`@/geocoding/nominatim`)
 behind the `Geocoder` seam, swappable without touching the cache or the funnel.
 
+## Confined to the United States
+
+Every lookup carries `countrycodes=us`. The Corpus holds US roles only (ADR 0010) and the one
+User's home is in the US (ADR 0009), so a place outside it is one this application could never
+mean — but an unconstrained Nominatim reaches for it anyway when nothing nearer fits. `melo park,
+ca`, an employer's typo for Menlo Park, resolved to a suburb of Rio de Janeiro (#122). A wrong
+point is worse than none: an unresolved location is surfaced and flagged, a resolved one is
+measured silently, and a foreign coordinate that lands nearer a User than the real office puts
+the wrong city on the commute tab (ADR 0016). Confined, the same typo resolves to nothing. The
+constraint is the adapter's, so a home location (ADR 0014) takes it on the same code path.
+
 ## Consequences
 
 - A Posting whose location cannot be geocoded is surfaced as unresolved and flagged in the UI, never

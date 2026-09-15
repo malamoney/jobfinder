@@ -24,6 +24,12 @@ import { readGeocode } from "./geocoding";
  *
  * So the coordinate is resolved once, when the User saves, and stored on the
  * Criteria row beside the text it came from.
+ *
+ * What it does share with a Posting's location is the geocoder itself, and so
+ * its confinement to the United States (#122): a home the geocoder could only
+ * place abroad is `not-found`, not a point in the wrong hemisphere that every
+ * distance the User sees would be measured from. A User living outside the US
+ * is not a case this application has (ADR 0009, ADR 0010).
  */
 
 /** The three columns that hold the resolved point, written and cleared together. */
