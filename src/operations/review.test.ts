@@ -479,6 +479,34 @@ describe("an unresolved location on the Posting page", () => {
     );
   });
 
+  // #123: a location that names only remote is not one the radius failed to
+  // place. There was never an office, so the Posting page shows no pill even
+  // for a User whose radius measured everything.
+  it("leaves a Posting naming only remote unflagged for a User who does not accept remote", async () => {
+    const postingId = await corpusHas([
+      greenhouseJob({
+        id: 1,
+        location: { name: "Remote (United States)" },
+        content: "&lt;p&gt;This is a remote or onsite role.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+    geocoderKnows({
+      "Boston, MA": { latitude: 42.3601, longitude: -71.0589 },
+    });
+    await saveCriteria(userId, {
+      titles: ["Staff Engineer"],
+      keywords: [],
+      arrangements: ["full-time", "onsite"],
+      homeLocation: "Boston, MA",
+      radiusMiles: 25,
+    });
+
+    expect((await readPosting(userId, postingId))?.unresolvedLocation).toBe(
+      false,
+    );
+  });
+
   // A Posting the Source gave no location for is dropped at ingestion now — a
   // null location classifies as `unknown`, and the Corpus keeps only `us`
   // (ADR 0010) — so there is no such Posting to flag or not flag.

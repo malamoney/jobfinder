@@ -65,3 +65,46 @@ questions.
   reached the User for another reason.
 - No schema or data change. Matches are derived; the next match run (a Criteria save, the nightly
   sweep, or "Run matching now") applies the new scope.
+
+## A location that names only remote is not one the radius failed to place (#123)
+
+The flag's scope above says a Posting offering remote *is* unresolved for a User who does not accept
+remote, "because they could only ever take it onsite". That holds when the text names an office and
+the geocoder could not find it — `Bolt Farm - Whitwell, TN` — since that User would have to go there
+and nothing says where. It does not hold when the text names remote and nothing else. `Remote
+(United States)` has no office; there was never anything to place, and a pill saying the radius
+could not place it announces a miss that did not happen — the same complaint ADR 0016 records about
+a Posting where one Place of two resolved.
+
+Verified on the development database, 2026-09-03, for a User whose Criteria were onsite and hybrid,
+home Franklin MA, radius 50: of 97 Postings on the Dashboard, 9 wore the flag, and all 9 said `Remote
+(United States)` or `Remote (New York)`. Every amber pill that User had was a remote role, and none
+was a place anybody failed to find. The Arrangements did not help: each of the eight carried
+`["remote", "onsite"]`, because Extraction reads the description and a remote role's description
+says "onsite" often enough.
+
+So the rule narrows once more, and this is the fourth reading of the predicate (#12, #111, #113,
+this): **a location naming only remote is never unresolved, for any User**. The scope above is
+untouched — the radius still measures everything for a no-remote User, and such a Posting is still
+kept, unplaced, exactly as CONTEXT.md's "Unresolved location" says. What changes is what the User is
+told about it.
+
+Two decisions sit under that:
+
+- **Where the distinction lives.** `normalizeLocation` knew why it returned null and threw it away,
+  and its signature is load-bearing — it is on the Dedup Key path (ADR 0006), and the home location
+  and the COMMUTE DETAILS tab read it too. So it keeps returning a key or null, and a second
+  predicate, `namesOnlyRemote` (`src/postings/location.ts`), answers the flag's question. Both
+  reduce the one reading of a part (`readPart`), so the text is read in one place and one pass, and
+  every existing caller is untouched. The flag asks the predicate on the Posting's text, which it
+  has in hand, rather than on the Arrangements, which the report above shows cannot answer it.
+- **Which markers count.** The single set of strings that normalized to null is now two.
+  `remote`, `fully remote`, `anywhere`, `work from home`, `worldwide`, `global` read as remote —
+  there is no office. `various`, `multiple locations`, `n/a`, `tbd`, `unknown` read as placeholders
+  — there is an office the employer did not name, which is a miss the User should be told about.
+  `flexible` went with the placeholders deliberately: it as often means "any of our offices" as
+  "from home", and flagging is the direction to be wrong in. A commute label with nothing after it
+  — a bare `Hybrid` or `Onsite` — is a placeholder for the same reason, and so is any text naming
+  remote beside a placeholder: `Remote / Multiple locations` and `Remote - TBD` still flag. A text
+  naming a place is never only remote, whatever else it says; `Remote - US` names a country, and
+  whether that country is a place is #124's question, which this had to land before.

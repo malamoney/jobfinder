@@ -15,6 +15,12 @@ import { US_STATE_CODE_ALTERNATION } from "./us-states";
  * (`Multiple locations`, `Various`), or empty text all normalize to null, so the
  * geocoder is never called on a string that would only fail.
  *
+ * The null flattens two facts the **Location unresolved** flag has to tell
+ * apart: a text that named a remote role, where there was never an office to
+ * place, and one that named nothing anyone could place (#123). `namesOnlyRemote`
+ * is that distinction, read off the same pass over the text — one reading per
+ * part (`readPart`), which each exported function then reduces its own way.
+ *
  * An employer may name several places at once — `San Francisco Bay Area, CA /
  * Seattle, WA` — and one key cannot hold two of them, so `normalizeLocations`
  * reads the text as the list of places it names and `normalizeLocation` stays
@@ -27,10 +33,13 @@ import { US_STATE_CODE_ALTERNATION } from "./us-states";
 /**
  * Arrangement words a Source prefixes a location with — `Hybrid - London`,
  * `Remote - US`. Stripped so the place is what gets geocoded; a string that is
- * only one of these normalizes to null.
+ * only one of these normalizes to null. The label is captured, because a text
+ * that is only `Remote` and one that is only `Hybrid` normalize to the same
+ * null and mean different things: the first has no office, the second has one
+ * it did not name (#123).
  */
 const LEADING_ARRANGEMENT_RE =
-  /^(?:fully\s+)?(?:remote|hybrid|on-?site|in[-\s]person|in[-\s]office)\b[\s:/,-]*/i;
+  /^(?:fully\s+)?(remote|hybrid|on-?site|in[-\s]person|in[-\s]office)\b[\s:/,-]*/i;
 
 /**
  * A remote alternative tacked onto a real place — `San Francisco, CA / Remote`,
@@ -53,18 +62,29 @@ const PARENTHETICAL_RE = /\s*\([^)]*\)/g;
 const TRAILING_FULL_STOP_RE = /(?<!\.\w)\.$/;
 
 /**
- * Strings that name no single place a geocoder could resolve to a point:
- * remote-role markers and placeholders alike. Held as a set so one costs no
- * external call — it normalizes straight to null.
+ * Strings that say the role is remote without naming a place: there is no
+ * office, so there is nothing to geocode. Normalizes straight to null, and reads
+ * as remote rather than as a place nobody could find (#123).
  */
-const NOT_A_PLACE = new Set([
+const REMOTE_MARKERS = new Set([
   "remote",
   "fully remote",
-  "remote - anywhere",
   "anywhere",
   "work from home",
   "worldwide",
   "global",
+]);
+
+/**
+ * Strings an employer writes where a place should be, that name none: a
+ * placeholder for an office the text does not disclose. Normalizes straight to
+ * null, costing no external call — and unlike a remote marker it is a real miss
+ * the User should be told about, since there is an office and nothing says
+ * where. `flexible` sits here rather than with the remote markers deliberately:
+ * it as often means "any of our offices" as "from home", and flagging is the
+ * direction to be wrong in.
+ */
+const PLACEHOLDERS = new Set([
   "flexible",
   "various",
   "various locations",
@@ -178,13 +198,44 @@ export function placesNamed(raw: string | null | undefined): NamedPlace[] {
     // A stranded conjunction only ever follows a separator, so the first part
     // keeps its opening word: it is part of the place's name, not a join.
     const place = index === 0 ? part : part.replace(LEADING_CONJUNCTION_RE, "");
-    const key = normalizeLocation(place);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    places.push({ stated: statedPlace(place), key });
+    const reading = readPart(place);
+    if (reading?.names !== "place" || seen.has(reading.key)) continue;
+    seen.add(reading.key);
+    places.push({ stated: statedPlace(place), key: reading.key });
   }
 
   return places;
+}
+
+/**
+ * Whether a location text names remote and nothing else — `Remote`, `Remote
+ * (United States)`, `Fully remote` — as against one that names nothing anyone
+ * could place (#123).
+ *
+ * Both normalize to null, and the difference is the whole question for the
+ * **Location unresolved** flag: a remote-only text has no office, so the radius
+ * did not fail to place anything, while `Multiple locations` or a bare `Hybrid`
+ * has an office the employer did not name, which is a miss the User should see.
+ *
+ * Read part by part through the same split `placesNamed` makes, so `Remote /
+ * Work from home` is only remote and `Remote / Multiple locations` is not. A
+ * text naming a place is never only remote, whatever else it says; empty text
+ * names nothing, not remote.
+ */
+export function namesOnlyRemote(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+
+  const readings = raw
+    .replace(PARENTHETICAL_RE, "")
+    .split(PLACE_SEPARATOR_RE)
+    .map((part, index) =>
+      readPart(index === 0 ? part : part.replace(LEADING_CONJUNCTION_RE, "")),
+    )
+    .filter((reading) => reading != null);
+
+  return (
+    readings.length > 0 && readings.every((reading) => reading.names === "remote")
+  );
 }
 
 /**
@@ -242,11 +293,47 @@ export function normalizeLocations(raw: string | null | undefined): string[] {
  * alternatives are stripped so what a geocoder sees is the place alone.
  */
 export function normalizeLocation(raw: string | null | undefined): string | null {
+  const reading = readPart(raw);
+  return reading?.names === "place" ? reading.key : null;
+}
+
+/**
+ * What one part of a location text names: a place, with its key; remote, and
+ * nothing anyone could place; or nothing at all — a placeholder, a commute
+ * label with no office after it, or punctuation a strip left behind.
+ */
+type Reading =
+  | { names: "place"; key: string }
+  | { names: "remote" }
+  | { names: "nothing" };
+
+/**
+ * The one reading of a part, which every exported function reduces its own
+ * way: `normalizeLocation` to the key or null, `placesNamed` to the places,
+ * `namesOnlyRemote` to whether anything but remote was named. Null for blank
+ * text, so a split that left an empty part behind counts it as nothing written
+ * rather than as nothing named.
+ *
+ * Remote is read from what the strips took off as much as from what they left:
+ * `Remote (United States)` is bare `remote` once the aside is gone, `Remote -
+ * Anywhere` is a remote label and a remote marker, `Boston, MA or Remote` is a
+ * place. A commute label — `Hybrid`, `Onsite` — with no place after it names
+ * an office and withholds it, which is nothing rather than remote whatever
+ * follows the label: `Hybrid - Anywhere` is a commute to somewhere unstated.
+ * A placeholder after a remote label, `Remote - TBD`, is a placeholder.
+ */
+function readPart(raw: string | null | undefined): Reading | null {
   if (!raw) return null;
 
-  let value = raw
-    .replace(PARENTHETICAL_RE, "")
-    .replace(LEADING_ARRANGEMENT_RE, "")
+  const bare = raw.replace(PARENTHETICAL_RE, "");
+  if (!bare.trim()) return null;
+
+  const label = bare.match(LEADING_ARRANGEMENT_RE)?.[1]?.toLowerCase();
+  const unlabelled = bare.replace(LEADING_ARRANGEMENT_RE, "");
+  const offersRemote =
+    label === "remote" || TRAILING_REMOTE_RE.test(unlabelled);
+
+  let value = unlabelled
     .replace(TRAILING_REMOTE_RE, "")
     .toLowerCase()
     .replace(/\s+/g, " ");
@@ -255,6 +342,10 @@ export function normalizeLocation(raw: string | null | undefined): string | null
   // Collapse the whitespace left where a comma now has nothing after it.
   value = value.replace(/\s*,\s*(?=,|$)/g, "").trim();
 
-  if (!value || NOT_A_PLACE.has(value)) return null;
-  return value;
+  if (PLACEHOLDERS.has(value)) return { names: "nothing" };
+  if (value && !REMOTE_MARKERS.has(value)) return { names: "place", key: value };
+  // Named no place. A commute label names an office it did not disclose.
+  if (label != null && label !== "remote") return { names: "nothing" };
+  if (offersRemote || REMOTE_MARKERS.has(value)) return { names: "remote" };
+  return { names: "nothing" };
 }
