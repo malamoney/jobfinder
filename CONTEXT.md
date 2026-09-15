@@ -93,6 +93,13 @@ the list; the commute radius measures a User against the closest of them and dro
 when every Place it could put on a map is out of range.
 _Avoid_: Office, site, city, location string
 
+**Nationwide marker**:
+A country or continent named where a Place would be — `United States`, `Remote - US`, `Canada`,
+`North America`. Names no Place: a country is not a commute, and the geocoder answers `united states`
+with a field in Kansas, a point nobody meant (#124, ADR 0016). Read as remote at the scale of a
+nation, so a Posting naming only one is never unresolved (#123).
+_Avoid_: Country key, country location, centroid
+
 **Geocode Cache**:
 Normalized location strings paired with the coordinate each resolves to, keyed by the string rather
 than the Posting — the same handful of strings recur across thousands of Postings, and a Posting

@@ -165,9 +165,9 @@ miss.
 The decisions the rule had to make, recorded so the next person meets them rather than a gap:
 
 - **What counts.** The spellings the census evidenced: `united states`, `united states of america`,
-  `us`, `u.s.`, `usa`, `u.s.a.` (with and without the initialism's final period, since the
-  trailing-full-stop strip above leaves an initialism's alone), and `north america`, a continent that
-  reads the same way. Matched against the whole of a part, never as a word inside one: `New York
+  `us`, `u.s.`, `usa`, `u.s.a.` — the initialisms with their final period, since the trailing-full-stop
+  strip above leaves an initialism's alone, and `usa.` already arrives as `usa` — and `north america`,
+  a continent that reads the same way. Nothing the census did not produce is in the table. Matched against the whole of a part, never as a word inside one: `New York
   State, USA`, `Washington, DC` and `Undisclosed location, USA` are places whose names hold a country
   word, and still resolve.
 - **A foreign country reads the same way.** `canada` is a place a geocoder places correctly — it just
@@ -185,8 +185,10 @@ The decisions the rule had to make, recorded so the next person meets them rathe
   US")` was `"us"`, deliberately, and `namesOnlyRemote("Remote - US")` was false for the same reason.
   Both are the other way now, and the cases say why rather than disappearing.
 - **The Dedup Key** (ADR 0006) reads the whole text through the single-string normalizer, so `Remote -
-  US` and `Remote - USA` now contribute the same empty location component and group — which is what
-  that ADR already says every place-less listing does.
+  US`, `Remote - USA` and `Remote (United States)` now contribute the same empty location component
+  and group — which is what that ADR already says every place-less Posting does. A text that names
+  the country beside a separator, `Remote - USA | Remote`, still keys as `usa |` there, as it did
+  before: the single-string normalizer never split, and this does not change what it strips.
 
 **The cache held the bad rows.** `geocodes` had resolved coordinates for all seven keys, and stopping
 the reader from producing them leaves the rows behind. `pnpm warm-geocodes` now drops every cache

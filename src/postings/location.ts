@@ -112,16 +112,17 @@ const NATIONWIDE_MARKERS = new Set([
   "united states of america",
   "us",
   "u.s.",
-  "u.s",
   "usa",
   "u.s.a.",
-  "u.s.a",
   "north america",
   "canada",
 ]);
 
-/** Whether a normalized part says remote and names no Place. */
-function isRemoteMarker(value: string): boolean {
+/**
+ * Whether a normalized part is a remote marker or a nationwide one — the two
+ * sets read alike, and every reading below asks the same question of both.
+ */
+function isRemoteOrNationwideMarker(value: string): boolean {
   return REMOTE_MARKERS.has(value) || NATIONWIDE_MARKERS.has(value);
 }
 
@@ -406,9 +407,9 @@ function readPart(raw: string | null | undefined): Reading | null {
   value = value.replace(/\s*,\s*(?=,|$)/g, "").trim();
 
   if (PLACEHOLDERS.has(value)) return { names: "nothing" };
-  if (value && !isRemoteMarker(value)) return { names: "place", key: value };
+  if (value && !isRemoteOrNationwideMarker(value)) return { names: "place", key: value };
   // Named no Place. An onsite or hybrid label names one it did not disclose.
   if (label != null && label !== "remote") return { names: "nothing" };
-  if (offersRemote || isRemoteMarker(value)) return { names: "remote" };
+  if (offersRemote || isRemoteOrNationwideMarker(value)) return { names: "remote" };
   return { names: "nothing" };
 }

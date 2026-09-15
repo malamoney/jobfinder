@@ -73,10 +73,11 @@ describe("ensureGeocoded", () => {
  * cache holds only what the Corpus can still be measured on.
  */
 describe("forgetStaleGeocodes", () => {
-  async function cached(location: string, latitude: number | null) {
+  /** A cached row: resolved to `point`, or a negative result when null. */
+  async function cached(location: string, point: [number, number] | null) {
     await getDb()
       .insert(geocodes)
-      .values({ location, latitude, longitude: latitude });
+      .values({ location, latitude: point?.[0] ?? null, longitude: point?.[1] ?? null });
   }
 
   async function keys(): Promise<string[]> {
@@ -85,10 +86,10 @@ describe("forgetStaleGeocodes", () => {
   }
 
   it("drops a row whose key now names no place, and reports how many", async () => {
-    await cached("united states", 39.78);
-    await cached("usa", 39.78);
-    await cached("canada", 61.07);
-    await cached("boston, ma", 42.36);
+    await cached("united states", [39.78, -100.45]);
+    await cached("usa", [39.78, -100.45]);
+    await cached("canada", [61.07, -107.99]);
+    await cached("boston, ma", [42.36, -71.06]);
 
     expect(await forgetStaleGeocodes(getDb())).toBe(3);
     expect(await keys()).toEqual(["boston, ma"]);
@@ -98,7 +99,7 @@ describe("forgetStaleGeocodes", () => {
     // The unplaceable key #113 was written about, cached as a negative result
     // before the reader learned to split it.
     await cached("san francisco bay area, ca / seattle, wa", null);
-    await cached("seattle, wa", 47.6);
+    await cached("seattle, wa", [47.6, -122.33]);
 
     expect(await forgetStaleGeocodes(getDb())).toBe(1);
     expect(await keys()).toEqual(["seattle, wa"]);
@@ -108,7 +109,7 @@ describe("forgetStaleGeocodes", () => {
     // A Criteria row stated before homes left this cache still reads its
     // point from here (`cachedHome`, `@/operations/commute`). The rule is
     // about what the reader produces, not about what the Corpus names today.
-    await cached("franklin, ma", 42.08);
+    await cached("franklin, ma", [42.08, -71.4]);
     await cached("nowhere anyone has heard of", null);
 
     expect(await forgetStaleGeocodes(getDb())).toBe(0);
