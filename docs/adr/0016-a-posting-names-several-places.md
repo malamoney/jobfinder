@@ -7,8 +7,9 @@ Posting's places: it drops the Posting only when every place it could put on a m
 
 The splitting rule is deliberately narrow (`normalizeLocations`, `src/postings/location.ts`). A
 semicolon or a pipe separates two places wherever it appears; a slash does only with whitespace
-around it, because `Dallas/Fort Worth, TX` is one place; and the word `or` does except where it is
-Oregon's postal code (#119, below). A comma never separates anything — `Franklin, MA` is one place,
+around it, because `Dallas/Fort Worth, TX` is one place; the word `or` does except where it is
+Oregon's postal code (#119, below); and a period does only after a US state code that follows a
+comma (#120, below). A comma never separates anything — `Franklin, MA` is one place,
 and splitting on commas would destroy every location in the Corpus. A text the rule does not split
 behaves exactly as it did before this existed, which is the direction to be wrong in.
 
@@ -83,15 +84,54 @@ census.
 - **`&`** — not taken. Two keys, three Postings, and they point opposite ways: `brentwood town &
   country, los angeles, ca` is one place whose *name* holds the ampersand, `san fernando valley &
   pasadena, ca` is two places. Evidence one-for-one against is a good reason not to guess.
-- **A period between two places** — not taken here, and costed rather than waved off. It is the
-  largest remaining shape: 32 keys across 55 Postings write their places as `Fort Wayne, IN.
-  Mooresville, IN.` or `Richmond, VA. Culpeper, VA. Herndon, VA.` But a period is the comma's trap
-  again. Splitting on `. ` destroys `Lake St. Louis, MO` and every `Mt.`, `Ft.` and `St.` in the
-  Corpus, and narrowing it to "a period after a two-letter code following a comma" — the shape both
-  examples share — still destroys `Plaza at Frotenac, St. Louis, MO`, five Postings, because `St.`
-  follows a comma too. The only rule that separates them is one that knows `IN` and `VA` are states
-  and `St` is not, which means a state-code table this codebase does not have. Worth having; too big
-  to smuggle in beside a regex, so it is its own ticket (#120).
+- **A period between two places** — costed here when #119 shipped and then taken by #120, once the
+  state-code table it needed existed. The section below has the rule and what it cost.
+
+## A period between two places, and the state-code table (#120)
+
+After #119's catch-up pass the period was the largest remaining shape by a distance: 32 keys across
+55 Postings, two employers writing every office they have into one field — `Fort Wayne, IN.
+Mooresville, IN.`, `Richmond, VA. Culpeper, VA. Herndon, VA.`, `Houston, TX. San Francisco, CA. Long
+Beach, CA.` Each was one key no geocoder could place, so each Posting reached every User at any
+distance wearing **Location unresolved** — #113's defect, reached by a third spelling.
+
+A period is the comma's trap. It ends `St.`, `Ft.` and `Mt.` as readily as it ends a place, so
+splitting on `. ` destroys `Lake St. Louis, MO`; and the obvious narrowing — a period after a
+two-letter token that follows a comma, the shape every real example shares — still destroys `Plaza
+at Frotenac, St. Louis, MO`, five Postings, because `St.` follows a comma exactly where `IN.` does.
+Nothing in the *shape* of the text separates the two. What does is knowing that `IN` and `VA` are US
+state codes and `St` is not.
+
+So the rule is: **a period separates two places only when it follows a comma and a USPS state code**,
+and the codes come from a table rather than a character class. The table (`src/postings/us-states.ts`)
+lives beside the country classifier in `src/postings/`, and the classifier now builds its own
+"state code after a comma" matcher from it instead of carrying a second copy inline — a US-only
+Corpus (ADR 0010) is entitled to know its own states, and two readers should not each keep a list.
+The table holds the fifty states and DC, and deliberately not the territories: adding `PR` or `GU`
+would widen what the classifier calls `us`, which is a decision for a ticket that asks for it rather
+than a side effect of moving a list.
+
+The code is matched in capitals, exactly as the classifier matches it and for the same reason: a
+state code is written `IN`, and `, in.` is as likely to be prose as Indiana. `The Jaydor Co. - East
+Norristown, PA` stays one place because `Co.` is a company and only `CO` is Colorado. A text that
+writes its codes in lowercase is not split, which is how it behaved before this existed — the
+direction to be wrong in. The rule's own blind spot is a company suffix written in capitals after a
+comma — `Acme, CO. Ltd` would read as Colorado and a scrap — which is the same scrap-on-the-right
+cost #119 priced above; the census found no such text, so it is recorded here rather than guarded.
+
+Two consequences of the rule's shape:
+
+- **`Ft. Wayne, IN. Mooresville, IN.` reads as two places, not three.** `Ft` is not in the table, so
+  the period after it is part of the name. Under the two-letter narrowing it was spared only by not
+  following a comma — luck, not a rule.
+- **A trailing full stop comes off every key, split or not.** The last place in such a list is
+  written with the same period that separates the others, and without this it would have become
+  `mooresville, in.` — a key nothing else in the Corpus shares. The strip is general rather than
+  tied to the split, because `greater austin, tx.` and `usa.` were already keys in use, each a
+  duplicate of one the cache already held. An initialism keeps its final period: `Washington, D.C.`
+  is the spelling of the place, not the end of a sentence, and the strip leaves a period alone when
+  another period sits one letter before it. The Dedup Key is unaffected either way — it drops all
+  punctuation before it compares.
 
 ## Why the closest place
 

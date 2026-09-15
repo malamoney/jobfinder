@@ -245,11 +245,95 @@ describe("a word between two places", () => {
     expect(
       normalizeLocations("San Fernando Valley & Pasadena, CA"),
     ).toEqual(["san fernando valley & pasadena, ca"]);
-    expect(normalizeLocations("Fort Wayne, IN. Mooresville, IN.")).toEqual([
-      "fort wayne, in. mooresville, in.",
-    ]);
     expect(normalizeLocations("Wilkes-Barre, PA, Reno, NV, or Batesville, IN")).toEqual([
       "wilkes-barre, pa, reno, nv, or batesville, in",
+    ]);
+  });
+});
+
+/**
+ * A period between two places (#120, ADR 0016). Two employers write every one
+ * of their offices into one field — `Fort Wayne, IN. Mooresville, IN.`,
+ * `Richmond, VA. Culpeper, VA. Herndon, VA.` — and the key that made was the
+ * third spelling of #113's unplaceable string.
+ *
+ * A period is the comma's trap: it also ends `St.`, `Ft.` and `Mt.`, and `St.`
+ * follows a comma exactly where a state code does. The only rule that tells
+ * them apart is one that knows `IN` is a state and `St` is not, so the rule
+ * reads the USPS state-code table (`us-states.ts`).
+ */
+describe("a period between two places", () => {
+  it("splits a location whose places end in a state code and a period", () => {
+    expect(normalizeLocations("Fort Wayne, IN. Mooresville, IN.")).toEqual([
+      "fort wayne, in",
+      "mooresville, in",
+    ]);
+    expect(
+      normalizeLocations("Richmond, VA. Culpeper, VA. Herndon, VA."),
+    ).toEqual(["richmond, va", "culpeper, va", "herndon, va"]);
+    expect(
+      normalizeLocations("Houston, TX. San Francisco, CA. Long Beach, CA."),
+    ).toEqual(["houston, tx", "san francisco, ca", "long beach, ca"]);
+    expect(normalizeLocations("Washington, DC. Arlington, VA.")).toEqual([
+      "washington, dc",
+      "arlington, va",
+    ]);
+  });
+
+  it("leaves a period that is not a state code's alone", () => {
+    // `St.` follows a comma exactly where `IN.` does above; only the table
+    // separates them.
+    expect(normalizeLocations("Plaza at Frotenac, St. Louis, MO")).toEqual([
+      "plaza at frotenac, st. louis, mo",
+    ]);
+    expect(normalizeLocations("Lake St. Louis, MO")).toEqual([
+      "lake st. louis, mo",
+    ]);
+    expect(normalizeLocations("Mt. Pleasant, SC")).toEqual(["mt. pleasant, sc"]);
+    // `Co.` is a company, not Colorado: the code is written in capitals.
+    expect(normalizeLocations("The Jaydor Co. - East Norristown, PA")).toEqual([
+      "the jaydor co. - east norristown, pa",
+    ]);
+  });
+
+  it("reads an abbreviated place name as part of the place, not a break", () => {
+    expect(normalizeLocations("Ft. Wayne, IN. Mooresville, IN.")).toEqual([
+      "ft. wayne, in",
+      "mooresville, in",
+    ]);
+  });
+
+  it("does not split a code the text does not write in capitals", () => {
+    // Case-sensitive on purpose, like the country classifier: `, in.` is as
+    // likely to be prose as Indiana, and an unsplit text is the safe reading.
+    // Only the full stop at the end comes off, as it does from any key.
+    expect(normalizeLocations("Fort Wayne, in. Mooresville, in.")).toEqual([
+      "fort wayne, in. mooresville, in",
+    ]);
+  });
+
+  it("leaves no trailing period on the last key", () => {
+    expect(normalizeLocations("Houston, TX. Remote, USA.")).toEqual([
+      "houston, tx",
+      "usa",
+    ]);
+    expect(normalizeLocations("Greater Austin, TX.")).toEqual([
+      "greater austin, tx",
+    ]);
+    expect(normalizeLocation("Remote, USA.")).toBe("usa");
+    // An initialism keeps its final period: it is the spelling, not a full stop.
+    expect(normalizeLocation("Washington, D.C.")).toBe("washington, d.c.");
+    expect(normalizeLocation("Remote - U.S.A.")).toBe("u.s.a.");
+  });
+
+  it("names each place without the period that ended it", () => {
+    expect(placesNamed("Fort Wayne, IN. Mooresville, IN.")).toEqual([
+      { stated: "Fort Wayne, IN", key: "fort wayne, in" },
+      { stated: "Mooresville, IN", key: "mooresville, in" },
+    ]);
+    expect(placesNamed("Houston, TX. Remote, USA.")).toEqual([
+      { stated: "Houston, TX", key: "houston, tx" },
+      { stated: "USA", key: "usa" },
     ]);
   });
 });
