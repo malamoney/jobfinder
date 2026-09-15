@@ -13,7 +13,10 @@ import { US_STATE_CODE_ALTERNATION } from "./us-states";
  * The contract that matters: when the text names no geocodable place, the answer
  * is null. A remote-only string (`Remote`, `Fully remote`), a placeholder
  * (`Multiple locations`, `Various`), or empty text all normalize to null, so the
- * geocoder is never called on a string that would only fail.
+ * geocoder is never called on a string that would only fail. A country named as
+ * the location (`United States`, `Remote - US`) is null too, for the opposite
+ * reason: the geocoder does not fail on it, it answers with the centre of the
+ * country, and a point nobody meant is worse than none (#124).
  *
  * The null flattens two facts the **Location unresolved** flag has to tell
  * apart: a text that named a remote role, where there was never a Place to
@@ -74,6 +77,53 @@ const REMOTE_MARKERS = new Set([
   "worldwide",
   "global",
 ]);
+
+/**
+ * A country, or a continent, named as the location — `United States`, `US`,
+ * `USA`, `Canada`, `North America`. A nationwide marker: the role can be done
+ * from anywhere in the country, which is remote at the scale of a nation, and
+ * names no Place, because a country is not a commute (#124).
+ *
+ * Read exactly as a remote marker. It was a Place until it was not: `united
+ * states` is a string a geocoder answers, with the geographic centre of the
+ * country — a field outside Lebanon, Kansas — and 1,142 Postings were measured
+ * against that field while `Remote (United States)` beside them named nothing.
+ * A centroid is worse than no place: a Posting with none is kept and, where it
+ * matters, flagged; one on a centroid is dropped for every User outside the
+ * radius of the field and quoted a drive time to it for anyone inside.
+ *
+ * The spellings are the ones the Corpus has evidenced, matched against the
+ * whole of a part rather than as a word inside it: `New York State, USA` and
+ * `Washington, DC` are places whose names hold a country word. A trailing full
+ * stop is already off by the time this is read (`usa.` is `usa`); the periods
+ * inside an initialism are not (`u.s.` stays `u.s.`), so both spellings sit
+ * here. A foreign country reads the same way, and for the same reason: the
+ * classifier prunes a Posting whose location is only Canada (ADR 0010), and
+ * the ones that reach here name it beside US places, where a point in northern
+ * Saskatchewan was riding along with the real ones. Only the countries the
+ * census found are listed; one it did not still reads as a place, which is
+ * what it did before this existed. A state — `Massachusetts`, `Texas` — has the
+ * same shape of wrongness at a smaller scale and is deliberately not here: a
+ * state centroid is a decision for the ticket that measures it (#146,
+ * ADR 0016).
+ */
+const NATIONWIDE_MARKERS = new Set([
+  "united states",
+  "united states of america",
+  "us",
+  "u.s.",
+  "u.s",
+  "usa",
+  "u.s.a.",
+  "u.s.a",
+  "north america",
+  "canada",
+]);
+
+/** Whether a normalized part says remote and names no Place. */
+function isRemoteMarker(value: string): boolean {
+  return REMOTE_MARKERS.has(value) || NATIONWIDE_MARKERS.has(value);
+}
 
 /**
  * Strings an employer writes where a Place should be, that name none: a
@@ -327,12 +377,13 @@ export function normalizeLocation(raw: string | null | undefined): string | null
  *
  * Remote is read from what the strips took off as much as from what they left:
  * `Remote (United States)` is bare `remote` once the aside is gone, `Remote -
- * Anywhere` is a remote label and a remote marker, `Boston, MA or Remote` is a
- * Place. An onsite or hybrid Arrangement label — `Hybrid`, `Onsite` — with no
- * Place after it names one and withholds it, which is nothing rather than
- * remote whatever follows the label: `Hybrid - Anywhere` is a commute to
- * somewhere unstated. A placeholder after a remote label, `Remote - TBD`, is a
- * placeholder.
+ * Anywhere` is a remote label and a remote marker, `Remote - US` is a remote
+ * label and a nationwide one (#124), `Boston, MA or Remote` is a Place. An
+ * onsite or hybrid Arrangement label — `Hybrid`, `Onsite` — with no Place
+ * after it names one and withholds it, which is nothing rather than remote
+ * whatever follows the label: `Hybrid - Anywhere` and `Hybrid - United States`
+ * are a commute to somewhere unstated. A placeholder after a remote label,
+ * `Remote - TBD`, is a placeholder.
  */
 function readPart(raw: string | null | undefined): Reading | null {
   if (!raw) return null;
@@ -355,9 +406,9 @@ function readPart(raw: string | null | undefined): Reading | null {
   value = value.replace(/\s*,\s*(?=,|$)/g, "").trim();
 
   if (PLACEHOLDERS.has(value)) return { names: "nothing" };
-  if (value && !REMOTE_MARKERS.has(value)) return { names: "place", key: value };
+  if (value && !isRemoteMarker(value)) return { names: "place", key: value };
   // Named no Place. An onsite or hybrid label names one it did not disclose.
   if (label != null && label !== "remote") return { names: "nothing" };
-  if (offersRemote || REMOTE_MARKERS.has(value)) return { names: "remote" };
+  if (offersRemote || isRemoteMarker(value)) return { names: "remote" };
   return { names: "nothing" };
 }

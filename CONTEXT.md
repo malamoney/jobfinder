@@ -110,9 +110,12 @@ out. Which Postings the radius would have measured follows the User's stance on 
 Posting's text alone (ADR 0013): a Posting offering remote is not unresolved for a User who accepts
 remote — it needs no place — but it is for one who does not, because they could only ever take it
 onsite. That last holds only where the text names a Place: a location naming remote and nothing
-else — `Remote`, `Remote (United States)` — is never unresolved, for any User, because there was no
-Place to find and nothing was missed (#123). A placeholder — `Multiple locations`, `TBD` — still
-is, since it stands where a Place the employer did not name should be.
+else — `Remote`, `Remote (United States)`, `Remote - US` — is never unresolved, for any User, because
+there was no Place to find and nothing was missed (#123). A country named as the location is a
+nationwide marker and reads as remote, not as a Place: `United States` geocodes to a field in Kansas,
+and a centroid nobody meant is worse than no place (#124, ADR 0016). A placeholder — `Multiple
+locations`, `TBD` — still is unresolved, since it stands where a Place the employer did not name
+should be.
 _Avoid_: Ungeocoded, bad location, missing location
 
 ### Slug discovery

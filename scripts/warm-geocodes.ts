@@ -20,7 +20,9 @@
  * anything, so a change to how a location is read reaches the rows already
  * stored (#113): a Posting held as one unplaceable `... / ...` key becomes the
  * two places it always named, and those are what get geocoded here. No re-Fetch
- * is needed for it.
+ * is needed for it. The cache rows such a change strands — keys the reader no
+ * longer produces, like the `united states` row 1,142 Postings were once
+ * measured against (#124) — are dropped in the same pass.
  *
  * Postings only. A User's home location is resolved onto their own Criteria row
  * and never enters this cache (#100) — `pnpm resolve-home-locations` is the
@@ -33,7 +35,7 @@ import { isNotNull, sql } from "drizzle-orm";
 import { closeDb, getDb } from "@/db";
 import { geocodes, postings } from "@/db/schema";
 import { renormalizeLocations } from "@/operations/extraction";
-import { ensureGeocoded } from "@/operations/geocoding";
+import { ensureGeocoded, forgetStaleGeocodes } from "@/operations/geocoding";
 import { normalizeLocations } from "@/postings/location";
 
 const NO_BUDGET = Number.MAX_SAFE_INTEGER;
@@ -53,6 +55,13 @@ async function main(): Promise<void> {
   // this pass resolves are the places the radius will measure (#113).
   const reread = await renormalizeLocations(db);
   console.log(`Re-read ${reread} Posting location(s) into their places.`);
+
+  // The same change of reading that moved those Postings leaves cache rows
+  // behind that no text produces any more — `united states`, resolved to the
+  // centre of the country (#124). Dropped here, so nothing is measured against
+  // a key the reader no longer makes.
+  const forgotten = await forgetStaleGeocodes(db);
+  console.log(`Forgot ${forgotten} cached location(s) the reader no longer produces.`);
 
   const postingLocations = await db
     .selectDistinct({ location: postings.location })

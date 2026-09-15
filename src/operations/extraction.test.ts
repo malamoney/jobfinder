@@ -101,6 +101,24 @@ describe("re-reading the locations the Corpus already holds", () => {
     expect(await placesOf(id)).toEqual(["fort wayne, in", "mooresville, in"]);
   });
 
+  it("moves a Posting off a country it was held on", async () => {
+    // The key the geocoder answers with the centre of the country (#124). The
+    // Posting named no place all along; the pass has to reach it in place,
+    // because nothing else revisits an Expired row.
+    const id = await storedRole("1", "Remote - United States", [
+      "united states",
+    ]);
+    const list = await storedRole(
+      "2",
+      "Remote - United States / New Jersey / Boston / New York",
+      ["united states", "new jersey", "boston", "new york"],
+    );
+
+    expect(await renormalizeLocations(getDb())).toBe(2);
+    expect(await placesOf(id)).toEqual([]);
+    expect(await placesOf(list)).toEqual(["new jersey", "boston", "new york"]);
+  });
+
   it("leaves a Posting already holding the right places alone", async () => {
     const id = await storedRole("1", "Boston, MA", ["boston, ma"]);
 
