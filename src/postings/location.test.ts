@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  namesOnlyRemote,
   normalizeLocation,
   normalizeLocations,
   placesNamed,
@@ -360,5 +361,55 @@ describe("a separator inside a parenthetical aside", () => {
     expect(
       normalizeLocations("Boston, MA (HQ) / Austin, TX (3 days in office)"),
     ).toEqual(["boston, ma", "austin, tx"]);
+  });
+});
+
+/**
+ * A location that names remote and nothing else (#123). `normalizeLocation`
+ * answers null for `Remote (United States)` and for `Multiple locations` alike,
+ * and the **Location unresolved** flag read both as a Place nobody could find.
+ * The first is not a miss: the role has no Place, so there was never anything
+ * to find. This predicate is how the flag tells the two apart.
+ */
+describe("a location that names only remote", () => {
+  it("is true for text that names remote and nothing else", () => {
+    expect(namesOnlyRemote("Remote")).toBe(true);
+    expect(namesOnlyRemote("Fully remote")).toBe(true);
+    expect(namesOnlyRemote("Remote (United States)")).toBe(true);
+    expect(namesOnlyRemote("Remote (New York)")).toBe(true);
+    expect(namesOnlyRemote("Remote - Anywhere")).toBe(true);
+    expect(namesOnlyRemote("Work from home")).toBe(true);
+    expect(namesOnlyRemote("Worldwide")).toBe(true);
+    expect(namesOnlyRemote("Remote / Work from home")).toBe(true);
+  });
+
+  it("is false for a placeholder, which still names nothing anyone could place", () => {
+    expect(namesOnlyRemote("Multiple locations")).toBe(false);
+    expect(namesOnlyRemote("Various")).toBe(false);
+    expect(namesOnlyRemote("TBD")).toBe(false);
+    expect(namesOnlyRemote("Remote / Multiple locations")).toBe(false);
+    expect(namesOnlyRemote("Remote - TBD")).toBe(false);
+  });
+
+  it("is false for an onsite or hybrid label that names no place", () => {
+    // A hybrid or onsite role with no Place named is a real miss: the User
+    // would have to go somewhere, and nothing says where.
+    expect(namesOnlyRemote("Hybrid")).toBe(false);
+    expect(namesOnlyRemote("Onsite")).toBe(false);
+    expect(namesOnlyRemote("Hybrid - Anywhere")).toBe(false);
+  });
+
+  it("is false for text that names a place, whether or not it names remote too", () => {
+    expect(namesOnlyRemote("Boston, MA")).toBe(false);
+    expect(namesOnlyRemote("Boston, MA or Remote")).toBe(false);
+    expect(namesOnlyRemote("Remote - US")).toBe(false);
+    expect(namesOnlyRemote("Bolt Farm - Whitwell, TN")).toBe(false);
+    expect(namesOnlyRemote("Undisclosed location, USA")).toBe(false);
+  });
+
+  it("is false for empty text, which names nothing at all", () => {
+    expect(namesOnlyRemote(null)).toBe(false);
+    expect(namesOnlyRemote("")).toBe(false);
+    expect(namesOnlyRemote("   ")).toBe(false);
   });
 });

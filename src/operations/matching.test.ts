@@ -1060,6 +1060,86 @@ describe("the commute radius", () => {
       const [posting] = (await readDashboard(userId)).postings;
       expect(posting.unresolvedLocation).toBe(true);
     });
+
+    // #123: the production report was a no-remote User's Dashboard where every
+    // amber pill sat on a Posting whose location said `Remote (United States)`.
+    // The radius measured those Postings (ADR 0013) and placed none of them,
+    // but there was never a Place to find — the flag was announcing a miss
+    // that did not happen. A location naming only remote is remote, not
+    // unresolved, whatever the User's stance; one naming a Place nobody could
+    // find is still a miss.
+    describe("a location that names only remote is not one the radius failed to place", () => {
+      it("leaves a remote-only Posting unflagged for a User who does not accept remote", async () => {
+        geocoderKnows({ "Boston, MA": BOSTON });
+        await corpusHas([
+          jobAt(
+            1,
+            "Staff Data Engineer",
+            "Remote (United States)",
+            "remote or onsite",
+          ),
+        ]);
+        const userId = await givenAUser();
+
+        await saveCriteria(userId, commuteCriteria());
+
+        const [posting] = (await readDashboard(userId)).postings;
+        expect(posting.title).toBe("Staff Data Engineer");
+        expect(posting.unresolvedLocation).toBe(false);
+      });
+
+      it("leaves a remote-only Posting unflagged for a User who accepts remote", async () => {
+        geocoderKnows({ "Boston, MA": BOSTON });
+        await corpusHas([
+          jobAt(1, "Platform Engineer", "Remote (US)", "remote or onsite"),
+        ]);
+        const userId = await givenAUser();
+
+        await saveCriteria(
+          userId,
+          commuteCriteria({
+            arrangements: ["full-time", "onsite", "hybrid", "remote"],
+          }),
+        );
+
+        const [posting] = (await readDashboard(userId)).postings;
+        expect(posting.unresolvedLocation).toBe(false);
+      });
+
+      it("still flags a Posting naming a Place nobody could find", async () => {
+        geocoderKnows({ "Boston, MA": BOSTON });
+        await corpusHas([
+          jobAt(1, "Farm Engineer", "Bolt Farm - Whitwell, TN", "onsite"),
+        ]);
+        const userId = await givenAUser();
+
+        await saveCriteria(userId, commuteCriteria());
+
+        const [posting] = (await readDashboard(userId)).postings;
+        expect(posting.unresolvedLocation).toBe(true);
+      });
+
+      it("still flags a Posting whose location is a placeholder", async () => {
+        geocoderKnows({ "Boston, MA": BOSTON });
+        // A placeholder names no Place, so nothing is geocoded — and unlike a
+        // remote marker it stands where a Place should be. The aside is what
+        // keeps it in a US-only Corpus (ADR 0010).
+        await corpusHas([
+          jobAt(
+            1,
+            "Platform Engineer",
+            "Multiple locations (United States)",
+            "onsite",
+          ),
+        ]);
+        const userId = await givenAUser();
+
+        await saveCriteria(userId, commuteCriteria());
+
+        const [posting] = (await readDashboard(userId)).postings;
+        expect(posting.unresolvedLocation).toBe(true);
+      });
+    });
   });
 
   it("geocodes each distinct location once, however many Postings share it", async () => {

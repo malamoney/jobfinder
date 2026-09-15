@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDb, type Writer } from "@/db";
 import { postings, type CriteriaRow, type Posting } from "@/db/schema";
 import { radiusAppliesTo } from "@/commute/radius-scope";
+import { namesOnlyRemote } from "@/postings/location";
 import { radiusOrigin } from "./home-location";
 
 /**
@@ -129,6 +130,17 @@ export async function radiusInEffect(
  * the Posting's places resolved to a point (`anyPlaceResolved` in
  * `./geocoding`), which is the reader's to select rather than this function's
  * to go looking for.
+ *
+ * A location that names only remote — `Remote`, `Remote (United States)` — is
+ * never unresolved, for any User (#123). It is not placed, but there was never
+ * a Place to find: the radius did not miss anything. ADR 0013's rule that a
+ * remote-offering Posting is unresolved for a User who does not accept remote
+ * holds where the text names a Place the geocoder could not find — that User
+ * would have to go there, and nothing says where. It does not hold where the
+ * text names no Place at all. The text's own word decides this, not the
+ * Arrangements: those are read from the description, and a remote role's
+ * description says "onsite" often enough that every `Remote (United States)`
+ * Posting in the production report carried both.
  */
 export function hasUnresolvedLocation(
   posting: Pick<Posting, "location" | "arrangements">,
@@ -137,6 +149,7 @@ export function hasUnresolvedLocation(
 ): boolean {
   if (radius == null || posting.location == null) return false;
   if (!radiusAppliesTo(radius.arrangements, posting.arrangements)) return false;
+  if (namesOnlyRemote(posting.location)) return false;
 
   return !placed;
 }
