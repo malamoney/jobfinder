@@ -1427,15 +1427,16 @@ describe("the commute radius", () => {
       expect(posting.unresolvedLocation).toBe(true);
     });
 
-    it("judges a Posting on its real office alone when its other place could only be found abroad", async () => {
+    it("judges a Posting on its real Place alone when its other Place could only be found abroad", async () => {
       // `Denver, CO or Melo Park, CA` — an employer's typo for Menlo Park, which
       // an unconstrained geocoder placed in Rio de Janeiro (#122). The foreign
       // point is put inside the radius here so that measuring it would show:
       // the Posting must be judged on Denver, and dropped, not kept on a
       // coordinate it was never at.
       const DENVER: Coordinate = { latitude: 39.7392, longitude: -104.9903 };
+      const ABROAD_BUT_INSIDE_THE_RADIUS = CAMBRIDGE;
       geocoderKnows({ "Boston, MA": BOSTON, "denver, co": DENVER });
-      geocoderPlacesAbroad("melo park, ca", CAMBRIDGE);
+      geocoderPlacesAbroad("melo park, ca", ABROAD_BUT_INSIDE_THE_RADIUS);
       await corpusHas([
         jobAt(1, "Senior Software Engineer", "Denver, CO or Melo Park, CA", "onsite"),
       ]);

@@ -49,8 +49,8 @@ User's home is in the US (ADR 0009), so a place outside it is one this applicati
 mean — but an unconstrained Nominatim reaches for it anyway when nothing nearer fits. `melo park,
 ca`, an employer's typo for Menlo Park, resolved to a suburb of Rio de Janeiro (#122). A wrong
 point is worse than none: an unresolved location is surfaced and flagged, a resolved one is
-measured silently, and a foreign coordinate that lands nearer a User than the real office puts
-the wrong city on the commute tab (ADR 0016). Confined, the same typo resolves to nothing. The
+measured silently, and a foreign coordinate that lands nearer a User than the real Place puts
+the wrong one on the commute tab (ADR 0016). Confined, the same typo resolves to nothing. The
 constraint is the adapter's, so a home location (ADR 0014) takes it on the same code path.
 
 ## Consequences
