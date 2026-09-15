@@ -133,14 +133,14 @@ export async function radiusInEffect(
  *
  * A location that names only remote — `Remote`, `Remote (United States)` — is
  * never unresolved, for any User (#123). It is not placed, but there was never
- * an office to place: the radius did not miss anything. ADR 0013's rule that a
+ * a Place to find: the radius did not miss anything. ADR 0013's rule that a
  * remote-offering Posting is unresolved for a User who does not accept remote
- * holds where the text names an office the geocoder could not find — that User
+ * holds where the text names a Place the geocoder could not find — that User
  * would have to go there, and nothing says where. It does not hold where the
- * text names no office at all. The text's own word decides this, not the
+ * text names no Place at all. The text's own word decides this, not the
  * Arrangements: those are read from the description, and a remote role's
- * description says "onsite" often enough that the production report's eight
- * Postings all carried both.
+ * description says "onsite" often enough that every `Remote (United States)`
+ * Posting in the production report carried both.
  */
 export function hasUnresolvedLocation(
   posting: Pick<Posting, "location" | "arrangements">,

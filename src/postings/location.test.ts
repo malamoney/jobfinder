@@ -367,9 +367,9 @@ describe("a separator inside a parenthetical aside", () => {
 /**
  * A location that names remote and nothing else (#123). `normalizeLocation`
  * answers null for `Remote (United States)` and for `Multiple locations` alike,
- * and the **Location unresolved** flag read both as a place nobody could find.
- * The first is not a miss: the role has no office, so there was never anything
- * to place. This predicate is how the flag tells the two apart.
+ * and the **Location unresolved** flag read both as a Place nobody could find.
+ * The first is not a miss: the role has no Place, so there was never anything
+ * to find. This predicate is how the flag tells the two apart.
  */
 describe("a location that names only remote", () => {
   it("is true for text that names remote and nothing else", () => {
@@ -391,8 +391,8 @@ describe("a location that names only remote", () => {
     expect(namesOnlyRemote("Remote - TBD")).toBe(false);
   });
 
-  it("is false for a commute label that names no place", () => {
-    // A hybrid or onsite role with no office named is a real miss: the User
+  it("is false for an onsite or hybrid label that names no place", () => {
+    // A hybrid or onsite role with no Place named is a real miss: the User
     // would have to go somewhere, and nothing says where.
     expect(namesOnlyRemote("Hybrid")).toBe(false);
     expect(namesOnlyRemote("Onsite")).toBe(false);

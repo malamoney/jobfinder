@@ -480,7 +480,7 @@ describe("an unresolved location on the Posting page", () => {
   });
 
   // #123: a location that names only remote is not one the radius failed to
-  // place. There was never an office, so the Posting page shows no pill even
+  // find. There was never a Place, so the Posting page shows no pill even
   // for a User whose radius measured everything.
   it("leaves a Posting naming only remote unflagged for a User who does not accept remote", async () => {
     const postingId = await corpusHas([

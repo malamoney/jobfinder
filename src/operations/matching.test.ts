@@ -1064,10 +1064,10 @@ describe("the commute radius", () => {
     // #123: the production report was a no-remote User's Dashboard where every
     // amber pill sat on a Posting whose location said `Remote (United States)`.
     // The radius measured those Postings (ADR 0013) and placed none of them,
-    // but there was never an office to place — the flag was announcing a miss
+    // but there was never a Place to find — the flag was announcing a miss
     // that did not happen. A location naming only remote is remote, not
-    // unresolved, whatever the User's stance; one naming an office nobody could
-    // place is still a miss.
+    // unresolved, whatever the User's stance; one naming a Place nobody could
+    // find is still a miss.
     describe("a location that names only remote is not one the radius failed to place", () => {
       it("leaves a remote-only Posting unflagged for a User who does not accept remote", async () => {
         geocoderKnows({ "Boston, MA": BOSTON });
@@ -1106,7 +1106,7 @@ describe("the commute radius", () => {
         expect(posting.unresolvedLocation).toBe(false);
       });
 
-      it("still flags a Posting naming an office nobody could place", async () => {
+      it("still flags a Posting naming a Place nobody could find", async () => {
         geocoderKnows({ "Boston, MA": BOSTON });
         await corpusHas([
           jobAt(1, "Farm Engineer", "Bolt Farm - Whitwell, TN", "onsite"),
@@ -1121,8 +1121,16 @@ describe("the commute radius", () => {
 
       it("still flags a Posting whose location is a placeholder", async () => {
         geocoderKnows({ "Boston, MA": BOSTON });
+        // A placeholder names no Place, so nothing is geocoded — and unlike a
+        // remote marker it stands where a Place should be. The aside is what
+        // keeps it in a US-only Corpus (ADR 0010).
         await corpusHas([
-          jobAt(1, "Platform Engineer", "Multiple locations, USA", "onsite"),
+          jobAt(
+            1,
+            "Platform Engineer",
+            "Multiple locations (United States)",
+            "onsite",
+          ),
         ]);
         const userId = await givenAUser();
 

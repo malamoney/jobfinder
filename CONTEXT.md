@@ -109,10 +109,10 @@ flagged, never dropped — silently dropping is how a User loses a role they wan
 out. Which Postings the radius would have measured follows the User's stance on remote, not the
 Posting's text alone (ADR 0013): a Posting offering remote is not unresolved for a User who accepts
 remote — it needs no place — but it is for one who does not, because they could only ever take it
-onsite. That last holds only where the text names an office: a location naming remote and nothing
+onsite. That last holds only where the text names a Place: a location naming remote and nothing
 else — `Remote`, `Remote (United States)` — is never unresolved, for any User, because there was no
-office to place and nothing was missed (#123). A placeholder — `Multiple locations`, `TBD` — still
-is, since it stands where an office the employer did not name should be.
+Place to find and nothing was missed (#123). A placeholder — `Multiple locations`, `TBD` — still
+is, since it stands where a Place the employer did not name should be.
 _Avoid_: Ungeocoded, bad location, missing location
 
 ### Slug discovery
