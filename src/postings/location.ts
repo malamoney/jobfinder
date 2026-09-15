@@ -1,3 +1,5 @@
+import { US_STATE_CODE_ALTERNATION } from "./us-states";
+
 /**
  * Location normalization: turning a Posting's free-text location into a stable
  * key a geocoder can read, or null when the text names no place (#12).
@@ -40,6 +42,15 @@ const TRAILING_REMOTE_RE =
 
 /** A parenthetical aside — `(3 days in office)` — carries no place. */
 const PARENTHETICAL_RE = /\s*\([^)]*\)/g;
+
+/**
+ * A full stop the text ends with — `Greater Austin, TX.`, `Remote, USA.` — as
+ * against the last period of an initialism, `Washington, D.C.`, which is the
+ * spelling of the place rather than the end of a sentence (#120). Stripped so
+ * a list whose last place was written with the period that separates the
+ * others does not leave a key no other Posting shares.
+ */
+const TRAILING_FULL_STOP_RE = /(?<!\.\w)\.$/;
 
 /**
  * Strings that name no single place a geocoder could resolve to a point:
@@ -89,11 +100,34 @@ const NOT_A_PLACE = new Set([
  * unsplit reading would have given. `Truth or Consequences, NM` is the same
  * reading in the same direction: a real place whose name holds the word.
  *
+ * A period is one too, in one shape only: after a USPS state code that follows
+ * a comma — `Fort Wayne, IN. Mooresville, IN.` (#120). A period is the comma's
+ * trap otherwise. It ends `St.`, `Ft.` and `Mt.` as readily as a place, and
+ * `St.` follows a comma in `Plaza at Frotenac, St. Louis, MO` exactly where
+ * `IN.` does above, so nothing in the shape of the text separates them. What
+ * does is knowing `IN` is a state and `St` is not, which is why the rule reads
+ * the state-code table (`us-states.ts`) rather than "any two letters". The
+ * code is matched in capitals, as the country classifier matches it: `Co.` is
+ * a company, and `co` is Colorado only when written `CO`. A period at the very
+ * end of the text is the same separator with nothing after it, so
+ * `Mooresville, IN.` ends cleanly rather than leaving `mooresville, in.` as
+ * the key.
+ *
  * Wrong in the safe direction, deliberately: a separator this does not
  * recognise leaves the text as one string, which is exactly how it behaved
  * before splitting existed (#113).
  */
-const PLACE_SEPARATOR_RE = /\s*;\s*|\s*\|\s*|\s+\/\s+|(?<!,\s*)\s+or\s+/i;
+const PLACE_SEPARATOR_RE = new RegExp(
+  [
+    /\s*;\s*/.source,
+    /\s*\|\s*/.source,
+    /\s+\/\s+/.source,
+    // The word in either case; the state codes below are matched in capitals
+    // only, which is why the whole expression cannot carry the `i` flag.
+    /(?<!,\s*)\s+[oO][rR]\s+/.source,
+    `(?<=,\\s*${US_STATE_CODE_ALTERNATION})\\.(?:\\s+|$)`,
+  ].join("|"),
+);
 
 /**
  * The conjunction a preceding separator left stranded at the front of a place —
@@ -156,16 +190,29 @@ export function placesNamed(raw: string | null | undefined): NamedPlace[] {
 /**
  * One place with the labels stripped and the employer's own capitalisation kept.
  *
- * The same three strips `normalizeLocation` makes, minus the lowercasing: a
- * screen naming `Austin, TX or Remote` as the place it measured to would be
- * showing a User something that is not a place name.
+ * The same strips `normalizeLocation` makes, minus the lowercasing: a screen
+ * naming `Austin, TX or Remote` as the place it measured to would be showing a
+ * User something that is not a place name.
  */
 function statedPlace(part: string): string {
-  return part
-    .replace(PARENTHETICAL_RE, "")
-    .replace(LEADING_ARRANGEMENT_RE, "")
-    .replace(TRAILING_REMOTE_RE, "")
-    .replace(/\s+/g, " ")
+  return trimEdges(
+    part
+      .replace(PARENTHETICAL_RE, "")
+      .replace(LEADING_ARRANGEMENT_RE, "")
+      .replace(TRAILING_REMOTE_RE, "")
+      .replace(/\s+/g, " "),
+  );
+}
+
+/**
+ * The punctuation a strip or a split leaves at either edge of a place — the
+ * comma a removed label sat after, the full stop a list was written with —
+ * taken off so the key and the stated place end where the name does.
+ */
+function trimEdges(value: string): string {
+  return value
+    .replace(/^[\s,/-]+|[\s,/-]+$/g, "")
+    .replace(TRAILING_FULL_STOP_RE, "")
     .trim();
 }
 
@@ -202,9 +249,8 @@ export function normalizeLocation(raw: string | null | undefined): string | null
     .replace(LEADING_ARRANGEMENT_RE, "")
     .replace(TRAILING_REMOTE_RE, "")
     .toLowerCase()
-    .replace(/\s+/g, " ")
-    .replace(/^[\s,/-]+|[\s,/-]+$/g, "")
-    .trim();
+    .replace(/\s+/g, " ");
+  value = trimEdges(value);
 
   // Collapse the whitespace left where a comma now has nothing after it.
   value = value.replace(/\s*,\s*(?=,|$)/g, "").trim();

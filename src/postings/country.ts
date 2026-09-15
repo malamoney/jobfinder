@@ -1,3 +1,5 @@
+import { US_STATE_CODE_ALTERNATION } from "./us-states";
+
 /**
  * Country classification: deciding whether a Posting is based in the United
  * States from its location text (ADR 0010, superseding ADR 0009).
@@ -94,10 +96,10 @@ const US_STATE_NAME_RE = new RegExp(
  * uppercase-only on purpose: a state code is written `MA`, and `,\s*ma\b` would
  * also fire on "…, matching the brief" and "…, in office" and "…, or remote".
  * `CA` here is California; Canada (`, ON` etc., and the word itself) is ruled
- * out first.
+ * out first. The codes themselves are the shared table (`us-states.ts`), which
+ * the location normalizer reads too (#120).
  */
-const US_STATE_ABBR_RE =
-  /,\s*(A[LKZR]|C[AOT]|D[CE]|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|PA|RI|S[CD]|T[NX]|UT|V[AT]|W[AIVY])\b/;
+const US_STATE_ABBR_RE = new RegExp(`,\\s*${US_STATE_CODE_ALTERNATION}\\b`);
 
 /** A Canadian province or territory code, same shape as the US one. */
 const CA_PROVINCE_ABBR_RE = /,\s*(AB|BC|MB|NB|NL|NS|NT|NU|ON|PE|QC|SK|YT)\b/;

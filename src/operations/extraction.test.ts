@@ -90,6 +90,17 @@ describe("re-reading the locations the Corpus already holds", () => {
     expect(await placesOf(id)).toEqual(["denver, co", "menlo park, ca"]);
   });
 
+  it("splits a location whose places a period stood between", async () => {
+    // The third spelling of the same unplaceable key (#120), and the one the
+    // period's trailing full stop used to leave on the last place.
+    const id = await storedRole("1", "Fort Wayne, IN. Mooresville, IN.", [
+      "fort wayne, in. mooresville, in.",
+    ]);
+
+    expect(await renormalizeLocations(getDb())).toBe(1);
+    expect(await placesOf(id)).toEqual(["fort wayne, in", "mooresville, in"]);
+  });
+
   it("leaves a Posting already holding the right places alone", async () => {
     const id = await storedRole("1", "Boston, MA", ["boston, ma"]);
 
