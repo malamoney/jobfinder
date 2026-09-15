@@ -115,3 +115,57 @@ describe("how precisely a result was placed", () => {
     expect(await geocode("somewhere")).toMatchObject({ precision: "city" });
   });
 });
+
+/**
+ * The Corpus is US-only (ADR 0010) and so is the one User's home (ADR 0009),
+ * but Nominatim is not told so unless it is asked: an unconstrained lookup of
+ * `melo park, ca` — an employer's typo for Menlo Park — came back as Melo Park,
+ * Rio de Janeiro (verified live 2026-09-03), and a wrong point is measured
+ * silently where no point is surfaced and flagged (#122).
+ *
+ * This is the shape Nominatim answers with for that query, standing in for its
+ * honouring of `countrycodes`: the Brazilian match when unconstrained, nothing
+ * when told to stay in the US.
+ */
+const MELO_PARK_BRAZIL = [
+  {
+    addresstype: "suburb",
+    lat: "-22.9931398",
+    lon: "-43.3604895",
+    place_rank: 19,
+    display_name: "Melo Park, Rio de Janeiro, Brazil",
+  },
+];
+
+describe("a lookup is confined to the United States", () => {
+  /** Answers as Nominatim does: abroad when unconstrained, nothing when told US. */
+  function nominatimHonoursCountrycodes(): { requests(): URL[] } {
+    const requests: URL[] = [];
+    server.use(
+      http.get(NOMINATIM_SEARCH_URL, ({ request }) => {
+        const url = new URL(request.url);
+        requests.push(url);
+        const countries = url.searchParams.get("countrycodes");
+        return HttpResponse.json(countries === "us" ? [] : MELO_PARK_BRAZIL);
+      }),
+    );
+    return { requests: () => [...requests] };
+  }
+
+  it("asks Nominatim for places in the US and nowhere else", async () => {
+    const nominatim = nominatimHonoursCountrycodes();
+
+    await geocode("melo park, ca");
+
+    const [request] = nominatim.requests();
+    expect(request.searchParams.get("countrycodes")).toBe("us");
+  });
+
+  it("resolves a typo Nominatim could only place abroad to nothing, not to Brazil", async () => {
+    nominatimHonoursCountrycodes();
+
+    // Unresolved is surfaced and flagged; a coordinate in the wrong hemisphere
+    // would be measured as if it were the office.
+    expect(await geocode("melo park, ca")).toBeNull();
+  });
+});

@@ -87,3 +87,36 @@ export function geocoderIsDown(): GeocoderCalls {
 
   return { queries: () => [...queries] };
 }
+
+/**
+ * Declares a place the geocoder can put on a map only outside the United
+ * States — the way an unconstrained Nominatim answered `melo park, ca` with a
+ * suburb of Rio de Janeiro (#122). It is answered when a lookup is left free to
+ * roam, and not at all when the lookup is confined to the US, so a test through
+ * this fixture passes only if the adapter asked to stay home.
+ *
+ * Any other query falls through to whatever `geocoderKnows` declared, so the
+ * two compose: the Places a Posting names alongside this one resolve as usual.
+ */
+export function geocoderPlacesAbroad(query: string, abroad: Coordinate): void {
+  server.use(
+    http.get(NOMINATIM_SEARCH_URL, ({ request }) => {
+      const url = new URL(request.url);
+      if (url.searchParams.get("q") !== query) return undefined;
+
+      const confinedToUs = url.searchParams.get("countrycodes") === "us";
+      return HttpResponse.json(
+        confinedToUs
+          ? []
+          : [
+              {
+                lat: String(abroad.latitude),
+                lon: String(abroad.longitude),
+                place_rank: CITY_RANK,
+                display_name: `${query}, abroad`,
+              },
+            ],
+      );
+    }),
+  );
+}

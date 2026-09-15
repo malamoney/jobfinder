@@ -13,6 +13,7 @@ import { normalizeLocation } from "@/postings/location";
 import {
   geocoderIsDown,
   geocoderKnows,
+  geocoderPlacesAbroad,
   type Coordinate,
   type Place,
 } from "@/test/fixtures/nominatim";
@@ -350,6 +351,20 @@ describe("placing the home location", () => {
     expect((await readCriteria(userId))?.homeLocation).toBe(
       "77 Nowhere Ln, Atlantis",
     );
+    expect(await readHomeCoordinate(userId)).toBeNull();
+  });
+
+  it("finds no home for an address the geocoder could only place abroad", async () => {
+    // A home is resolved off the same geocoder a Posting's location is, and
+    // takes its confinement to the US with it (#122): the wrong hemisphere is
+    // not a place to measure every distance the User sees from.
+    const RIO: Coordinate = { latitude: -22.9931398, longitude: -43.3604895 };
+    geocoderPlacesAbroad("Melo Park, CA", RIO);
+    const userId = await givenAUser();
+
+    const outcome = await saveCriteria(userId, commuteCriteria("Melo Park, CA"));
+
+    expect(outcome.ok && outcome.home).toEqual({ state: "not-found" });
     expect(await readHomeCoordinate(userId)).toBeNull();
   });
 

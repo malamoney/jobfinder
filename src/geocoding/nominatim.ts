@@ -44,6 +44,17 @@ const USER_AGENT = "Jobfinder/0.1 (+https://github.com/malamoney/jobfinder)";
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 /**
+ * Where a lookup is allowed to land. The Corpus holds US roles only (ADR 0010)
+ * and the one User's home is in the US (ADR 0009), so a place outside it is one
+ * this application could never mean — yet an unconstrained Nominatim reaches
+ * for it anyway when nothing nearer fits: `melo park, ca`, an employer's typo
+ * for Menlo Park, resolved to a suburb of Rio de Janeiro (#122). Confined, the
+ * same typo resolves to nothing, which is surfaced and flagged where a wrong
+ * point would be measured silently.
+ */
+const COUNTRY_CODES = "us";
+
+/**
  * How many results to weigh. Nominatim ranks by a relevance score that can put
  * a region above a same-named place — `Franklin County` before the town of
  * Franklin, MA — so the top hit alone is not enough to pick from.
@@ -131,7 +142,7 @@ function precisionOf(result: NominatimResult): LocationPrecision {
  * only one.
  *
  * Null is a definite answer — Nominatim understood the request and found no
- * place — and it is safe to cache. A transport or parse failure throws instead,
+ * place in the US — and it is safe to cache. A transport or parse failure throws instead,
  * so a Nominatim outage does not poison the cache with "unresolvable" for a
  * string that would resolve fine tomorrow.
  */
@@ -143,6 +154,7 @@ export async function geocode(
   url.searchParams.set("q", query);
   url.searchParams.set("format", "jsonv2");
   url.searchParams.set("limit", String(RESULT_LIMIT));
+  url.searchParams.set("countrycodes", COUNTRY_CODES);
 
   const response = await fetch(url, {
     headers: { "User-Agent": USER_AGENT },
