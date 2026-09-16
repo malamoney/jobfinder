@@ -84,4 +84,20 @@ describe("the matches list keeps its scroll position on return (#97, #99)", () =
     // move the scroll.
     expect(refreshMatches).toMatch(/router\.refresh\s*\(\s*\)/);
   });
+
+  it("the refresh waits on the scroll being put back, not on a clock (#142)", () => {
+    // #99 fired the refresh 300ms after mount — a guess at when the browser's
+    // deferred scroll restore had landed. When the step back rendered slower
+    // than that, the refresh (a `replaceState` navigation) landed first and
+    // the User came back to the top. The island now restores the offset
+    // itself before paint and refreshes after; `matches-return.test.ts` pins
+    // that sequence. This keeps a timer from standing in for it again.
+    const refreshMatches = code(source("src/app/dashboard/refresh-matches.tsx"));
+
+    expect(refreshMatches).not.toMatch(/setTimeout|setInterval/);
+    // The restore runs before paint, and the step back is noted from
+    // `popstate` — the island is not mounted when it happens.
+    expect(refreshMatches).toMatch(/useLayoutEffect/);
+    expect(refreshMatches).toMatch(/addEventListener\s*\(\s*["']popstate["']/);
+  });
 });
