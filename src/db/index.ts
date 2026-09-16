@@ -1,5 +1,6 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import { applyVerdict, judgeDatabaseUrl } from "./remote-database";
 import * as schema from "./schema";
 
 export type Database = NodePgDatabase<typeof schema>;
@@ -35,6 +36,12 @@ let connection: { pool: Pool; db: Database; url: string } | undefined;
  * Neon is reached over the standard Postgres wire protocol through its pooled
  * connection string, so the same driver serves production, local development,
  * and the Postgres that tests run against.
+ *
+ * A process that is not a production build has no business opening a database
+ * that is not on this machine (#156): `next dev` refuses one, a script warns
+ * once and proceeds, `ALLOW_REMOTE_DATABASE=1` opts out. Judged here, where
+ * the pool is created, so the warning is once per process rather than once
+ * per query.
  */
 export function getDb(): Database {
   const url = process.env.DATABASE_URL;
@@ -55,6 +62,8 @@ export function getDb(): Database {
   }
 
   if (!connection) {
+    applyVerdict(judgeDatabaseUrl(url, process.env));
+
     const pool = new Pool({ connectionString: url });
     connection = { pool, db: drizzle(pool, { schema }), url };
   }
