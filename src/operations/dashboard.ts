@@ -20,6 +20,10 @@ import { hasUnresolvedLocation, isExpired, radiusInEffect } from "./postings";
  * has already decided what a User sees; this joins the Posting facts and the
  * User's Review State back on, collapses cross-Source duplicates to one card
  * (#13), orders them, and applies the Status filter.
+ *
+ * In two halves (#154): the matched Postings read, which changes only when
+ * Matching re-runs, and the Review State overlay, which changes with every
+ * click. The first is what #155 stores between the events that change it.
  */
 
 /**
@@ -233,14 +237,59 @@ type Iso = string;
  * The {@link DashboardPostingFacts} with every `Date` spelled as an ISO string
  * — the same facts, in the shape a JSON store hands back unchanged.
  */
-type MatchedPostingFacts = Omit<
-  DashboardPostingFacts,
-  "postedAt" | "firstSeenAt" | "expiresAt"
-> & {
+type MatchedPostingFacts = Omit<DashboardPostingFacts, DateFact> & {
   postedAt: Iso | null;
   firstSeenAt: Iso;
   expiresAt: Iso | null;
 };
+
+/** The keys of `T` whose value is (or may be) a `Date`. */
+type DateKeys<T> = {
+  [K in keyof T]: Date extends T[K] ? K : never;
+}[keyof T];
+
+/**
+ * The {@link DashboardPostingFacts} that are dates — what {@link toIso} spells
+ * out and {@link fromIso} revives. Derived from the type so a `Date` column
+ * added to the facts is listed here by construction; the guard below then fails
+ * to compile until the two functions carry it too.
+ */
+type DateFact = DateKeys<DashboardPostingFacts>;
+
+/**
+ * Nothing in the stored half is a `Date`. A type-level assertion rather than a
+ * test: the round-trip test would catch a leaked `Date` at runtime, but only
+ * after the store had already handed back a string where the card wanted one.
+ */
+const _matchedPostingIsJsonSafe: DateKeys<MatchedPosting> extends never
+  ? true
+  : never = true;
+void _matchedPostingIsJsonSafe;
+
+/** The facts with every `Date` spelled as ISO — the shape a JSON store keeps. */
+function toIso(facts: DashboardPostingFacts): MatchedPostingFacts {
+  return {
+    ...facts,
+    postedAt: facts.postedAt?.toISOString() ?? null,
+    firstSeenAt: facts.firstSeenAt.toISOString(),
+    expiresAt: facts.expiresAt?.toISOString() ?? null,
+  };
+}
+
+/**
+ * The inverse of {@link toIso}: the facts with their `Date`s back. Generic so
+ * whatever rides alongside the facts (the Keywords, the flag) comes through.
+ */
+function fromIso<T extends MatchedPostingFacts>(
+  facts: T,
+): Omit<T, DateFact> & Pick<DashboardPostingFacts, DateFact> {
+  return {
+    ...facts,
+    postedAt: facts.postedAt === null ? null : new Date(facts.postedAt),
+    firstSeenAt: new Date(facts.firstSeenAt),
+    expiresAt: facts.expiresAt === null ? null : new Date(facts.expiresAt),
+  };
+}
 
 /**
  * One matched opening as the matched Postings read returns it: the presented
@@ -361,10 +410,7 @@ export async function readMatchedPostings(
     ];
 
     return {
-      ...representative,
-      postedAt: representative.postedAt?.toISOString() ?? null,
-      firstSeenAt: representative.firstSeenAt.toISOString(),
-      expiresAt: representative.expiresAt?.toISOString() ?? null,
+      ...toIso(representative),
       matchedKeywords,
       requiredKeywords: matchedKeywords.filter((keyword) =>
         required.has(keyword),
@@ -413,25 +459,17 @@ export async function overlayReviewState(
   // collected inside the window, and it is not already Expired — the same "not
   // worth opening the app for" exclusion `unreviewedCount` makes (#33).
   const newSince = Date.now() - NEW_TODAY_WINDOW_MS;
-  let newTodayCount = 0;
 
-  const all = matched.map((opening): DashboardPosting => {
+  const cards = matched.map((opening) => {
+    // `earliestFirstSeenAt` is the group's, not the card's: it decides "new
+    // today" here and never reaches the page.
     const { earliestFirstSeenAt, ...facts } = opening;
     const marks = marksByKey.get(opening.dedupKey) ?? [];
     const effective = latestGroupReview(marks);
-    const revived = {
-      ...facts,
-      postedAt: facts.postedAt === null ? null : new Date(facts.postedAt),
-      firstSeenAt: new Date(facts.firstSeenAt),
-      expiresAt: facts.expiresAt === null ? null : new Date(facts.expiresAt),
-    };
+    const revived = fromIso(facts);
     const expired = isExpired(revived);
 
-    if (!expired && new Date(earliestFirstSeenAt).getTime() >= newSince) {
-      newTodayCount += 1;
-    }
-
-    return {
+    const card: DashboardPosting = {
       ...revived,
       expired,
       status: effective?.status ?? DEFAULT_STATUS,
@@ -440,9 +478,13 @@ export async function overlayReviewState(
       // of this opening has a view", not "the latest mark's view".
       viewed: marks.some((mark) => mark.viewedAt !== null),
     };
+    const newToday =
+      !expired && new Date(earliestFirstSeenAt).getTime() >= newSince;
+    return { card, newToday };
   });
 
-  all.sort(byPresentedPostedDate);
+  const newTodayCount = cards.filter(({ newToday }) => newToday).length;
+  const all = cards.map(({ card }) => card).sort(byPresentedPostedDate);
 
   // The review-pipeline counts (#82) read straight off the group-effective
   // Status already resolved onto every opening above — one pass over what is

@@ -13,6 +13,7 @@ import {
   saveCriteria,
   setStatus,
   type Board,
+  type DashboardFilter,
 } from "@/operations";
 import { boardReturns, greenhouseJob } from "@/test/fixtures/greenhouse";
 import { dashboardMatchQuery } from "./dashboard";
@@ -186,7 +187,7 @@ describe("the Review State overlay", () => {
         return { ...opening, absentFetches: 2 };
       }
       if (opening.id === ids.applied) {
-        // A close date the feed published, now behind us; also collected
+        // A close date the Source published, now behind us; also collected
         // before today.
         const yesterday = new Date(Date.now() - DAY_MS).toISOString();
         return {
@@ -232,7 +233,7 @@ describe("the Review State overlay", () => {
 
   it("shows what each filter value asks for", async () => {
     const { userId, ids, matched } = await fixedList();
-    const shown = async (filter?: Parameters<typeof overlayReviewState>[2]) =>
+    const shown = async (filter?: DashboardFilter) =>
       (await overlayReviewState(matched, userId, filter)).postings
         .map((p) => p.id)
         .sort();
