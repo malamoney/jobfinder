@@ -4,8 +4,8 @@ import { z } from "zod";
 import type { Placement } from "@/geocoding/nominatim";
 
 /**
- * A User's stated Criteria: titles, keywords, accepted Arrangements, a home
- * location and radius, and a salary floor.
+ * A User's stated Criteria: titles, keywords in two modes, accepted
+ * Arrangements, a home location and radius, and a salary floor.
  *
  * One schema, imported by both the form and the server operation, so the two
  * cannot drift into disagreeing about what is acceptable — a client that
@@ -129,6 +129,13 @@ export const criteriaInput = z
       .array(listItem(MESSAGES.keywordBlank))
       .max(MAX_LIST_ITEMS, MESSAGES.tooManyItems)
       .default([]),
+    // The keywords a Posting must contain (#135, ADR 0017), as opposed to the
+    // widening ones above. Defaulted so a client from before the second list
+    // existed still validates — its keywords are all widening.
+    requiredKeywords: z
+      .array(listItem(MESSAGES.keywordBlank))
+      .max(MAX_LIST_ITEMS, MESSAGES.tooManyItems)
+      .default([]),
     arrangements: z
       .array(z.enum(ARRANGEMENTS))
       .min(1, MESSAGES.arrangementsEmpty)
@@ -175,9 +182,17 @@ export const criteriaInput = z
   })
   .transform((value) => {
     const distance = acceptsDistanceRole(value.arrangements);
+    // A word cannot be both. The form keeps the two apart; this is the
+    // backstop for a crafted POST, and it keeps the term as required — the
+    // reading that constrains — rather than letting the widening copy quietly
+    // undo it.
+    const requiredKeywords = deduped(value.requiredKeywords);
     return {
       titles: deduped(value.titles),
-      keywords: deduped(value.keywords),
+      keywords: deduped(value.keywords).filter(
+        (keyword) => !requiredKeywords.includes(keyword),
+      ),
+      requiredKeywords,
       arrangements: deduped(value.arrangements),
       homeLocation: distance ? (value.homeLocation ?? null) : null,
       radiusMiles: distance ? (value.radiusMiles ?? null) : null,

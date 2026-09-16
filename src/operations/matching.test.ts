@@ -214,6 +214,214 @@ describe("what a User's Criteria surface", () => {
   });
 });
 
+describe("required keywords", () => {
+  it("leaves out a Posting whose title matched but whose text lacks a required keyword", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Engineer",
+        content: "&lt;p&gt;A Go and Kubernetes shop.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      statedCriteria({
+        titles: ["Staff Engineer"],
+        requiredKeywords: ["typescript"],
+      }),
+    );
+
+    expect((await readDashboard(userId)).postings).toEqual([]);
+  });
+
+  it("surfaces a Posting no title would, when its description contains every required keyword", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Applied Research Scientist",
+        content: "&lt;p&gt;You will write TypeScript every day.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      statedCriteria({
+        titles: ["Staff Engineer"],
+        requiredKeywords: ["typescript"],
+      }),
+    );
+
+    const { postings } = await readDashboard(userId);
+    expect(postings.map((posting) => posting.title)).toEqual([
+      "Applied Research Scientist",
+    ]);
+  });
+
+  it("counts a required keyword found in the title alone", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff TypeScript Engineer",
+        content: "&lt;p&gt;Nothing relevant in here.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      statedCriteria({
+        titles: ["Staff Engineer"],
+        requiredKeywords: ["typescript"],
+      }),
+    );
+
+    expect((await readDashboard(userId)).postings).toHaveLength(1);
+  });
+
+  it("excludes a Posting missing any one of several required keywords", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Engineer",
+        content: "&lt;p&gt;TypeScript and Postgres, all day.&lt;/p&gt;",
+      }),
+      greenhouseJob({
+        id: 2,
+        title: "Staff Engineer, Platform",
+        content: "&lt;p&gt;TypeScript, and a lot of it.&lt;/p&gt;",
+      }),
+      greenhouseJob({
+        id: 3,
+        title: "Staff Engineer, Data",
+        content: "&lt;p&gt;Postgres, and a lot of it.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      statedCriteria({
+        titles: ["Staff Engineer"],
+        requiredKeywords: ["typescript", "postgres"],
+      }),
+    );
+
+    const { postings } = await readDashboard(userId);
+    expect(postings.map((posting) => posting.title)).toEqual([
+      "Staff Engineer",
+    ]);
+  });
+
+  it("lets a keyword left in the widening mode surface a Posting without gating it", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Engineer",
+        content: "&lt;p&gt;A Go and Kubernetes shop.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      statedCriteria({ titles: ["Staff Engineer"], keywords: ["typescript"] }),
+    );
+
+    expect((await readDashboard(userId)).postings).toHaveLength(1);
+  });
+
+  it("produces exactly the Matches it did before when no keyword is required", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Engineer",
+        content: "&lt;p&gt;A Go and Kubernetes shop.&lt;/p&gt;",
+      }),
+      greenhouseJob({
+        id: 2,
+        title: "Applied Research Scientist",
+        content: "&lt;p&gt;You will work in Postgres and Rust every day.&lt;/p&gt;",
+      }),
+      greenhouseJob({
+        id: 3,
+        title: "Account Executive",
+        content: "&lt;p&gt;Quota, territory, pipeline.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      statedCriteria({
+        titles: ["Staff Engineer"],
+        keywords: ["postgres"],
+        requiredKeywords: [],
+      }),
+    );
+
+    const { postings } = await readDashboard(userId);
+    expect(postings.map((posting) => posting.title).sort()).toEqual([
+      "Applied Research Scientist",
+      "Staff Engineer",
+    ]);
+    expect(
+      (await getDb().select().from(criteria))[0].requiredKeywords,
+    ).toEqual([]);
+  });
+
+  it("shows a required keyword among the matched keywords, ahead of the widening ones", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Engineer",
+        content: "&lt;p&gt;TypeScript and Postgres. No Kubernetes here.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      statedCriteria({
+        titles: ["Staff Engineer"],
+        keywords: ["postgres", "terraform"],
+        requiredKeywords: ["typescript"],
+      }),
+    );
+
+    const [posting] = (await readDashboard(userId)).postings;
+    expect(posting.matchedKeywords).toEqual(["typescript", "postgres"]);
+  });
+
+  it("matches a required keyword literally, with LIKE wildcards escaped", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Engineer",
+        content: "&lt;p&gt;Modern C++ on Linux.&lt;/p&gt;",
+      }),
+      greenhouseJob({
+        id: 2,
+        title: "Staff Engineer, Web",
+        content: "&lt;p&gt;Cxx is not what we write.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      statedCriteria({ titles: ["Staff Engineer"], requiredKeywords: ["c++"] }),
+    );
+
+    const { postings } = await readDashboard(userId);
+    expect(postings.map((posting) => posting.title)).toEqual([
+      "Staff Engineer",
+    ]);
+  });
+});
+
 describe("the unreviewed count", () => {
   it("counts every matched Posting while nothing has been reviewed", async () => {
     await corpusHas([
@@ -1209,6 +1417,32 @@ describe("the commute radius", () => {
     await saveCriteria(userId, commuteCriteria());
 
     expect(geo.queries()).toEqual([]);
+  });
+
+  it("geocodes no location a required keyword has already excluded", async () => {
+    const geo = geocoderKnows({
+      "Boston, MA": BOSTON,
+      "cambridge, ma": CAMBRIDGE,
+    });
+    await corpusHas([
+      jobAt(1, "Platform Engineer", "Cambridge, MA", "onsite"),
+      greenhouseJob({
+        id: 2,
+        title: "Data Engineer",
+        location: { name: "Somerville, MA" },
+        content: "&lt;p&gt;An onsite role, TypeScript throughout.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      commuteCriteria({ requiredKeywords: ["typescript"] }),
+    );
+
+    // The gate is a cheap stage, so the warm-up reads only its survivors: the
+    // Cambridge role never reaches the geocoder. The home is the other query.
+    expect(geo.queries()).toEqual(["Boston, MA", "somerville, ma"]);
   });
 
   it("does no geocoding for a User whose Criteria set no radius", async () => {

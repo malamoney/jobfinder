@@ -63,6 +63,7 @@ describe("stating Criteria", () => {
       criteria: {
         titles: ["Staff Engineer", "Principal Engineer"],
         keywords: ["typescript", "postgres"],
+        requiredKeywords: [],
         arrangements: ["full-time", "remote"],
         homeLocation: null,
         radiusMiles: null,
@@ -134,6 +135,71 @@ describe("stating Criteria", () => {
       "postgres",
       "redis",
     ]);
+  });
+});
+
+describe("required keywords", () => {
+  it("stores required keywords apart from the widening ones and reads them back", async () => {
+    const userId = await givenAUser();
+
+    const outcome = await saveCriteria(
+      userId,
+      statedCriteria({
+        keywords: ["postgres"],
+        requiredKeywords: ["typescript"],
+      }),
+    );
+
+    expect(outcome.ok && outcome.criteria).toMatchObject({
+      keywords: ["postgres"],
+      requiredKeywords: ["typescript"],
+    });
+    expect(await readCriteria(userId)).toMatchObject({
+      keywords: ["postgres"],
+      requiredKeywords: ["typescript"],
+    });
+  });
+
+  it("defaults to none when a submission omits them", async () => {
+    const userId = await givenAUser();
+
+    const outcome = await saveCriteria(
+      userId,
+      statedCriteria({ keywords: ["postgres"] }),
+    );
+
+    expect(outcome.ok && outcome.criteria.requiredKeywords).toEqual([]);
+  });
+
+  it("keeps a keyword stated in both lists as required only", async () => {
+    const userId = await givenAUser();
+
+    const outcome = await saveCriteria(
+      userId,
+      statedCriteria({
+        keywords: ["typescript", "postgres", " typescript "],
+        requiredKeywords: ["typescript", "typescript"],
+      }),
+    );
+
+    expect(outcome.ok && outcome.criteria).toMatchObject({
+      keywords: ["postgres"],
+      requiredKeywords: ["typescript"],
+    });
+  });
+
+  it("rejects a blank required keyword with the keyword message", async () => {
+    const userId = await givenAUser();
+
+    const outcome = await saveCriteria(
+      userId,
+      statedCriteria({ requiredKeywords: ["   "] }),
+    );
+
+    expect(outcome).toEqual({
+      ok: false,
+      message: "A keyword cannot be blank.",
+    });
   });
 });
 

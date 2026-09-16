@@ -417,6 +417,13 @@ export type FetchTask = typeof fetchTasks.$inferSelect;
  * edits each as a set and Matching (#9) reads each as a set; per-item rows
  * would buy a join that every Match pays for and nothing else queries.
  *
+ * Keywords are two arrays, not one array with a flag per entry (#135, ADR
+ * 0017). `keywords` keeps its original meaning — every entry widens the net
+ * — and `required_keywords` holds the ones a Posting must contain. A row saved
+ * before the second column existed is all-widening with nothing to backfill,
+ * which is what keeps that upgrade silent. `@/criteria/schema` sees that no
+ * term sits in both.
+ *
  * `home_location` and `radius_miles` are null unless the User accepts an
  * onsite or hybrid Arrangement. `@/criteria/schema` is what enforces that
  * pairing, on the client and the server both — the columns only store what it
@@ -431,6 +438,7 @@ export const criteria = pgTable("criteria", {
 
   titles: text("titles").array().notNull().default([]),
   keywords: text("keywords").array().notNull().default([]),
+  requiredKeywords: text("required_keywords").array().notNull().default([]),
   arrangements: text("arrangements")
     .array()
     .$type<Arrangement[]>()
@@ -480,7 +488,9 @@ export type CriteriaRow = typeof criteria.$inferSelect;
  *
  * `matched_keywords` is the subset of the User's keywords that occur in the
  * Posting's title or description, kept so the Dashboard can show why a Posting
- * was surfaced (#35). Empty when a Posting matched on title alone.
+ * was surfaced (#35). Required keywords are among them, first — every one is
+ * present on a Match by construction (#135). Empty when a Posting matched on
+ * title alone.
  *
  * Keyed by User and Posting together: one verdict per Posting per User. Deleted
  * with either side — a Match with no User to see it, or no Posting to point at,

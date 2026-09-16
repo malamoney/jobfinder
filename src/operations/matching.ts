@@ -46,7 +46,8 @@ import { placeUnplacedHome, radiusOrigin } from "./home-location";
  * previous one let through. The parent spec (#2) names four: SQL over
  * source-structured fields; literal title and keyword text matching; Extraction
  * over the survivors; SQL over the extracted fields for salary, Arrangement,
- * and distance.
+ * and distance. Required keywords (#135, ADR 0017) add a fifth beside the
+ * second: a gate over the same published text.
  *
  * Extraction is what splits the run in two. The stages before it are cheap and
  * read only what a Source published; the stages after it read fields Extraction
@@ -95,6 +96,16 @@ function contains(column: Column, value: string): SQL {
   return ilike(column, `%${escaped}%`);
 }
 
+/** A keyword occurring in the Posting's title or its description. */
+function keywordOccurs(keyword: string): SQL {
+  // Two defined operands always combine to a clause; `or` is only `undefined`
+  // when it is given nothing to combine.
+  return or(
+    contains(postings.title, keyword),
+    contains(postings.description, keyword),
+  )!;
+}
+
 /**
  * Literal title and keyword matching against the Posting's title and
  * description.
@@ -104,21 +115,50 @@ function contains(column: Column, value: string): SQL {
  * "Staff Engineer" surfaces "Staff Engineer, Infrastructure" — a User who wants
  * a narrower net states a narrower title.
  *
- * Keywords widen the net rather than narrowing it: a role found by a keyword in
- * its description is one a title list alone would have missed (#2, user story
- * 9). That is why this is one stage with an `or` inside, not two in sequence.
- * Keywords are optional — with none stated this is title matching alone.
+ * A keyword has two modes (#135, ADR 0017), and both take part here. A
+ * *widening* keyword — the default, and the only kind before #135 — only
+ * ever adds: a role found by a keyword in its description is one a title list alone
+ * would have missed (#2, user story 9), which is why this is one stage with an
+ * `or` inside and not two in sequence. A *required* keyword widens in exactly
+ * the same way, and then also gates, in `requiredKeywordsPresent` below —
+ * marking a keyword required never subtracts from what a widening one would
+ * have caught, it only adds a condition. Keywords are optional — with none
+ * stated this is title matching alone.
  */
 const titleAndKeywordMatch: FunnelStage = {
   name: "literal title and keyword match",
-  narrow({ titles, keywords }) {
+  narrow({ titles, keywords, requiredKeywords }) {
     return or(
       ...titles.map((title) => contains(postings.title, title)),
-      ...keywords.flatMap((keyword) => [
-        contains(postings.title, keyword),
-        contains(postings.description, keyword),
-      ]),
+      ...keywords.map(keywordOccurs),
+      ...requiredKeywords.map(keywordOccurs),
     );
+  },
+};
+
+/**
+ * Every required keyword, present in the Posting's title or description.
+ *
+ * The gate a widening keyword could never be (#135): a User who states
+ * `TypeScript` as a keyword and then sees a stack of roles with no TypeScript
+ * in them is looking at Postings that matched on their title alone. Marked
+ * required, that keyword now excludes such a Posting even when its title
+ * matched a stated title exactly — a perfect title cannot smuggle in a role
+ * that is about something else. With several, each one is a real condition:
+ * a Posting missing any one is out.
+ *
+ * Same text and same test as the widening match — a substring of the title
+ * or the description, case-insensitively, `LIKE` wildcards escaped — so
+ * "required" changes what a hit is worth, not what counts as one. Reads only
+ * what a Source published, so it is a cheap stage and runs before Extraction.
+ * Nothing to filter on when no keyword is required, which is every Criteria
+ * statement saved before the mode existed.
+ */
+const requiredKeywordsPresent: FunnelStage = {
+  name: "every required keyword present",
+  narrow({ requiredKeywords }) {
+    if (requiredKeywords.length === 0) return undefined;
+    return and(...requiredKeywords.map(keywordOccurs));
   },
 };
 
@@ -264,6 +304,7 @@ const SQL_LOGIC: Logic<SQL> = {
 /** The stages, in the order they run. */
 const FUNNEL: FunnelStage[] = [
   titleAndKeywordMatch,
+  requiredKeywordsPresent,
   minimumSalary,
   acceptedArrangements,
   withinCommuteRadius,
@@ -354,13 +395,22 @@ async function warmGeocodesForMatch(userId: string): Promise<void> {
  * description — the same substring, case-insensitive test `contains` makes in
  * SQL, so what the Dashboard shows against a Posting cannot disagree with why
  * it was surfaced.
+ *
+ * Required keywords first: every one of them is on a Match by construction,
+ * and the Dashboard marks them as the guaranteed hits (#135, #137), so they
+ * lead the widening ones.
  */
 function keywordsFoundIn(
   posting: Pick<Posting, "title" | "description">,
-  keywords: readonly string[],
+  {
+    keywords,
+    requiredKeywords,
+  }: Pick<CriteriaRow, "keywords" | "requiredKeywords">,
 ): string[] {
   const haystack = `${posting.title}\n${posting.description}`.toLowerCase();
-  return keywords.filter((keyword) => haystack.includes(keyword.toLowerCase()));
+  return [...requiredKeywords, ...keywords].filter((keyword) =>
+    haystack.includes(keyword.toLowerCase()),
+  );
 }
 
 /**
@@ -427,7 +477,7 @@ export async function matchCriteria(userId: string): Promise<void> {
       hits.map((posting) => ({
         userId,
         postingId: posting.id,
-        matchedKeywords: keywordsFoundIn(posting, stated.keywords),
+        matchedKeywords: keywordsFoundIn(posting, stated),
       })),
     );
   });

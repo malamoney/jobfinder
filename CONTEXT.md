@@ -172,9 +172,13 @@ _Avoid_: Lock, lease, reservation
 
 **Criteria**:
 A User's stated definition of the work they want: titles, keywords, Arrangements, location bounds,
-and a minimum salary. Minimum salary excludes only Postings that *state* a salary below it;
-Postings with no stated salary always pass. There is no country Criterion — the Corpus is US-only
-by ingestion policy (ADR 0010), so every role a User could match is already US-based.
+and a minimum salary. A keyword is in one of two modes (ADR 0017): **widening** — the default —
+pulls in a Posting whose title or description contains it that no stated title would have caught,
+and never holds a Posting back; **required** does that too and also gates, so a Posting is surfaced
+only when its text contains every required keyword, whatever its title matched. Minimum salary
+excludes only Postings that *state* a salary below it; Postings with no stated salary always pass.
+There is no country Criterion — the Corpus is US-only by ingestion policy (ADR 0010), so every role
+a User could match is already US-based.
 _Avoid_: Filters, preferences, settings, query
 
 **Home Coordinate**:
@@ -237,7 +241,8 @@ knows no route for is remembered as such; a provider that could not be reached i
 _Avoid_: Route, trip, lookup
 
 **Match**:
-The verdict that a Posting satisfies a User's Criteria, carrying the Keywords that hit. Derived, and
+The verdict that a Posting satisfies a User's Criteria, carrying the Keywords that hit — every
+required keyword, by construction, and whichever widening ones its text contains. Derived, and
 discarded and recomputed when Criteria change.
 _Avoid_: Result, hit, recommendation
 

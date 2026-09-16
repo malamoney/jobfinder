@@ -1,0 +1,1 @@
+ALTER TABLE "criteria" ADD COLUMN "required_keywords" text[] DEFAULT '{}' NOT NULL;
