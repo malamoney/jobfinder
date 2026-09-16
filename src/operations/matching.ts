@@ -11,13 +11,12 @@ import {
   type Column,
   type SQL,
 } from "drizzle-orm";
-import { getDb } from "@/db";
+import { getDb, type Writer } from "@/db";
 import {
   criteria,
   matches,
   postings,
   type CriteriaRow,
-  type Posting,
 } from "@/db/schema";
 import {
   DISTANCE_ARRANGEMENTS,
@@ -391,25 +390,59 @@ async function warmGeocodesForMatch(userId: string): Promise<void> {
 
 /**
  * Which of the User's keywords occur literally in a Posting's title or
- * description — the same substring, case-insensitive test `contains` makes in
- * SQL, so what the Dashboard shows against a Posting cannot disagree with why
- * it was surfaced.
+ * description, as a SQL array — one `case` per stated keyword, each built
+ * from the same `contains` test the funnel's keyword stages narrow on, so
+ * what the Dashboard shows against a Posting cannot disagree with why it was
+ * surfaced. Computed where the text already is: the rebuild used to select
+ * every hit's description to make this test again in Node, which on the
+ * primary account moved ~21 MB per run to answer a question the database had
+ * answered one stage earlier (#139).
+ *
+ * Bounded by how many keywords the User stated, never by the Corpus. With
+ * none stated there is nothing to look for, so the array is an empty literal
+ * and no expression is built. The two columns are searched separately where
+ * the old in-JS test searched them joined by a newline — only a keyword
+ * containing a newline could straddle that join, and none can be stated.
  *
  * Required keywords first: every one of them is on a Match by construction,
  * and the Dashboard marks them as the guaranteed hits (#135, #137), so they
  * lead the widening ones.
  */
-function keywordsFoundIn(
-  posting: Pick<Posting, "title" | "description">,
-  {
-    keywords,
-    requiredKeywords,
-  }: Pick<CriteriaRow, "keywords" | "requiredKeywords">,
-): string[] {
-  const haystack = `${posting.title}\n${posting.description}`.toLowerCase();
-  return [...requiredKeywords, ...keywords].filter((keyword) =>
-    haystack.includes(keyword.toLowerCase()),
+function keywordsFound({
+  keywords,
+  requiredKeywords,
+}: Pick<CriteriaRow, "keywords" | "requiredKeywords">): SQL<string[]> {
+  const stated = [...requiredKeywords, ...keywords];
+  if (stated.length === 0) return sql`'{}'::text[]`;
+
+  const hits = stated.map(
+    (keyword) => sql`case when ${keywordOccurs(keyword)} then ${keyword} end`,
   );
+  return sql`array_remove(array[${sql.join(hits, sql`, `)}], null)`;
+}
+
+/**
+ * The rebuild's select over the Postings the funnel kept: an id and the
+ * keywords found in each, and nothing else (not yet run — `matchCriteria`
+ * awaits it, and the regression test calls `.toSQL()` on it).
+ *
+ * Exposed so a test can assert against its generated SQL that the description
+ * text never leaves the database — the point of #139 is a property, so
+ * something has to hold it, and a test that only checked the cards would pass
+ * just as well with the column selected and searched in Node.
+ */
+export function matchHitQuery(
+  writer: Writer,
+  stated: Pick<CriteriaRow, "keywords" | "requiredKeywords">,
+  hit: SQL,
+) {
+  return writer
+    .select({
+      id: postings.id,
+      matchedKeywords: keywordsFound(stated).mapWith(matches.matchedKeywords),
+    })
+    .from(postings)
+    .where(hit);
 }
 
 /**
@@ -469,14 +502,14 @@ export async function matchCriteria(userId: string): Promise<void> {
     const full = combine(FUNNEL, stated, context);
     if (!full) return;
 
-    const hits = await tx.select().from(postings).where(full);
+    const hits = await matchHitQuery(tx, stated, full);
     if (hits.length === 0) return;
 
     await tx.insert(matches).values(
-      hits.map((posting) => ({
+      hits.map(({ id, matchedKeywords }) => ({
         userId,
-        postingId: posting.id,
-        matchedKeywords: keywordsFoundIn(posting, stated),
+        postingId: id,
+        matchedKeywords,
       })),
     );
   });
