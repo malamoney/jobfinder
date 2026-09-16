@@ -573,7 +573,7 @@ describe("a state named as the location", () => {
       normalizeLocations("Remote - Canada / Utah / New York / Georgia / Ohio"),
     ).toEqual(["new york"]);
     expect(namesOnlyRemote("Remote - Texas / Florida / North Carolina")).toBe(true);
-    // A hybrid list says the opposite: a state in it is an office withheld.
+    // A hybrid list says the opposite: a state in it is a Place withheld.
     expect(
       normalizeLocations("Hybrid - Cambridge / Utah / Georgia / Boston"),
     ).toEqual(["cambridge", "boston"]);

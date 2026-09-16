@@ -95,7 +95,7 @@ describe("forgetStaleGeocodes", () => {
     expect(await keys()).toEqual(["boston, ma"]);
   });
 
-  it("drops a state-centroid row, and keeps the state that is also a city", async () => {
+  it("drops a row whose key is a state, and keeps the state that is also a city", async () => {
     // `massachusetts` is the point in Worcester County #146 was opened on;
     // `new york` is the city in almost every text that names it, and stays.
     await cached("massachusetts", [42.26, -71.8]);

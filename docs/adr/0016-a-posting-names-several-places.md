@@ -155,8 +155,9 @@ So a country, or a continent, named as the location is a **nationwide marker** a
 (`NATIONWIDE_MARKERS`, `src/postings/location.ts`), read exactly as a remote marker: the role can be
 done from anywhere in the country, which is remote at the scale of a nation, and a country is not a
 commute. `Remote - US`, `Remote, USA`, `USA Remote` and `Remote (United States)` now read alike —
-remote, no place — and `Remote - United States / New Jersey / Boston / New York` reads as New
-Jersey, Boston and New York, the country dropping out of the list. Because a nationwide marker is a
+remote, no place — and `Remote - United States / New Jersey / Boston / New York` read as New
+Jersey, Boston and New York, the country dropping out of the list (and New Jersey with it once a
+state under a remote label stopped being a place, #146 below). Because a nationwide marker is a
 remote marker, these Postings read as naming only remote (`namesOnlyRemote`, #123) and wear no
 **Location unresolved** pill: nothing was missed. `Hybrid - United States` is the exception the
 remote markers already make — a hybrid role somewhere in the country withholds its place, and is a
@@ -180,8 +181,8 @@ The decisions the rule had to make, recorded so the next person meets them rathe
   exactly the same shape of wrongness at a smaller scale. Out of scope here and recorded as its own
   ticket (#146): a state is at least in the right part of the country, so the census that decides
   whether "no place" or "the state" is the better reading for a User 30 miles from its centroid has
-  not been taken, and this rule is evidence-driven by design. Taken since, and the section below has
-  the rule.
+  not been taken, and this rule is evidence-driven by design. It has been since (#146, below), and
+  the rule is a section of its own.
 - **The tested behaviour that changed.** `location.test.ts` asserted `normalizeLocation("Remote -
   US")` was `"us"`, deliberately, and `namesOnlyRemote("Remote - US")` was false for the same reason.
   Both are the other way now, and the cases say why rather than disappearing.
@@ -213,7 +214,7 @@ and "the state" might be a better reading than "no place" for a User 30 miles fr
 **The census.** The dev database was over its transfer quota when this was decided (2026-09-16), so
 the census was taken against the live Sources instead of the Corpus: every ATS Board in the
 registries (`scripts/data/`) and the Himalayas feed, read through the adapters the nightly sweep
-uses — 549 of 555 Boards answered, 21,929 jobs, 13,057 of them `us` by the classifier. Of those,
+uses — 549 of 555 Boards answered, 21,929 Postings, 13,057 of them `us` by the classifier. Of those,
 398 held at least one state-name key; 242 of the state-keyed *places* were `new york` and the texts
 behind them are the city (`New York` ×75, `Hybrid - New York` ×27, and `New York` beside San
 Francisco, Los Angeles and Boston in Ashby lists), and `washington` is the same ambiguity eight
@@ -229,8 +230,8 @@ ways by shape:
   ticket was opened on.
 - **Bare, the whole of the text: 34 Postings.** `Georgia` ×19 (four Boards: two US employers, and
   Xometry Europe, for whom it is the country — the classifier calls it `us` either way),
-  `Pennsylvania` ×4, `Louisiana; Texas` ×3, `Colorado`, `Indiana`, `Ohio`, `New Jersey`, `Maryland`,
-  `Wisconsin`, `Onsite - Hawaii`.
+  `Pennsylvania` ×4, `Louisiana; Texas` ×3, `Colorado` ×2, `Indiana`, `Ohio`, `New Jersey`,
+  `Maryland`, `Wisconsin`, `Onsite - Hawaii`.
 - **In a hybrid or onsite list beside cities, the rest of the 74 places not under a remote label.**
   `Hybrid - Cambridge / Utah / Washington / Georgia / Rhode Island / Florida / Texas / Pennsylvania /
   Boston / New Jersey`, eight Postings from one employer, accounts for most of them.
@@ -254,7 +255,7 @@ nationwide one:
   Georgia, not one remote role and two offices. The aside is read the same way, since the split
   strips it before any part can see its own.
 - **Bare, a state is a placeholder.** `Texas`, `Louisiana; Texas`, `Onsite - Hawaii`, and the states
-  in a hybrid list name an office somewhere in the state that the employer did not name — the same
+  in a hybrid list name a Place somewhere in the state that the employer did not name — the same
   thing `Multiple locations` says, and read the same way: kept, and flagged. That is the "no place"
   side of the question #124 left open, chosen over the centroid because the centroid is *measured*,
   silently, and a User in Philadelphia with a 40-mile radius lost `Pennsylvania` to a forest in Centre
@@ -283,8 +284,12 @@ once the database is reachable again.
 **Where the rule is wrong, and how.** A User who accepts remote now sees `Remote - Massachusetts`
 from California, the way they already see `Remote`; the state is a hiring restriction the text
 states and the funnel does not read, which is a smaller wrong than dropping it for the Boston User it
-was written for. `Texas or CST` reads as a placeholder and a scrap, as before. And the census was of
-the Sources on one day rather than of the Corpus, which also holds Expired Postings; the shape is not
+was written for. `Texas or CST` reads as a placeholder and a scrap, as before. A state with a country
+after it — `Texas, US`, `Remote - Texas, USA` — is still a place, and still the centroid: the rule
+matches the whole of a part, as the country one does, and the census found that shape once (`Remote
+- Georgia / Texas, US / Florida`), which is not evidence enough to strip a country suffix from every
+key in the Corpus. Recorded so the next occurrence meets a decision. And the census was of the
+Sources on one day rather than of the Corpus, which also holds Expired Postings; the shape is not
 expected to differ, and the rule is a reading of text, not of a count.
 
 **The tested behaviour that changed.** `normalizeLocations("Remote - United States / New Jersey /

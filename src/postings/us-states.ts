@@ -20,7 +20,7 @@
  * comma — a state code is written `MA`, and a lowercase `ma` after a comma is
  * as likely to be prose.
  */
-const US_STATES = [
+export const US_STATES: readonly (readonly [code: string, name: string])[] = [
   ["AL", "alabama"],
   ["AK", "alaska"],
   ["AZ", "arizona"],
@@ -74,8 +74,11 @@ const US_STATES = [
   ["WY", "wyoming"],
 ] as const;
 
-/** The USPS codes, in capitals, as a location line abbreviates a state. */
-export const US_STATE_CODES: readonly string[] = US_STATES.map(([code]) => code);
+/**
+ * The table above, as a location line writes the two halves of it: the USPS
+ * codes in capitals (`TX`), and the names lowercased (`texas`).
+ */
+const US_STATE_CODES: readonly string[] = US_STATES.map(([code]) => code);
 
 /** The state names, lowercased, as a location line spells one out. */
 export const US_STATE_NAMES: readonly string[] = US_STATES.map(([, name]) => name);

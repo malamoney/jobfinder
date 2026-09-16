@@ -1,8 +1,4 @@
-import {
-  US_STATE_CODE_ALTERNATION,
-  US_STATE_CODES,
-  US_STATE_NAMES,
-} from "./us-states";
+import { US_STATE_CODE_ALTERNATION, US_STATES } from "./us-states";
 
 /**
  * Location normalization: turning a Posting's free-text location into a stable
@@ -145,10 +141,11 @@ function isRemoteOrNationwideMarker(value: string): boolean {
  * Massachusetts`, `Texas (Remote)`, `Remote-Texas` — it is remote-within-a-
  * state: the role can be done from anywhere in the state, which is remote at
  * the scale of a state, and names no Place. That was 73% of the state-keyed
- * places the census found (ADR 0016). Bare — `Texas`, `Louisiana; Texas`,
- * `Onsite - Hawaii`, the states in a hybrid list — it is a placeholder: there
- * is an office somewhere in the state, and the employer did not say where.
- * `readPart` makes that split; this table only says what a state is.
+ * places the census found, once the two below were set aside (ADR 0016). Bare
+ * — `Texas`, `Louisiana; Texas`, `Onsite - Hawaii`, the states in a hybrid
+ * list — it is a placeholder: a Place somewhere in the state that the
+ * employer did not name. `readPart` makes that split; this table only says
+ * what a state is.
  *
  * The names and codes come from the shared table (`us-states.ts`), and a code
  * reads exactly as its name does, so `Remote - MA` and `Remote -
@@ -164,11 +161,11 @@ function isRemoteOrNationwideMarker(value: string): boolean {
  * so `Remote - NY` still resolves too — a text the rule does not take behaves
  * as it did before, which is the direction to be wrong in.
  */
-const STATES_THAT_ARE_ALSO_CITIES = new Set(["new york", "ny", "washington", "wa"]);
+const STATES_THAT_ARE_ALSO_CITIES = new Set(["new york", "washington"]);
 
 const STATE_MARKERS = new Set(
-  [...US_STATE_NAMES, ...US_STATE_CODES.map((code) => code.toLowerCase())].filter(
-    (state) => !STATES_THAT_ARE_ALSO_CITIES.has(state),
+  US_STATES.filter(([, name]) => !STATES_THAT_ARE_ALSO_CITIES.has(name)).flatMap(
+    ([code, name]) => [code.toLowerCase(), name],
   ),
 );
 
@@ -327,7 +324,7 @@ export function placesNamed(raw: string | null | undefined): NamedPlace[] {
 function readParts(raw: string): [part: string, reading: Reading][] {
   const readings: [string, Reading][] = [];
 
-  const textOffersRemote = offersRemote(raw);
+  const textOffersRemote = remoteOffered(raw);
   const parts = raw.replace(PARENTHETICAL_RE, "").split(PLACE_SEPARATOR_RE);
   for (const [index, part] of parts.entries()) {
     // A stranded conjunction only ever follows a separator, so the first part
@@ -350,9 +347,11 @@ function readParts(raw: string): [part: string, reading: Reading][] {
  * (`placeWithArrangement`), so `Remote - Canada / Utah / Georgia` says remote
  * in Utah and remote in Georgia rather than one remote role and two offices.
  * Only a state consults this (#146); a city under a remote label is still a
- * Place, and a placeholder is still a placeholder.
+ * Place, and a placeholder is still a placeholder. `readPart` asks the same
+ * question of its own part, asides already gone, so the part and the text it
+ * came from are read by one rule.
  */
-function offersRemote(raw: string): boolean {
+function remoteOffered(raw: string): boolean {
   return (
     raw.match(LEADING_ARRANGEMENT_RE)?.[1]?.toLowerCase() === "remote" ||
     TRAILING_REMOTE_RE.test(raw) ||
@@ -440,7 +439,7 @@ export function normalizeLocations(raw: string | null | undefined): string[] {
  * alternatives are stripped so what a geocoder sees is the place alone.
  */
 export function normalizeLocation(raw: string | null | undefined): string | null {
-  const reading = readPart(raw);
+  const reading = readPart(raw, remoteOffered(raw ?? ""));
   return reading?.names === "place" ? reading.key : null;
 }
 
@@ -464,12 +463,12 @@ export function normalizeLocation(raw: string | null | undefined): string | null
  * A state is the one reading that turns on remote being offered (#146):
  * `Remote - Texas` is remote and `Texas` is a placeholder, where `Remote - US`
  * and `US` are both remote. `textOffersRemote` is that fact read off the whole
- * text by `readParts`, for the label a list carries in front of all its parts
- * and the aside the split took off before the part could see it.
+ * text the part came from, for the label a list carries in front of all its
+ * parts and the aside the split took off before the part could see it.
  */
 function readPart(
   raw: string | null | undefined,
-  textOffersRemote = false,
+  textOffersRemote: boolean,
 ): Reading | null {
   if (!raw) return null;
 
@@ -478,8 +477,7 @@ function readPart(
 
   const label = bare.match(LEADING_ARRANGEMENT_RE)?.[1]?.toLowerCase();
   const unlabelled = bare.replace(LEADING_ARRANGEMENT_RE, "");
-  const offersRemote =
-    label === "remote" || TRAILING_REMOTE_RE.test(unlabelled);
+  const offersRemote = remoteOffered(bare);
 
   let value = unlabelled
     .replace(TRAILING_REMOTE_RE, "")
@@ -493,7 +491,7 @@ function readPart(
   if (PLACEHOLDERS.has(value)) return { names: "nothing" };
   if (STATE_MARKERS.has(value)) {
     // Remote-within-a-state names no Place; a bare state, or one under an
-    // onsite or hybrid label, is an office the employer did not name.
+    // onsite or hybrid label, is a Place the employer did not name.
     const remote =
       label === undefined ? offersRemote || textOffersRemote : label === "remote";
     return remote ? { names: "remote" } : { names: "nothing" };
