@@ -1,17 +1,18 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createMatchesReturn, type ReturnEnv } from "./matches-return";
 
 /**
- * How the matches list settles when the User steps back to it (#97, #99,
- * #142).
+ * The return sequence, step by step (#142). The timing hazard it exists for
+ * is played out in `matches-scroll-position.test.ts`, with the rest of the
+ * scroll-position contract; these pin what each step does and does not do.
  *
  * Each test plays one browser: `scrollY` is where the window is, `scrollTo`
- * moves it, `refresh` stands in for `router.refresh()`, and `takeStale` for the
- * flag the Posting page leaves. A traversal is what a `popstate` reports; the
- * two arrival steps are what the component's layout and passive effects call.
+ * moves it, `refresh` stands in for `router.refresh()`, and `takeStale` for
+ * the flag the Posting page leaves. A traversal is what a `popstate` reports;
+ * the two arrival steps are what the island's layout and passive effects call.
  */
 
-const URL = "/dashboard";
+const LIST_URL = "/dashboard";
 
 function browser({
   at = 0,
@@ -20,7 +21,7 @@ function browser({
   let y = at;
   let flagged = stale;
   const env: ReturnEnv = {
-    url: URL,
+    url: LIST_URL,
     scrollY: () => y,
     scrollTo: vi.fn((to: number) => {
       y = to;
@@ -32,50 +33,43 @@ function browser({
       return was;
     }),
   };
-  return {
-    env,
-    /** The browser's own restore, if and when it comes. */
-    restoreTo(to: number) {
-      y = to;
-    },
-    get scrollY() {
-      return y;
-    },
-  };
+  return env;
 }
 
-describe("returning to the matches list", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("puts the offset back before the refresh, however late the browser's own restore comes", () => {
-    // The User had scrolled to 1400 and opened a Posting. Stepping back, the
-    // list mounts while the window is still at the top; the browser's deferred
-    // restore is a full second away — far past the 300ms the old timer bet on,
-    // which is when #142's refresh landed with the list still at the top.
-    const b = browser({ at: 0 });
-    const seenByRefresh: number[] = [];
-    (b.env.refresh as ReturnType<typeof vi.fn>).mockImplementation(() => {
-      seenByRefresh.push(b.scrollY);
-    });
-    setTimeout(() => b.restoreTo(1400), 1000);
-
+describe("a return to the matches list", () => {
+  it("puts the offset back before the refresh", () => {
     const matches = createMatchesReturn();
-    matches.noteScroll(URL, 1400);
-    matches.noteTraversal(URL);
+    matches.noteScroll(LIST_URL, 1400);
+    matches.noteTraversal(LIST_URL);
+    const b = browser({ at: 0 });
 
-    matches.restore(b.env);
-    matches.settle(b.env);
+    matches.restore(b);
+    expect(b.scrollTo).toHaveBeenCalledWith(1400);
+    expect(b.refresh).not.toHaveBeenCalled();
 
-    expect(b.env.scrollTo).toHaveBeenCalledWith(1400);
-    expect(seenByRefresh).toEqual([1400]);
+    matches.settle(b);
+    expect(b.refresh).toHaveBeenCalledTimes(1);
+  });
 
-    vi.advanceTimersByTime(1000);
-    expect(b.scrollY).toBe(1400);
+  it("does not scroll when the browser already put the offset back", () => {
+    const matches = createMatchesReturn();
+    matches.noteScroll(LIST_URL, 1400);
+    matches.noteTraversal(LIST_URL);
+    const b = browser({ at: 1400 });
+    matches.restore(b);
+    expect(b.scrollTo).not.toHaveBeenCalled();
+  });
+
+  it("leaves the scroll to the browser when nothing is remembered", () => {
+    // After a full reload the memory is empty (a cold tab is the same shape);
+    // there is nothing to put back, and the refresh still lands.
+    const matches = createMatchesReturn();
+    matches.noteTraversal(LIST_URL);
+    const b = browser({ at: 0 });
+    matches.restore(b);
+    matches.settle(b);
+    expect(b.scrollTo).not.toHaveBeenCalled();
+    expect(b.refresh).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -86,19 +80,30 @@ describe("a fresh navigation to the matches list", () => {
     // at the top, and nothing may drag it to 1400. Leaving from there without
     // scrolling and stepping back must come back to the top, too.
     const matches = createMatchesReturn();
-    matches.noteScroll(URL, 1400);
+    matches.noteScroll(LIST_URL, 1400);
 
     const fresh = browser({ at: 0, stale: false });
-    matches.restore(fresh.env);
-    matches.settle(fresh.env);
-    expect(fresh.env.scrollTo).not.toHaveBeenCalled();
+    matches.restore(fresh);
+    matches.settle(fresh);
+    expect(fresh.scrollTo).not.toHaveBeenCalled();
 
     const back = browser({ at: 0, stale: true });
-    matches.noteTraversal(URL);
-    matches.restore(back.env);
-    matches.settle(back.env);
-    expect(back.env.scrollTo).not.toHaveBeenCalled();
-    expect(back.env.refresh).toHaveBeenCalledTimes(1);
+    matches.noteTraversal(LIST_URL);
+    matches.restore(back);
+    matches.settle(back);
+    expect(back.scrollTo).not.toHaveBeenCalled();
+    expect(back.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("is not a return just because some other page was reached by history", () => {
+    // Forward to a Posting by history, then to the list through the nav: the
+    // last traversal was not to the list, so this mount is a fresh one.
+    const matches = createMatchesReturn();
+    matches.noteScroll(LIST_URL, 1400);
+    matches.noteTraversal("/postings/abc");
+    const b = browser({ at: 0 });
+    matches.restore(b);
+    expect(b.scrollTo).not.toHaveBeenCalled();
   });
 });
 
@@ -108,70 +113,36 @@ describe("the refresh", () => {
     // for the restore rather than race it, and must not eat the stale flag.
     const matches = createMatchesReturn();
     const b = browser({ at: 0 });
-    matches.settle(b.env);
-    expect(b.env.refresh).not.toHaveBeenCalled();
-    expect(b.env.takeStale).not.toHaveBeenCalled();
+    matches.settle(b);
+    expect(b.refresh).not.toHaveBeenCalled();
+    expect(b.takeStale).not.toHaveBeenCalled();
 
-    matches.restore(b.env);
-    matches.settle(b.env);
-    expect(b.env.refresh).toHaveBeenCalledTimes(1);
+    matches.restore(b);
+    matches.settle(b);
+    expect(b.refresh).toHaveBeenCalledTimes(1);
   });
 
   it("fires once when React mounts the island twice (dev double-invoke)", () => {
     const matches = createMatchesReturn();
-    matches.noteScroll(URL, 900);
-    matches.noteTraversal(URL);
+    matches.noteScroll(LIST_URL, 900);
+    matches.noteTraversal(LIST_URL);
     const b = browser({ at: 0 });
 
-    matches.restore(b.env);
-    matches.settle(b.env);
-    matches.restore(b.env);
-    matches.settle(b.env);
+    matches.restore(b);
+    matches.settle(b);
+    matches.restore(b);
+    matches.settle(b);
 
-    expect(b.env.scrollTo).toHaveBeenCalledTimes(1);
-    expect(b.env.refresh).toHaveBeenCalledTimes(1);
+    expect(b.scrollTo).toHaveBeenCalledTimes(1);
+    expect(b.refresh).toHaveBeenCalledTimes(1);
   });
 
   it("does not fire when the Posting page left no stale flag", () => {
     const matches = createMatchesReturn();
-    matches.noteTraversal(URL);
+    matches.noteTraversal(LIST_URL);
     const b = browser({ at: 0, stale: false });
-    matches.restore(b.env);
-    matches.settle(b.env);
-    expect(b.env.refresh).not.toHaveBeenCalled();
-  });
-});
-
-describe("what counts as a return", () => {
-  it("a traversal that landed on some other page does not move this list", () => {
-    // Forward to a Posting by history, then to the list through the nav: the
-    // last traversal was not to the list, so this mount is a fresh one.
-    const matches = createMatchesReturn();
-    matches.noteScroll(URL, 1400);
-    matches.noteTraversal("/postings/abc");
-    const b = browser({ at: 0 });
-    matches.restore(b.env);
-    expect(b.env.scrollTo).not.toHaveBeenCalled();
-  });
-
-  it("a return with nothing remembered leaves the scroll to the browser", () => {
-    // After a full reload the memory is empty (a cold tab is the same shape);
-    // there is nothing to put back, and the refresh still lands.
-    const matches = createMatchesReturn();
-    matches.noteTraversal(URL);
-    const b = browser({ at: 0 });
-    matches.restore(b.env);
-    matches.settle(b.env);
-    expect(b.env.scrollTo).not.toHaveBeenCalled();
-    expect(b.env.refresh).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not scroll when the browser already put the offset back", () => {
-    const matches = createMatchesReturn();
-    matches.noteScroll(URL, 1400);
-    matches.noteTraversal(URL);
-    const b = browser({ at: 1400 });
-    matches.restore(b.env);
-    expect(b.env.scrollTo).not.toHaveBeenCalled();
+    matches.restore(b);
+    matches.settle(b);
+    expect(b.refresh).not.toHaveBeenCalled();
   });
 });

@@ -18,9 +18,18 @@
  * only then refreshes. There is no timer: the refresh follows the restore by
  * construction, however long the traversal took to render.
  *
+ * A return is recognised by the `popstate` that caused it, not by the
+ * router's `bfcacheId`: that id is restored from Next's data cache, which is
+ * keyed by URL, so it is fresh on exactly the cache-miss traversal that
+ * renders slowest — the case this exists for. Offsets are keyed by URL for the
+ * same reason. Two history entries at the same URL therefore share one
+ * offset, the later one's; the browser's own restore is per entry, but it is
+ * also the thing that cannot be relied on here.
+ *
  * Kept out of React so the sequence can be pinned without a browser
- * (`matches-return.test.ts`). `RefreshMatches` supplies the window and router
- * pieces through a {@link ReturnEnv}.
+ * (`matches-return.test.ts`, and the hazard itself in
+ * `matches-scroll-position.test.ts`). `RefreshMatches` supplies the window and
+ * router pieces through a {@link ReturnEnv}.
  */
 
 /** The browser and router, as the return sequence needs them. */

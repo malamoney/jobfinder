@@ -14,10 +14,20 @@ const STALE_KEY = "matches:stale";
  */
 const matchesReturn = createMatchesReturn();
 
-if (typeof window !== "undefined") {
-  // The list is not mounted when the User steps back to it, so the step is
-  // noted here and read by the mount it causes. The browser has already set
-  // `location` to the entry being traversed to when `popstate` fires.
+/**
+ * Whether the tab's `popstate` listener is in place. The list is not mounted
+ * when the User steps back to it, so the step has to be noted by a listener
+ * that outlives the island; registered on the first mount rather than at
+ * import, so loading this module has no side effect and HMR cannot stack
+ * listeners. Before the first mount there is nothing to return to anyway.
+ */
+let noting = false;
+
+function noteTraversals(): void {
+  if (noting) return;
+  noting = true;
+  // The browser has already set `location` to the entry being traversed to
+  // when `popstate` fires.
   window.addEventListener("popstate", () => {
     matchesReturn.noteTraversal(listUrl());
   });
@@ -40,16 +50,16 @@ function takeStale(): boolean {
 /**
  * Settles the matches list when the User comes back to it from a Posting they
  * just opened: puts the scroll back where they left it, then pulls a fresh
- * render so the card shows its "Viewed" tag (`matches-return.ts` has the
- * sequence and why it is ordered this way).
+ * render so the card shows its "Viewed" tag. `matches-return.ts` has the
+ * sequence and why it is ordered this way (#97, #99, #142); this island only
+ * hands it the window and the router.
  *
- * `markViewedAction` deliberately does not `revalidatePath("/dashboard")` —
- * that drops the list from the router's back/forward cache, so "← Back to
- * matches" re-fetches it and loses the scroll position (#97). Instead
- * `MarkViewed` sets a `sessionStorage` flag and this reads it on return and
- * calls `router.refresh()`, which merges the new server render in place
- * without moving the scroll — provided the scroll has already been put back,
- * which is why the restore runs before paint and the refresh after it (#142).
+ * The restore runs before paint (`useLayoutEffect`) so the User never sees
+ * the top; the refresh runs after (`useEffect`) so the restored frame paints
+ * before the server round trip begins. `router.refresh()` merges the new
+ * render in place without moving the scroll — it is `markViewedAction`'s
+ * `revalidatePath("/dashboard")` that would have cost the offset, which is
+ * why the Posting page sets a flag instead and this acts on it.
  */
 export function RefreshMatches() {
   const router = useRouter();
@@ -59,10 +69,17 @@ export function RefreshMatches() {
   }, [router]);
 
   useEffect(() => {
+    noteTraversals();
     matchesReturn.settle(env(router));
 
     const url = listUrl();
-    const noteScroll = () => matchesReturn.noteScroll(url, window.scrollY);
+    const noteScroll = () => {
+      // Still listening while the commit that leaves for a Posting settles:
+      // the router has already moved the URL and scrolled to the top, but this
+      // cleanup runs a task later, and a scroll event in between would record
+      // the top as where the User left the list. The URL says it is not.
+      if (listUrl() === url) matchesReturn.noteScroll(url, window.scrollY);
+    };
     window.addEventListener("scroll", noteScroll, { passive: true });
     return () => window.removeEventListener("scroll", noteScroll);
   }, [router]);
