@@ -30,8 +30,17 @@ development, and tests.
 
 ```bash
 pnpm db:generate   # generate a migration from src/db/schema.ts
-pnpm db:migrate    # apply migrations to DATABASE_URL (your dev branch)
+pnpm db:migrate    # apply migrations to DATABASE_URL (your local database)
 ```
+
+Local development runs against a local Postgres, never against Neon: `.env.local` is gitignored,
+so when it once drifted to the production endpoint nothing said so, and a week of hot reloads
+exhausted the project's monthly transfer allowance (#140). The guardrail (#156) is a rule rather
+than a hostname: a process that is not a production build has no business opening a database that
+is not on this machine. `pnpm dev` refuses a non-local `DATABASE_URL` at its first database use; a
+`pnpm` script (`warm-geocodes`, `seed:boards`, `db:migrate`) warns once and proceeds, since those
+are run against production on purpose; production builds and the test suite are silent. Set
+`ALLOW_REMOTE_DATABASE=1` in the environment when you mean it.
 
 Production is migrated by the `migrate production` CI job when a PR merges to `main`. It runs
 `pnpm db:migrate` against the `PROD_DATABASE_URL` repository secret and is gated to `main`, so

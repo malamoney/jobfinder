@@ -103,6 +103,11 @@ jobs:
       - uses: ./.github/actions/setup
       # drizzle-kit records each migration it applies, so a run with nothing
       # new to do is a no-op rather than an error.
+      #
+      # This job reaches production on purpose, so it opts out of the
+      # remote-database guardrail (#156) rather than print the production
+      # hostname into the log as a warning.
       - run: pnpm db:migrate
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          ALLOW_REMOTE_DATABASE: "1"
