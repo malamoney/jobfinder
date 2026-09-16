@@ -207,6 +207,34 @@ describe("an opening published to two Boards", () => {
     const [card] = (await readDashboard(userId)).postings;
     expect([...card.matchedKeywords].sort()).toEqual(["kubernetes", "terraform"]);
   });
+
+  it("carries a required keyword through the union, marked required, ahead of the widening ones", async () => {
+    // Both copies contain the required keyword — they must, to be Matches at
+    // all — and only the aggregator's snippet mentions the widening one.
+    boardReturns("acme", [atsListing()]);
+    boardReturns("jobwire", [
+      aggregatorListing({
+        content:
+          "&lt;p&gt;Acme is hiring, a Terraform shop. Kubernetes experience a plus.&lt;/p&gt;",
+      }),
+    ]);
+    await sweep();
+
+    const userId = await givenAUser();
+    await saveCriteria(
+      userId,
+      statedCriteria({
+        keywords: ["kubernetes"],
+        requiredKeywords: ["terraform"],
+      }),
+    );
+
+    const { postings } = await readDashboard(userId);
+    expect(postings).toHaveLength(1);
+    const [card] = postings;
+    expect(card.matchedKeywords).toEqual(["terraform", "kubernetes"]);
+    expect(card.requiredKeywords).toEqual(["terraform"]);
+  });
 });
 
 describe("Review State on a deduped opening", () => {
