@@ -20,6 +20,14 @@ import {
 import { formatCompactAge } from "../format";
 import { MonoLabel } from "../mono-label";
 import { saveCriteriaAction } from "./actions";
+import {
+  joinKeywords,
+  splitKeywords,
+  withKeyword,
+  withoutKeyword,
+  withRequiredToggled,
+  type KeywordEntry,
+} from "./keyword-modes";
 
 /** How each Arrangement reads on its checkbox. */
 const ARRANGEMENT_LABELS: Record<Arrangement, string> = {
@@ -40,6 +48,14 @@ const ARRANGEMENT_GROUPS = [
   { legend: "Where you work", values: LOCATION_ARRANGEMENTS },
   { legend: "Employment type", values: EMPLOYMENT_ARRANGEMENTS },
 ] as const;
+
+/**
+ * The 13px tick box a chip carries to show it is marked: the arrangement
+ * chips wear it as a checkbox, the keyword chips as the required toggle.
+ * One string so the two cannot drift apart on the same page.
+ */
+const TICK_BOX =
+  "flex size-[13px] items-center justify-center rounded-[3px] border text-[9px] leading-none";
 
 /** An empty statement, for a User stating Criteria for the first time. */
 const BLANK: Criteria = {
@@ -141,14 +157,12 @@ export function CriteriaForm({
 
   const [titles, setTitles] = useState<string[]>(stated.titles);
   const [titleDraft, setTitleDraft] = useState("");
-  const [keywords, setKeywords] = useState<string[]>(stated.keywords);
-  const [keywordDraft, setKeywordDraft] = useState("");
-  // Carried through a save untouched until #136 gives the keyword chips their
-  // required / widening toggle: this form cannot set one yet, and a save that
-  // silently cleared what is stored would be worse than a control it lacks.
-  const [requiredKeywords, setRequiredKeywords] = useState<string[]>(
-    stated.requiredKeywords,
+  // One list the User toggles between the two modes (spec, story 7); the
+  // schema's two arrays are split from it on save and joined back on read.
+  const [keywords, setKeywords] = useState<KeywordEntry[]>(() =>
+    joinKeywords(stated.keywords, stated.requiredKeywords),
   );
+  const [keywordDraft, setKeywordDraft] = useState("");
   const [arrangements, setArrangements] = useState<Arrangement[]>(
     stated.arrangements,
   );
@@ -175,8 +189,7 @@ export function CriteriaForm({
   function showStored(saved: Criteria, placed: HomeOutcome) {
     setHome(placed);
     setTitles(saved.titles);
-    setKeywords(saved.keywords);
-    setRequiredKeywords(saved.requiredKeywords);
+    setKeywords(joinKeywords(saved.keywords, saved.requiredKeywords));
     setArrangements(saved.arrangements);
     setHomeLocation(saved.homeLocation ?? "");
     setRadiusMiles(saved.radiusMiles?.toString() ?? "");
@@ -196,8 +209,7 @@ export function CriteriaForm({
   function currentInput(): CriteriaInput {
     return {
       titles,
-      keywords,
-      requiredKeywords,
+      ...splitKeywords(keywords),
       arrangements,
       homeLocation: wantsDistance ? homeLocation.trim() || null : null,
       radiusMiles: wantsDistance ? typedNumber(radiusMiles) : null,
@@ -221,17 +233,20 @@ export function CriteriaForm({
   }
 
   function addKeyword() {
-    const value = keywordDraft.trim();
-    if (!value) return;
-    setKeywords((current) =>
-      current.includes(value) ? current : [...current, value],
-    );
+    const term = keywordDraft.trim();
+    if (!term) return;
+    setKeywords((current) => withKeyword(current, term));
     setKeywordDraft("");
     edited();
   }
 
-  function removeKeyword(value: string) {
-    setKeywords((current) => current.filter((entry) => entry !== value));
+  function removeKeyword(term: string) {
+    setKeywords((current) => withoutKeyword(current, term));
+    edited();
+  }
+
+  function toggleRequired(term: string) {
+    setKeywords((current) => withRequiredToggled(current, term));
     edited();
   }
 
@@ -319,7 +334,7 @@ export function CriteriaForm({
         <ChipField
           legend="Job titles"
           hint="The roles you want. Add them one at a time."
-          items={titles}
+          items={titles.map((term) => ({ term }))}
           draft={titleDraft}
           setDraft={setTitleDraft}
           onAdd={addTitle}
@@ -328,14 +343,17 @@ export function CriteriaForm({
           placeholder="Staff Engineer"
         />
 
+        {/* One list in two modes (ADR 0017). A keyword is widening until the
+            User ticks it required, and the hint gives each mode one sentence. */}
         <ChipField
           legend="Description keywords"
-          hint="Words to look for in a posting's text — a technology, a domain. Optional."
+          hint="Words to look for in a posting's text — a technology, a domain. Optional. A keyword widens your search: a posting that mentions it is shown even when its title is not one you listed. Tick a keyword to require it, and only postings that mention it are shown at all."
           items={keywords}
           draft={keywordDraft}
           setDraft={setKeywordDraft}
           onAdd={addKeyword}
           onRemove={removeKeyword}
+          onToggleRequired={toggleRequired}
           onDraftKeyDown={(event) => onDraftKeyDown(event, addKeyword)}
           placeholder="postgres"
         />
@@ -370,7 +388,7 @@ export function CriteriaForm({
                     />
                     <span
                       aria-hidden
-                      className="flex size-[13px] items-center justify-center rounded-[3px] border border-border text-[9px] leading-none text-transparent peer-checked:border-accent peer-checked:bg-accent peer-checked:text-bg"
+                      className={`${TICK_BOX} border-border text-transparent peer-checked:border-accent peer-checked:bg-accent peer-checked:text-bg`}
                     >
                       ✓
                     </span>
@@ -497,19 +515,35 @@ export function CriteriaForm({
   );
 }
 
+/** One chip: a keyword entry, or a title, which has no mode to be in. */
+type Chip = Pick<KeywordEntry, "term"> & Partial<KeywordEntry>;
+
 type ChipFieldProps = {
   legend: string;
   hint: string;
-  items: string[];
+  items: readonly Chip[];
   draft: string;
   setDraft: (value: string) => void;
   onAdd: () => void;
-  onRemove: (value: string) => void;
+  onRemove: (term: string) => void;
   onDraftKeyDown: (event: KeyboardEvent) => void;
   placeholder: string;
+  /**
+   * Given, each chip carries a control that flips it between widening and
+   * required (#136). Left out — the titles field — the chips are plain.
+   */
+  onToggleRequired?: (term: string) => void;
 };
 
-/** A text input that turns what is typed into a removable list of chips. */
+/**
+ * A text input that turns what is typed into a removable list of chips.
+ *
+ * With `onToggleRequired`, a chip has two states the list tells apart at a
+ * glance: widening is the neutral `--tag` pill every chip wore before #136;
+ * required wears the accent as an outline and a wash, never a fill — the
+ * Nocturne rule, and the same look the ticked arrangement chips below have,
+ * so "marked" reads the same way twice on one page.
+ */
 function ChipField({
   legend,
   hint,
@@ -520,6 +554,7 @@ function ChipField({
   onRemove,
   onDraftKeyDown,
   placeholder,
+  onToggleRequired,
 }: ChipFieldProps) {
   return (
     <fieldset className="flex flex-col gap-2">
@@ -545,16 +580,45 @@ function ChipField({
 
       {items.length > 0 && (
         <ul className="mt-1 flex flex-wrap gap-1.5">
-          {items.map((item) => (
+          {items.map(({ term, required = false }) => (
             <li
-              key={item}
-              className="flex items-center gap-1.5 rounded-full bg-tag py-1 pl-3 pr-1.5 text-[12.5px] text-text-body"
+              key={term}
+              className={`flex items-center gap-1.5 rounded-full border py-1 pr-1.5 text-[12.5px] ${
+                onToggleRequired ? "pl-1.5" : "pl-3"
+              } ${
+                required
+                  ? "border-accent-edge bg-accent-wash text-accent-text"
+                  : "border-transparent bg-tag text-text-body"
+              }`}
             >
-              {item}
+              {onToggleRequired && (
+                // The same 13px tick box the arrangement chips use, as a
+                // pressed-state button: ticked and accent-filled when the
+                // keyword is required, empty when it only widens.
+                <button
+                  type="button"
+                  onClick={() => onToggleRequired(term)}
+                  aria-pressed={required}
+                  aria-label={`Require ${term}`}
+                  title={
+                    required
+                      ? "Required — only postings that mention this are shown"
+                      : "Widening — click to require it"
+                  }
+                  className={`${TICK_BOX} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-wash ${
+                    required
+                      ? "border-accent bg-accent text-bg"
+                      : "border-border text-transparent hover:border-accent-edge"
+                  }`}
+                >
+                  ✓
+                </button>
+              )}
+              {term}
               <button
                 type="button"
-                onClick={() => onRemove(item)}
-                aria-label={`Remove ${item}`}
+                onClick={() => onRemove(term)}
+                aria-label={`Remove ${term}`}
                 className="flex size-4 items-center justify-center rounded-full text-disabled hover:bg-border hover:text-text"
               >
                 ×

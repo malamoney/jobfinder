@@ -122,6 +122,22 @@ function deduped<T>(items: readonly T[]): T[] {
   return [...new Set(items)];
 }
 
+/**
+ * Drops duplicate keywords the way Matching would find them duplicated —
+ * case-insensitively (`src/operations/matching.ts`) — keeping the first
+ * casing stated and the order it was stated in. `Go` and `go` are one
+ * keyword to the funnel, so storing both would be storing one twice.
+ */
+function dedupedKeywords(keywords: readonly string[]): string[] {
+  const seen = new Set<string>();
+  return keywords.filter((keyword) => {
+    const folded = keyword.toLowerCase();
+    if (seen.has(folded)) return false;
+    seen.add(folded);
+    return true;
+  });
+}
+
 function acceptsDistanceRole(arrangements: readonly Arrangement[]): boolean {
   return arrangements.some((arrangement) =>
     (DISTANCE_ARRANGEMENTS as readonly Arrangement[]).includes(arrangement),
@@ -189,12 +205,14 @@ export const criteriaInput = z
     // A word cannot be both. The form keeps the two apart; this is the
     // backstop for a crafted POST, and it keeps the term as required — the
     // reading that constrains — rather than letting the widening copy quietly
-    // undo it.
-    const requiredKeywords = deduped(value.requiredKeywords);
+    // undo it. "The same word" is read as `dedupedKeywords` reads it, so
+    // `TypeScript` cannot widen beside a required `typescript`.
+    const requiredKeywords = dedupedKeywords(value.requiredKeywords);
+    const required = new Set(requiredKeywords.map((k) => k.toLowerCase()));
     return {
       titles: deduped(value.titles),
-      keywords: deduped(value.keywords).filter(
-        (keyword) => !requiredKeywords.includes(keyword),
+      keywords: dedupedKeywords(value.keywords).filter(
+        (keyword) => !required.has(keyword.toLowerCase()),
       ),
       requiredKeywords,
       arrangements: deduped(value.arrangements),

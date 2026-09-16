@@ -188,6 +188,46 @@ describe("required keywords", () => {
     });
   });
 
+  it("reads a keyword stated in both lists under different casing as the same word", async () => {
+    // Matching is case-insensitive, so `TypeScript` widening beside
+    // `typescript` required would be the contradiction the form prevents
+    // (#136), arriving by a crafted POST. The backstop reads the word the way
+    // the funnel does, and keeps the required copy.
+    const userId = await givenAUser();
+
+    const outcome = await saveCriteria(
+      userId,
+      statedCriteria({
+        keywords: ["TypeScript", "postgres"],
+        requiredKeywords: ["typescript"],
+      }),
+    );
+
+    expect(outcome.ok && outcome.criteria).toMatchObject({
+      keywords: ["postgres"],
+      requiredKeywords: ["typescript"],
+    });
+  });
+
+  it("keeps one casing of a keyword stated twice in the same list", async () => {
+    // The same reading within a list as across them: `Go` and `go` are one
+    // keyword to Matching, and the first casing stated is the one kept.
+    const userId = await givenAUser();
+
+    const outcome = await saveCriteria(
+      userId,
+      statedCriteria({
+        keywords: ["Go", "postgres", "go"],
+        requiredKeywords: ["TypeScript", "typescript"],
+      }),
+    );
+
+    expect(outcome.ok && outcome.criteria).toMatchObject({
+      keywords: ["Go", "postgres"],
+      requiredKeywords: ["TypeScript"],
+    });
+  });
+
   it("rejects a blank required keyword with the keyword message", async () => {
     const userId = await givenAUser();
 
