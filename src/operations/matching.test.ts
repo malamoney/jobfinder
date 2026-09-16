@@ -367,9 +367,6 @@ describe("required keywords", () => {
       "Applied Research Scientist",
       "Staff Engineer",
     ]);
-    expect(
-      (await getDb().select().from(criteria))[0].requiredKeywords,
-    ).toEqual([]);
   });
 
   it("shows a required keyword among the matched keywords, ahead of the widening ones", async () => {

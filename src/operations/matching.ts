@@ -98,8 +98,7 @@ function contains(column: Column, value: string): SQL {
 
 /** A keyword occurring in the Posting's title or its description. */
 function keywordOccurs(keyword: string): SQL {
-  // Two defined operands always combine to a clause; `or` is only `undefined`
-  // when it is given nothing to combine.
+  // Two defined operands always combine to a clause (see `SQL_LOGIC.and`).
   return or(
     contains(postings.title, keyword),
     contains(postings.description, keyword),
@@ -117,21 +116,21 @@ function keywordOccurs(keyword: string): SQL {
  *
  * A keyword has two modes (#135, ADR 0017), and both take part here. A
  * *widening* keyword — the default, and the only kind before #135 — only
- * ever adds: a role found by a keyword in its description is one a title list alone
- * would have missed (#2, user story 9), which is why this is one stage with an
- * `or` inside and not two in sequence. A *required* keyword widens in exactly
- * the same way, and then also gates, in `requiredKeywordsPresent` below —
- * marking a keyword required never subtracts from what a widening one would
- * have caught, it only adds a condition. Keywords are optional — with none
- * stated this is title matching alone.
+ * ever adds: a role found by a keyword in its description is one a title
+ * list alone would have missed (#2, user story 9), which is why this is one
+ * stage with an `or` inside and not two in sequence. A *required* keyword
+ * widens in exactly the same way, and then also gates, in
+ * `requiredKeywordsPresent` below — marking a keyword required never
+ * subtracts from what a widening one would have caught, it only adds a
+ * condition. Keywords are optional — with none stated this is title matching
+ * alone.
  */
 const titleAndKeywordMatch: FunnelStage = {
   name: "literal title and keyword match",
   narrow({ titles, keywords, requiredKeywords }) {
     return or(
       ...titles.map((title) => contains(postings.title, title)),
-      ...keywords.map(keywordOccurs),
-      ...requiredKeywords.map(keywordOccurs),
+      ...[...keywords, ...requiredKeywords].map(keywordOccurs),
     );
   },
 };
