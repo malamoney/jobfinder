@@ -1,4 +1,4 @@
-import { US_STATE_CODE_ALTERNATION } from "./us-states";
+import { US_STATE_CODE_ALTERNATION, US_STATE_NAMES } from "./us-states";
 
 /**
  * Country classification: deciding whether a Posting is based in the United
@@ -29,65 +29,16 @@ import { US_STATE_CODE_ALTERNATION } from "./us-states";
 /** Whether a Posting is based in the United States, as far as its text says. */
 export type Country = "us" | "non-us" | "unknown";
 
-/** The fifty states, DC, and the territories with their own USPS codes, by name. */
-const US_STATE_NAMES = [
-  "alabama",
-  "alaska",
-  "arizona",
-  "arkansas",
-  "california",
-  "colorado",
-  "connecticut",
-  "delaware",
-  "florida",
-  "georgia",
-  "hawaii",
-  "idaho",
-  "illinois",
-  "indiana",
-  "iowa",
-  "kansas",
-  "kentucky",
-  "louisiana",
-  "maine",
-  "maryland",
-  "massachusetts",
-  "michigan",
-  "minnesota",
-  "mississippi",
-  "missouri",
-  "montana",
-  "nebraska",
-  "nevada",
-  "new hampshire",
-  "new jersey",
-  "new mexico",
-  "new york",
-  "north carolina",
-  "north dakota",
-  "ohio",
-  "oklahoma",
-  "oregon",
-  "pennsylvania",
-  "rhode island",
-  "south carolina",
-  "south dakota",
-  "tennessee",
-  "texas",
-  "utah",
-  "vermont",
-  "virginia",
-  "washington",
-  "west virginia",
-  "wisconsin",
-  "wyoming",
-  "district of columbia",
-  "puerto rico",
-  "guam",
-];
+/**
+ * The states by name, from the shared table (`us-states.ts`), plus the two
+ * territories this classifier has always read as US. The territories stay
+ * here rather than in the table on purpose: adding their codes to it would
+ * widen what a code after a comma means, and only their names are wanted.
+ */
+const US_STATE_NAMES_AND_TERRITORIES = [...US_STATE_NAMES, "puerto rico", "guam"];
 
 const US_STATE_NAME_RE = new RegExp(
-  `\\b(${US_STATE_NAMES.join("|").replace(/ /g, "\\s")})\\b`,
+  `\\b(${US_STATE_NAMES_AND_TERRITORIES.join("|").replace(/ /g, "\\s")})\\b`,
   "i",
 );
 

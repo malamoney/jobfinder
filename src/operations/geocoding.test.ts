@@ -95,6 +95,18 @@ describe("forgetStaleGeocodes", () => {
     expect(await keys()).toEqual(["boston, ma"]);
   });
 
+  it("drops a row whose key is a state, and keeps the state that is also a city", async () => {
+    // `massachusetts` is the point in Worcester County #146 was opened on;
+    // `new york` is the city in almost every text that names it, and stays.
+    await cached("massachusetts", [42.26, -71.8]);
+    await cached("tx", [31.05, -97.56]);
+    await cached("new york", [40.71, -74.01]);
+    await cached("washington", [38.9, -77.04]);
+
+    expect(await forgetStaleGeocodes(getDb())).toBe(2);
+    expect(await keys()).toEqual(["new york", "washington"]);
+  });
+
   it("drops a row whose key the reader would now split", async () => {
     // The unplaceable key #113 was written about, cached as a negative result
     // before the reader learned to split it.

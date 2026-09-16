@@ -197,9 +197,12 @@ describe("a word between two places", () => {
       "herndon, va",
       "columbia, md",
     ]);
+    // Three places, and the word in capitals. This read `Massachusetts OR
+    // Maryland OR Greater Austin, TX` until a bare state stopped being a place
+    // (#146); the split is the same, and the state case is tested with the rule.
     expect(
-      normalizeLocations("Massachusetts OR Maryland OR Greater Austin, TX"),
-    ).toEqual(["massachusetts", "maryland", "greater austin, tx"]);
+      normalizeLocations("Worcester, MA OR Baltimore, MD OR Greater Austin, TX"),
+    ).toEqual(["worcester, ma", "baltimore, md", "greater austin, tx"]);
   });
 
   it("reads Oregon's postal code as the state, not as a separator", () => {
@@ -478,9 +481,11 @@ describe("a country named as the location", () => {
   });
 
   it("drops the country out of a list and keeps the cities", () => {
+    // `new jersey` was in this list until a state read as a place; under a
+    // remote label it is remote-within-a-state, and drops out too (#146).
     expect(
       normalizeLocations("Remote - United States / New Jersey / Boston / New York"),
-    ).toEqual(["new jersey", "boston", "new york"]);
+    ).toEqual(["boston", "new york"]);
   });
 
   it("reads a foreign country the same way: a country is not a commute", () => {
@@ -506,5 +511,110 @@ describe("a country named as the location", () => {
     // every place-less listing contributes the same empty component there.
     expect(normalizeLocation("United States")).toBeNull();
     expect(normalizeLocation("Remote - USA")).toBeNull();
+  });
+});
+
+/**
+ * A state named as the whole of a place is #124's defect at a smaller scale
+ * (#146). `Remote - Massachusetts` normalized to `massachusetts`, which the
+ * geocoder answers with the state's centroid — a point in Worcester County — and
+ * the radius then dropped the Posting for a User in Boston, 45 miles from a spot
+ * nobody named. Under a remote label a state is remote-within-a-state and names
+ * no Place; bare, it is a placeholder for a Place the employer did not name.
+ */
+describe("a state named as the location", () => {
+  it("names no place under a remote label, whichever way the state is written", () => {
+    expect(normalizeLocations("Remote - Massachusetts")).toEqual([]);
+    expect(normalizeLocations("Remote-Texas")).toEqual([]);
+    expect(normalizeLocations("Remote, Pennsylvania")).toEqual([]);
+    expect(normalizeLocations("Remote- Utah")).toEqual([]);
+    expect(normalizeLocations("Texas (Remote)")).toEqual([]);
+    expect(normalizeLocations("California - Remote")).toEqual([]);
+    expect(normalizeLocations("Arizona Remote (NavVis Inc.)")).toEqual([]);
+    expect(normalizeLocations("Georgia or Remote")).toEqual([]);
+  });
+
+  it("reads as remote, so a remote-within-a-state Posting wears no unresolved pill", () => {
+    expect(namesOnlyRemote("Remote - Massachusetts")).toBe(true);
+    expect(namesOnlyRemote("Texas (Remote)")).toBe(true);
+    expect(namesOnlyRemote("Remote-Texas / Remote-Florida / Remote")).toBe(true);
+    expect(
+      namesOnlyRemote("Remote; Remote, New Jersey; Remote, Pennsylvania; Remote, Virginia"),
+    ).toBe(true);
+  });
+
+  it("reads a state code exactly as it reads the state's name", () => {
+    expect(normalizeLocations("Remote - MA")).toEqual([]);
+    expect(normalizeLocations("Remote, TX")).toEqual([]);
+    expect(normalizeLocations("Remote, DC")).toEqual([]);
+    expect(namesOnlyRemote("Remote - MA")).toBe(true);
+    expect(normalizeLocations("MA")).toEqual([]);
+    expect(namesOnlyRemote("MA")).toBe(false);
+  });
+
+  it("reads a bare state as a placeholder: a Place the employer did not name", () => {
+    // Kept and flagged, like `Multiple locations` — there is a Place, and
+    // nothing says where. Not measured against a centroid in a forest.
+    expect(normalizeLocations("Texas")).toEqual([]);
+    expect(normalizeLocations("Georgia ")).toEqual([]);
+    expect(normalizeLocations("Louisiana; Texas")).toEqual([]);
+    expect(normalizeLocations("Onsite - Hawaii")).toEqual([]);
+    expect(normalizeLocations("Hybrid - Texas")).toEqual([]);
+    expect(namesOnlyRemote("Texas")).toBe(false);
+    expect(namesOnlyRemote("Louisiana; Texas")).toBe(false);
+    expect(namesOnlyRemote("Hybrid - Texas")).toBe(false);
+  });
+
+  it("lets a remote label at the front of a list cover every state in it", () => {
+    // The label is the Posting's, prefixed to the whole list by the adapter
+    // (`placeWithArrangement`), so `Remote - Canada / Utah / Georgia` says
+    // remote in Utah and remote in Georgia — not one remote and two offices.
+    expect(
+      normalizeLocations("Remote - Canada / Utah / New York / Georgia / Ohio"),
+    ).toEqual(["new york"]);
+    expect(namesOnlyRemote("Remote - Texas / Florida / North Carolina")).toBe(true);
+    // A hybrid list says the opposite: a state in it is a Place withheld.
+    expect(
+      normalizeLocations("Hybrid - Cambridge / Utah / Georgia / Boston"),
+    ).toEqual(["cambridge", "boston"]);
+    expect(namesOnlyRemote("Hybrid - Texas / Florida")).toBe(false);
+  });
+
+  it("drops the state out of a list and keeps the cities", () => {
+    expect(
+      normalizeLocations("Dallas, Texas; Houston, Texas; Remote - Texas"),
+    ).toEqual(["dallas, texas", "houston, texas"]);
+    expect(normalizeLocations("Connecticut or New York State, USA")).toEqual([
+      "new york state, usa",
+    ]);
+    expect(
+      normalizeLocations("Massachusetts OR Maryland OR Greater Austin, TX."),
+    ).toEqual(["greater austin, tx"]);
+  });
+
+  it("leaves a state that is also a city alone, so New York and Washington still resolve", () => {
+    expect(normalizeLocations("New York")).toEqual(["new york"]);
+    expect(normalizeLocations("Hybrid - New York")).toEqual(["new york"]);
+    expect(normalizeLocations("Remote - New York")).toEqual(["new york"]);
+    expect(normalizeLocations("New York, NY")).toEqual(["new york, ny"]);
+    expect(normalizeLocations("Washington")).toEqual(["washington"]);
+    expect(normalizeLocations("Washington (Remote)")).toEqual(["washington"]);
+    expect(normalizeLocations("Washington, DC")).toEqual(["washington, dc"]);
+    // The code follows the name, so the pair reads alike either way.
+    expect(normalizeLocations("Remote - NY")).toEqual(["ny"]);
+    expect(normalizeLocations("Remote - WA")).toEqual(["wa"]);
+  });
+
+  it("leaves a real place whose name holds a state alone", () => {
+    expect(normalizeLocations("Austin, Texas")).toEqual(["austin, texas"]);
+    expect(normalizeLocations("Texas City, TX")).toEqual(["texas city, tx"]);
+    expect(normalizeLocations("Washington, D.C.")).toEqual(["washington, d.c."]);
+    expect(normalizeLocations("Remote - Washington(US)")).toEqual(["washington"]);
+  });
+
+  it("keeps the state key out of the Dedup Key's location too", () => {
+    expect(normalizeLocation("Remote - Texas")).toBeNull();
+    expect(normalizeLocation("Texas")).toBeNull();
+    expect(normalizeLocation("Remote - MA")).toBeNull();
   });
 });
