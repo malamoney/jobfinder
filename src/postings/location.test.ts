@@ -32,8 +32,19 @@ describe("normalizing a Posting's location", () => {
 
   it("strips a leading arrangement label, keeping the place", () => {
     expect(normalizeLocation("Hybrid - London")).toBe("london");
-    expect(normalizeLocation("Remote - US")).toBe("us");
+    expect(normalizeLocation("Remote - Austin, TX")).toBe("austin, tx");
     expect(normalizeLocation("Onsite: Berlin")).toBe("berlin");
+  });
+
+  it("names no place when what follows the label is the country", () => {
+    // `Remote - US` was this test's example of a label stripped from a place,
+    // and `us` was the key it expected — deliberately, when it was written.
+    // The geocoder answers that key with the geographic centre of the United
+    // States, a field in Kansas, and the radius measured 1,142 Postings against
+    // it (#124). A nationwide marker names no place, whichever way it is
+    // written, so the label case above keeps a real place and this one pins
+    // the country as null.
+    expect(normalizeLocation("Remote - US")).toBeNull();
   });
 
   it("drops a parenthetical aside", () => {
@@ -209,12 +220,11 @@ describe("a word between two places", () => {
 
   it("still reads a remote alternative as no second place", () => {
     expect(normalizeLocations("Boston, MA or Remote")).toEqual(["boston, ma"]);
-    // A country-wide remote alternative reads as the country, exactly as
-    // `Remote - US` has always read — the split does not change that, it just
-    // reaches it one part at a time.
+    // A country-wide remote alternative used to read as the country, exactly
+    // as `Remote - US` did. Both name no place now (#124) — the split does not
+    // change that, it just reaches it one part at a time.
     expect(normalizeLocations("Houston, TX or Remote, USA")).toEqual([
       "houston, tx",
-      "usa",
     ]);
     expect(placesNamed("Boston, MA or Remote")).toEqual([
       { stated: "Boston, MA", key: "boston, ma" },
@@ -314,17 +324,24 @@ describe("a period between two places", () => {
   });
 
   it("leaves no trailing period on the last key", () => {
-    expect(normalizeLocations("Houston, TX. Remote, USA.")).toEqual([
+    expect(normalizeLocations("Houston, TX. Remote, Austin, TX.")).toEqual([
       "houston, tx",
-      "usa",
+      "austin, tx",
     ]);
     expect(normalizeLocations("Greater Austin, TX.")).toEqual([
       "greater austin, tx",
     ]);
-    expect(normalizeLocation("Remote, USA.")).toBe("usa");
+    expect(normalizeLocation("Remote, Austin, TX.")).toBe("austin, tx");
     // An initialism keeps its final period: it is the spelling, not a full stop.
     expect(normalizeLocation("Washington, D.C.")).toBe("washington, d.c.");
-    expect(normalizeLocation("Remote - U.S.A.")).toBe("u.s.a.");
+    expect(normalizeLocation("Remote - Washington, D.C.")).toBe(
+      "washington, d.c.",
+    );
+    // `usa.` and `u.s.a.` were this rule's own examples: the strip made `usa.`
+    // the same key as `usa`, and left the initialism its final period. Both
+    // are read the same way still, and now name no place at all (#124).
+    expect(normalizeLocation("Remote, USA.")).toBeNull();
+    expect(normalizeLocation("Remote - U.S.A.")).toBeNull();
   });
 
   it("names each place without the period that ended it", () => {
@@ -332,9 +349,9 @@ describe("a period between two places", () => {
       { stated: "Fort Wayne, IN", key: "fort wayne, in" },
       { stated: "Mooresville, IN", key: "mooresville, in" },
     ]);
-    expect(placesNamed("Houston, TX. Remote, USA.")).toEqual([
+    expect(placesNamed("Houston, TX. Remote, Austin, TX.")).toEqual([
       { stated: "Houston, TX", key: "houston, tx" },
-      { stated: "USA", key: "usa" },
+      { stated: "Austin, TX", key: "austin, tx" },
     ]);
   });
 });
@@ -348,13 +365,18 @@ describe("a period between two places", () => {
  */
 describe("a separator inside a parenthetical aside", () => {
   it("splits nothing inside the brackets, and keeps the place outside them", () => {
-    expect(normalizeLocations("Remote - US (East / Central)")).toEqual(["us"]);
+    expect(normalizeLocations("Remote - Austin, TX (East / Central)")).toEqual([
+      "austin, tx",
+    ]);
     expect(normalizeLocations("Remote (East Coast USA or Canada) / UK")).toEqual([
       "uk",
     ]);
-    expect(normalizeLocations("United States (Remote or Hybrid)")).toEqual([
-      "united states",
-    ]);
+    // These two were the cases #119 was written about, and read as `us` and
+    // `united states` then — one key each, rather than the two scraps the
+    // split-inside-the-bracket bug made. A country names no place now (#124),
+    // so they read as nothing at all; still one reading, still not two scraps.
+    expect(normalizeLocations("Remote - US (East / Central)")).toEqual([]);
+    expect(normalizeLocations("United States (Remote or Hybrid)")).toEqual([]);
   });
 
   it("still splits the separators outside the brackets", () => {
@@ -383,6 +405,22 @@ describe("a location that names only remote", () => {
     expect(namesOnlyRemote("Remote / Work from home")).toBe(true);
   });
 
+  it("is true for a nationwide marker, which is remote at the scale of a country", () => {
+    // `Remote - US` was pinned false here when the country still read as a
+    // place (#123). It names none (#124), and the remote label is what is
+    // left — the same reading `Remote (United States)` always had.
+    expect(namesOnlyRemote("Remote - US")).toBe(true);
+    expect(namesOnlyRemote("Remote - United States")).toBe(true);
+    expect(namesOnlyRemote("United States")).toBe(true);
+    expect(namesOnlyRemote("Remote - United States / Canada")).toBe(true);
+    expect(namesOnlyRemote("Remote - USA | Remote")).toBe(true);
+  });
+
+  it("is false for a hybrid role somewhere in the country, which withholds its place", () => {
+    expect(namesOnlyRemote("Hybrid - United States")).toBe(false);
+    expect(namesOnlyRemote("Onsite - USA")).toBe(false);
+  });
+
   it("is false for a placeholder, which still names nothing anyone could place", () => {
     expect(namesOnlyRemote("Multiple locations")).toBe(false);
     expect(namesOnlyRemote("Various")).toBe(false);
@@ -402,7 +440,6 @@ describe("a location that names only remote", () => {
   it("is false for text that names a place, whether or not it names remote too", () => {
     expect(namesOnlyRemote("Boston, MA")).toBe(false);
     expect(namesOnlyRemote("Boston, MA or Remote")).toBe(false);
-    expect(namesOnlyRemote("Remote - US")).toBe(false);
     expect(namesOnlyRemote("Bolt Farm - Whitwell, TN")).toBe(false);
     expect(namesOnlyRemote("Undisclosed location, USA")).toBe(false);
   });
@@ -411,5 +448,63 @@ describe("a location that names only remote", () => {
     expect(namesOnlyRemote(null)).toBe(false);
     expect(namesOnlyRemote("")).toBe(false);
     expect(namesOnlyRemote("   ")).toBe(false);
+  });
+});
+
+/**
+ * A country named as the location is a nationwide marker, and a nationwide
+ * marker names no place (#124). `Remote - United States` used to normalize to
+ * `united states`, which the geocoder answers with the geographic centre of the
+ * country — a field outside Lebanon, Kansas — and 1,142 Postings were then
+ * measured against that field: dropped for every User outside its radius, and
+ * quoted a drive time to it for anyone inside. `Remote (United States)` read as
+ * no place all along; the only difference was a bracket.
+ */
+describe("a country named as the location", () => {
+  it("names no place, whichever way the country is written", () => {
+    expect(normalizeLocations("Remote - United States")).toEqual([]);
+    expect(normalizeLocations("Remote - US")).toEqual([]);
+    expect(normalizeLocations("Remote US")).toEqual([]);
+    expect(normalizeLocations("Remote, USA")).toEqual([]);
+    expect(normalizeLocations("Remote - U.S. Remote")).toEqual([]);
+    expect(normalizeLocations("Remote - USA - Remote")).toEqual([]);
+    expect(normalizeLocations("Remote - USA | Remote")).toEqual([]);
+    expect(normalizeLocations("USA Remote")).toEqual([]);
+    expect(normalizeLocations("Remote (United States)")).toEqual([]);
+    expect(normalizeLocations("United States of America")).toEqual([]);
+    expect(normalizeLocations("U.S.A.")).toEqual([]);
+    expect(normalizeLocations("USA.")).toEqual([]);
+    expect(normalizeLocations("North America")).toEqual([]);
+  });
+
+  it("drops the country out of a list and keeps the cities", () => {
+    expect(
+      normalizeLocations("Remote - United States / New Jersey / Boston / New York"),
+    ).toEqual(["new jersey", "boston", "new york"]);
+  });
+
+  it("reads a foreign country the same way: a country is not a commute", () => {
+    // The classifier prunes a Posting whose location is only Canada (ADR 0010);
+    // the ones that reach here name it beside US places, and a centroid in
+    // northern Saskatchewan was riding along with the real ones.
+    expect(normalizeLocations("Remote - United States / Canada")).toEqual([]);
+    expect(normalizeLocations("Boston, MA / Canada")).toEqual(["boston, ma"]);
+  });
+
+  it("leaves a real place whose name holds a country word alone", () => {
+    expect(normalizeLocations("Washington, DC")).toEqual(["washington, dc"]);
+    expect(normalizeLocations("New York State, USA")).toEqual([
+      "new york state, usa",
+    ]);
+    expect(normalizeLocations("Undisclosed location, USA")).toEqual([
+      "undisclosed location, usa",
+    ]);
+  });
+
+  it("keeps the country key out of the Dedup Key's location too", () => {
+    // The single-string normalizer is what the Dedup Key reads (ADR 0006), and
+    // every place-less listing contributes the same empty component there.
+    expect(normalizeLocation("United States")).toBeNull();
+    expect(normalizeLocation("Remote - USA")).toBeNull();
   });
 });

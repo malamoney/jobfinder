@@ -105,7 +105,8 @@ export function arrangementLabel(
  * Nothing is invented: the label is prefixed only when the Source published it,
  * and not at all when the place already says it, so an Ashby `Remote - US`
  * does not become `Remote - Remote - US`. `normalizeLocation` strips the label
- * again before geocoding, so the place is still geocoded as a place.
+ * again before geocoding, so a place after it is still geocoded as a place —
+ * and a country after it, as in that example, is read as none (#124).
  */
 export function placeWithArrangement(
   arrangement: ArrangementLabel | null,

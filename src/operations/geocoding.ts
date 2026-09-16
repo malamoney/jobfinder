@@ -7,6 +7,7 @@ import {
   type Coordinate,
   type Placement,
 } from "@/geocoding/nominatim";
+import { normalizeLocations } from "@/postings/location";
 
 /**
  * The geocode cache: resolving normalized location strings to coordinates once
@@ -109,6 +110,40 @@ export async function ensureGeocoded(
 
     onGeocoded?.(calls, uncached.length);
   }
+}
+
+/**
+ * Drops every cache row whose key the reader no longer produces, and says how
+ * many went.
+ *
+ * A row is written for whatever `normalizeLocations` made of a text, so a
+ * change to that reading leaves rows behind that no text can reach again:
+ * `united states`, once a country names no place (#124), or `san francisco bay
+ * area, ca / seattle, wa`, once a spaced slash separates two places (#113).
+ * The first kind is worse than clutter — it holds the centre of the country,
+ * which is what the radius was measuring 1,142 Postings against.
+ *
+ * The test is whether the reader, given the key as text, hands it straight
+ * back. It is deliberately not "does any Posting still name it": a home stated
+ * before #100 and never re-placed still reads its point from this cache
+ * (`cachedHome`, `@/operations/commute`), and no Posting need name
+ * `franklin, ma` for that row to be somebody's home. Run by the hand-run warm-up
+ * (`pnpm warm-geocodes`) after it re-reads the Corpus, so the rows go in the
+ * same pass that stops anything pointing at them.
+ */
+export async function forgetStaleGeocodes(writer: Writer): Promise<number> {
+  const rows = await writer.select({ location: geocodes.location }).from(geocodes);
+
+  const stale = rows
+    .map((row) => row.location)
+    .filter((key) => {
+      const reread = normalizeLocations(key);
+      return reread.length !== 1 || reread[0] !== key;
+    });
+  if (stale.length === 0) return 0;
+
+  await writer.delete(geocodes).where(inArray(geocodes.location, stale));
+  return stale.length;
 }
 
 /**

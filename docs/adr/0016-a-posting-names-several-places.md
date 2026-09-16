@@ -133,6 +133,73 @@ Two consequences of the rule's shape:
   another period sits one letter before it. The Dedup Key is unaffected either way — it drops all
   punctuation before it compares.
 
+## A country named as the location names no place (#124)
+
+`Remote - United States` normalized to `united states`, and the geocoder answers that key: 39.7837,
+-100.4459, the geographic centre of the United States, a field outside Lebanon, Kansas. `Remote
+(United States)` beside it normalized to null. Same employer, same meaning, opposite readings, and
+the only difference was a bracket. A census of the Corpus on 2026-09-03, after #119's catch-up pass,
+found 1,142 Postings held on a country-wide key — `united states` 659, `us` 275, `usa` 153, `u.s.`
+41, `usa.` 10, all on that one field; `canada` 81, on a point in northern Saskatchewan; `north
+america` 3 — and the texts behind them unambiguous: `Remote - United States`, `Remote US`, `Remote -
+USA | Remote`, `Remote - U.S. Remote`.
+
+A centroid is worse than no place. A Posting with no place is kept and, where it matters, flagged: the
+User is told the radius could not judge it. A Posting on a centroid is *measured*, silently — dropped
+for every User outside the radius of the field and kept for anyone inside it, whose COMMUTE DETAILS
+tab quoted a straight-line distance and a drive time to that field, naming `United States` as the
+place it measured (above). None of that was a judgement anybody made about the role. Constraining
+the geocoder to the US (#122) does nothing here, because the centre of the US is in the US.
+
+So a country, or a continent, named as the location is a **nationwide marker** and names no place
+(`NATIONWIDE_MARKERS`, `src/postings/location.ts`), read exactly as a remote marker: the role can be
+done from anywhere in the country, which is remote at the scale of a nation, and a country is not a
+commute. `Remote - US`, `Remote, USA`, `USA Remote` and `Remote (United States)` now read alike —
+remote, no place — and `Remote - United States / New Jersey / Boston / New York` reads as New
+Jersey, Boston and New York, the country dropping out of the list. Because a nationwide marker is a
+remote marker, these Postings read as naming only remote (`namesOnlyRemote`, #123) and wear no
+**Location unresolved** pill: nothing was missed. `Hybrid - United States` is the exception the
+remote markers already make — a hybrid role somewhere in the country withholds its place, and is a
+miss.
+
+The decisions the rule had to make, recorded so the next person meets them rather than a gap:
+
+- **What counts.** The spellings the census evidenced: `united states`, `united states of america`,
+  `us`, `u.s.`, `usa`, `u.s.a.` — the initialisms with their final period, since the trailing-full-stop
+  strip above leaves an initialism's alone, and `usa.` already arrives as `usa` — and `north america`,
+  a continent that reads the same way. Nothing the census did not produce is in the table. Matched against the whole of a part, never as a word inside one: `New York
+  State, USA`, `Washington, DC` and `Undisclosed location, USA` are places whose names hold a country
+  word, and still resolve.
+- **A foreign country reads the same way.** `canada` is a place a geocoder places correctly — it just
+  is not a commute. The country classifier (ADR 0010) already prunes a Posting whose location is only
+  Canada; the 81 here named it beside US places, and the Saskatchewan point rode along with the real
+  ones. The rule is "a country is never a Place", and the table holds the countries the census found.
+  A country it did not find still reads as a place, which is what it did before this existed — the
+  direction to be wrong in, and one the classifier has already pruned wherever the country stood alone.
+- **A state does not — yet.** `massachusetts`, `texas`, `arizona` resolve to state centroids and have
+  exactly the same shape of wrongness at a smaller scale. Out of scope here and recorded as its own
+  ticket (#146): a state is at least in the right part of the country, so the census that decides
+  whether "no place" or "the state" is the better reading for a User 30 miles from its centroid has
+  not been taken, and this rule is evidence-driven by design.
+- **The tested behaviour that changed.** `location.test.ts` asserted `normalizeLocation("Remote -
+  US")` was `"us"`, deliberately, and `namesOnlyRemote("Remote - US")` was false for the same reason.
+  Both are the other way now, and the cases say why rather than disappearing.
+- **The Dedup Key** (ADR 0006) reads the whole text through the single-string normalizer, so `Remote -
+  US`, `Remote - USA` and `Remote (United States)` now contribute the same empty location component
+  and group — which is what that ADR already says every place-less Posting does. A text that names
+  the country beside a separator, `Remote - USA | Remote`, still keys as `usa |` there, as it did
+  before: the single-string normalizer never split, and this does not change what it strips.
+
+**The cache held the bad rows.** `geocodes` had resolved coordinates for all seven keys, and stopping
+the reader from producing them leaves the rows behind. `pnpm warm-geocodes` now drops every cache
+row whose key the reader no longer produces (`forgetStaleGeocodes`, `src/operations/geocoding.ts`)
+in the same pass that re-reads the Corpus — so the rows go as the Postings move off them, without
+the full re-geocode `--refresh` costs. The test is "would the reader hand this key straight back",
+deliberately not "does any Posting still name it": a home stated before #100 and never re-placed
+still reads its point from this cache (ADR 0014), and no Posting need name `franklin, ma` for that
+row to be somebody's home. The Corpus itself is brought up to date by `renormalizeLocations`, in the
+nightly sweep and in the same script, without a re-Fetch.
+
 ## Why the closest place
 
 A role offered in Boston and Seattle is a Boston role to somebody in Franklin, MA. That is the
