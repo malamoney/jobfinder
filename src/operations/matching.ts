@@ -422,19 +422,18 @@ function keywordsFound({
 }
 
 /**
- * The rebuild's select over the Postings the funnel kept: an id and the
+ * The rebuild's select over the Postings the funnel `kept`: an id and the
  * keywords found in each, and nothing else (not yet run — `matchCriteria`
  * awaits it, and the regression test calls `.toSQL()` on it).
  *
- * Exposed so a test can assert against its generated SQL that the description
- * text never leaves the database — the point of #139 is a property, so
- * something has to hold it, and a test that only checked the cards would pass
- * just as well with the column selected and searched in Node.
+ * Exposed for the same reason `dashboardMatchQuery` is: so a test can assert
+ * against the generated SQL that the description text never leaves the
+ * database (#139).
  */
-export function matchHitQuery(
+export function matchRebuildQuery(
   writer: Writer,
   stated: Pick<CriteriaRow, "keywords" | "requiredKeywords">,
-  hit: SQL,
+  kept: SQL,
 ) {
   return writer
     .select({
@@ -442,7 +441,7 @@ export function matchHitQuery(
       matchedKeywords: keywordsFound(stated).mapWith(matches.matchedKeywords),
     })
     .from(postings)
-    .where(hit);
+    .where(kept);
 }
 
 /**
@@ -502,11 +501,11 @@ export async function matchCriteria(userId: string): Promise<void> {
     const full = combine(FUNNEL, stated, context);
     if (!full) return;
 
-    const hits = await matchHitQuery(tx, stated, full);
-    if (hits.length === 0) return;
+    const kept = await matchRebuildQuery(tx, stated, full);
+    if (kept.length === 0) return;
 
     await tx.insert(matches).values(
-      hits.map(({ id, matchedKeywords }) => ({
+      kept.map(({ id, matchedKeywords }) => ({
         userId,
         postingId: id,
         matchedKeywords,

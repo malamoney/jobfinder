@@ -292,7 +292,7 @@ export async function readDashboard(
       marksByKey.get(representative.dedupKey) ?? [],
     );
 
-    // Required keywords lead each member's list (`keywordsFoundIn`), and every
+    // Required keywords lead each member's list (`keywordsFound`), and every
     // member carries all of them, so they lead the union too — the card's
     // marked tags come first without a sort here.
     const matchedKeywords = [

@@ -32,7 +32,7 @@ import {
   type Place,
 } from "@/test/fixtures/nominatim";
 import type { CriteriaInput } from "@/criteria/schema";
-import { matchHitQuery } from "./matching";
+import { matchRebuildQuery } from "./matching";
 
 const PASSWORD = "correct-horse-battery-staple";
 
@@ -593,7 +593,7 @@ describe("the matched keywords stored on a Match", () => {
       requiredKeywords: ["typescript"],
     } satisfies Pick<CriteriaRow, "keywords" | "requiredKeywords">;
 
-    const { sql: text } = matchHitQuery(getDb(), stated, sql`true`).toSQL();
+    const { sql: text } = matchRebuildQuery(getDb(), stated, sql`true`).toSQL();
 
     const withoutComparisons = text.replace(
       /"postings"\."description" ilike \$\d+/gi,
@@ -602,13 +602,13 @@ describe("the matched keywords stored on a Match", () => {
     expect(withoutComparisons).not.toMatch(/description/i);
   });
 
-  it("selects only an id and the keyword array in the rebuild", () => {
+  it("selects no other Posting column either, once no keyword names one", () => {
     const stated = {
-      keywords: [] as string[],
-      requiredKeywords: [] as string[],
-    };
+      keywords: [],
+      requiredKeywords: [],
+    } satisfies Pick<CriteriaRow, "keywords" | "requiredKeywords">;
 
-    const { sql: text } = matchHitQuery(getDb(), stated, sql`true`).toSQL();
+    const { sql: text } = matchRebuildQuery(getDb(), stated, sql`true`).toSQL();
 
     expect(text.toLowerCase()).not.toContain('"postings"."title"');
     expect(text.toLowerCase()).not.toContain('"postings"."company"');
