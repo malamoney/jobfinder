@@ -25,6 +25,7 @@ function fromRow(row: CriteriaRow): Criteria {
   return {
     titles: row.titles,
     keywords: row.keywords,
+    requiredKeywords: row.requiredKeywords,
     arrangements: row.arrangements,
     homeLocation: row.homeLocation,
     radiusMiles: row.radiusMiles,

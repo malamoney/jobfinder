@@ -148,6 +148,13 @@
       "when": 1788463993429,
       "tag": "0020_drop_single_normalized_location",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789517988742,
+      "tag": "0021_required_keywords",
+      "breakpoints": true
     }
   ]
 }

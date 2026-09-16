@@ -45,6 +45,7 @@ const ARRANGEMENT_GROUPS = [
 const BLANK: Criteria = {
   titles: [],
   keywords: [],
+  requiredKeywords: [],
   arrangements: [],
   homeLocation: null,
   radiusMiles: null,
@@ -142,6 +143,12 @@ export function CriteriaForm({
   const [titleDraft, setTitleDraft] = useState("");
   const [keywords, setKeywords] = useState<string[]>(stated.keywords);
   const [keywordDraft, setKeywordDraft] = useState("");
+  // Carried through a save untouched until #136 gives the keyword chips their
+  // required / widening toggle: this form cannot set one yet, and a save that
+  // silently cleared what is stored would be worse than a control it lacks.
+  const [requiredKeywords, setRequiredKeywords] = useState<string[]>(
+    stated.requiredKeywords,
+  );
   const [arrangements, setArrangements] = useState<Arrangement[]>(
     stated.arrangements,
   );
@@ -169,6 +176,7 @@ export function CriteriaForm({
     setHome(placed);
     setTitles(saved.titles);
     setKeywords(saved.keywords);
+    setRequiredKeywords(saved.requiredKeywords);
     setArrangements(saved.arrangements);
     setHomeLocation(saved.homeLocation ?? "");
     setRadiusMiles(saved.radiusMiles?.toString() ?? "");
@@ -189,6 +197,7 @@ export function CriteriaForm({
     return {
       titles,
       keywords,
+      requiredKeywords,
       arrangements,
       homeLocation: wantsDistance ? homeLocation.trim() || null : null,
       radiusMiles: wantsDistance ? typedNumber(radiusMiles) : null,
