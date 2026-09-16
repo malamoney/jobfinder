@@ -110,8 +110,8 @@ describe("what a process does about a remote database", () => {
     });
   });
 
-  it("does not read a blank or explicitly-off override as consent", () => {
-    for (const ALLOW_REMOTE_DATABASE of ["", "0", "false"]) {
+  it("reads only the documented =1 as consent", () => {
+    for (const ALLOW_REMOTE_DATABASE of ["", "0", "false", "true", "yes"]) {
       expect(
         judgeDatabaseUrl(NEON, {
           NODE_ENV: "development",

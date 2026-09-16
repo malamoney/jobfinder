@@ -1,6 +1,6 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { judgeDatabaseUrl } from "./remote-database";
+import { applyVerdict, judgeDatabaseUrl } from "./remote-database";
 import * as schema from "./schema";
 
 export type Database = NodePgDatabase<typeof schema>;
@@ -62,13 +62,7 @@ export function getDb(): Database {
   }
 
   if (!connection) {
-    const verdict = judgeDatabaseUrl(url, process.env);
-    if (verdict.outcome === "refuse") {
-      throw new Error(verdict.message);
-    }
-    if (verdict.outcome === "warn") {
-      console.warn(verdict.message);
-    }
+    applyVerdict(judgeDatabaseUrl(url, process.env));
 
     const pool = new Pool({ connectionString: url });
     connection = { pool, db: drizzle(pool, { schema }), url };

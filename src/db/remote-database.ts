@@ -10,8 +10,8 @@
  * not on this machine.
  *
  * Pure functions of the URL and the environment, so they are unit-tested
- * without a database. `getDb()` applies the verdict at the moment it first
- * opens the connection.
+ * without a database. `getDb()` and `drizzle.config.ts` apply the verdict at
+ * the moment they first open a connection.
  */
 
 /** What a process does about the database it is about to open. */
@@ -50,26 +50,41 @@ export function judgeDatabaseUrl(
     return { outcome: "proceed" };
   }
 
-  const host = databaseHost(url);
+  const where = `DATABASE_URL points at ${databaseHost(url)}, which is not on this machine.`;
   if (env.NODE_ENV === "development") {
     return {
       outcome: "refuse",
       message:
-        `Refusing to connect: DATABASE_URL points at ${host}, which is not on this machine. ` +
+        `Refusing to connect: ${where} ` +
         "Development traffic there is metered against the production allowance (#140). " +
         "Point .env.local at a local Postgres, or set ALLOW_REMOTE_DATABASE=1 if you mean it.",
     };
   }
   return {
     outcome: "warn",
-    message:
-      `DATABASE_URL points at ${host}, which is not on this machine. ` +
-      "Set ALLOW_REMOTE_DATABASE=1 to silence this.",
+    message: `${where} Set ALLOW_REMOTE_DATABASE=1 to silence this.`,
   };
 }
 
 function isOptedOut(value: string | undefined): boolean {
-  return value === "1" || value === "true";
+  return value === "1";
+}
+
+/**
+ * Carries a verdict out: a refusal throws, a warning is printed once — the
+ * caller reaches this once per connection, not once per query — and
+ * proceeding is silent.
+ */
+export function applyVerdict(verdict: DatabaseUrlVerdict): void {
+  switch (verdict.outcome) {
+    case "refuse":
+      throw new Error(verdict.message);
+    case "warn":
+      console.warn(verdict.message);
+      return;
+    case "proceed":
+      return;
+  }
 }
 
 /**
@@ -106,7 +121,7 @@ export function databaseHost(url: string): string {
   }
 }
 
-type Target =
+type ConnectionTarget =
   | { kind: "socket"; path: string }
   | { kind: "host"; host: string }
   | { kind: "unparseable" };
@@ -116,7 +131,7 @@ type Target =
  * percent-encoded host (`postgres://%2Ftmp/db`), from a `host` query parameter
  * (`postgres:///db?host=/tmp`), or by default when no host is given at all.
  */
-function parseTarget(url: string): Target {
+function parseTarget(url: string): ConnectionTarget {
   let parsed: URL;
   try {
     parsed = new URL(url);

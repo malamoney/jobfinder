@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getDb } from "./index";
+import { closeDb, getDb } from "./index";
 
 /**
  * The guardrail's verdict (`remote-database.ts`) is applied where the
@@ -10,7 +10,10 @@ import { getDb } from "./index";
 
 const REMOTE = "postgres://user:hunter2secret@db.example.invalid:5432/jobfinder";
 
-afterEach(() => {
+// The pool is dropped between tests so each one reaches the verdict rather
+// than the handle the previous test left cached for the same URL.
+afterEach(async () => {
+  await closeDb();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
@@ -49,9 +52,10 @@ describe("opening the application's database handle", () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it("is silent about the test database", () => {
+  it("is silent about a local database even outside the test environment", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    getDb();
+    vi.stubEnv("NODE_ENV", undefined);
+    expect(() => getDb()).not.toThrow();
     expect(warn).not.toHaveBeenCalled();
   });
 });
