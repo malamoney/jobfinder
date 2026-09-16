@@ -47,9 +47,10 @@ The table already holds titles and keywords as Postgres arrays rather than child
 keeps to that, and it keeps the first column's meaning untouched — every row saved before the
 column existed is all-widening with nothing to backfill, which is what makes the upgrade silent
 for a User who never touches the new toggle. The form (#136) presents the two as one toggled list;
-`@/criteria/schema` splits a submission into the two arrays, dedupes within each, and dedupes
-across them — a term arriving in both is kept as required and dropped from widening, since the
-form prevents that state and the schema is only the backstop for a crafted POST.
+`@/criteria/schema` splits a submission into the two arrays and dedupes within each and across
+them, reading "the same term" case-insensitively as Matching does — a term arriving in both is
+kept as required and dropped from widening, since the form prevents that state and the schema is
+only the backstop for a crafted POST.
 
 ## Consequences
 
