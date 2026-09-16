@@ -223,6 +223,55 @@ export function dashboardMatchQuery(db: Database, userId: string) {
 }
 
 /**
+ * An ISO-8601 timestamp standing in for a `Date` where a value must survive
+ * being stored as JSON (#155): `JSON.stringify` turns a `Date` into exactly
+ * this, and `new Date(iso)` brings it back to the millisecond.
+ */
+type Iso = string;
+
+/**
+ * The {@link DashboardPostingFacts} with every `Date` spelled as an ISO string
+ * — the same facts, in the shape a JSON store hands back unchanged.
+ */
+type MatchedPostingFacts = Omit<
+  DashboardPostingFacts,
+  "postedAt" | "firstSeenAt" | "expiresAt"
+> & {
+  postedAt: Iso | null;
+  firstSeenAt: Iso;
+  expiresAt: Iso | null;
+};
+
+/**
+ * One matched opening as the matched Postings read returns it: the presented
+ * member of its Dedup Key group, with what Matching decided about it — and
+ * nothing the User's clicks or the clock decide.
+ *
+ * This is the half of the Dashboard read that changes only at a match rebuild
+ * or a Criteria save, split out (#154) so it can be read once between those
+ * events and stored (#155). So there is no `status`, `appliedAt` or `viewed`
+ * here (Review State, which a click changes), and no `expired` or count
+ * (which the clock changes): the overlay derives those live from these facts.
+ * JSON-round-trip stable, dates included, for the same reason.
+ */
+export type MatchedPosting = MatchedPostingFacts & {
+  /** See {@link DashboardPosting.matchedKeywords}. */
+  matchedKeywords: string[];
+  /** See {@link DashboardPosting.requiredKeywords}. */
+  requiredKeywords: string[];
+  /** See {@link DashboardPosting.unresolvedLocation}. */
+  unresolvedLocation: boolean;
+  /**
+   * When the earliest-collected of the group's matched listings was first
+   * seen — the fact "new today" (#81) is measured against. An opening is new
+   * only when *every* matched listing is recent, which is the same as its
+   * earliest one being recent; carried as the one value the overlay needs
+   * rather than the whole group's dates.
+   */
+  earliestFirstSeenAt: Iso;
+};
+
+/**
  * Reads one User's Dashboard, optionally filtered by Status.
  *
  * Ordered by posted date, newest first, with a Posting whose Source published
@@ -238,11 +287,33 @@ export function dashboardMatchQuery(db: Database, userId: string) {
  * are drawn from across the group's members so nothing a User did to one
  * listing is lost. Which of those keywords were required is read off the
  * User's Criteria (#137), not the Match — the same row the radius is read from.
+ *
+ * The composition of two reads that change at different rates (#154): the
+ * matched Postings read, which changes only when Matching re-runs, and the
+ * Review State overlay, which changes with every click. Kept as one function
+ * so the page reads one thing.
  */
 export async function readDashboard(
   userId: string,
   filter?: DashboardFilter,
 ): Promise<Dashboard> {
+  return overlayReviewState(await readMatchedPostings(userId), userId, filter);
+}
+
+/**
+ * The half of the Dashboard read that changes only when Matching re-runs: which
+ * openings match this User, which listing of each is presented, the card
+ * facts, the matched and required Keywords, and whether the radius could place
+ * it.
+ *
+ * Takes a User id and nothing else — no filter, because the filter is a
+ * function of Review State, and no clock. Nothing in the result changes between
+ * one match rebuild (or Criteria save) and the next, which is what lets #155
+ * read it once between those events. In no particular order: the overlay sorts.
+ */
+export async function readMatchedPostings(
+  userId: string,
+): Promise<MatchedPosting[]> {
   const db = getDb();
 
   // The commute radius as it actually ran for this User — the one condition
@@ -266,14 +337,7 @@ export async function readDashboard(
     else groups.set(row.posting.dedupKey, [row]);
   }
 
-  // Review State is read across every member of a group, not just the matched
-  // ones: a listing a User marked can drop out of their Matches (its
-  // description diverged, so a keyword no longer hits) while a twin stays, and
-  // the opening must still read as marked (#13).
-  const marksByKey = await readGroupMarks(db, userId, [...groups.keys()]);
-
-  const groupMembers = [...groups.values()];
-  const all = groupMembers.map((members): DashboardPosting => {
+  return [...groups.values()].map((members): MatchedPosting => {
     // `descriptionLength` rides on the row, not the Posting, so it weighs the
     // tie-break here and never reaches the card, which is built from the chosen
     // member's Posting facts alone.
@@ -288,9 +352,6 @@ export async function readDashboard(
     // Representative first, so the union of matched keywords reads in the order
     // the card's own text would suggest.
     const ordered = [shown, ...members.filter((member) => member !== shown)];
-    const effective = latestGroupReview(
-      marksByKey.get(representative.dedupKey) ?? [],
-    );
 
     // Required keywords lead each member's list (`keywordsFound`), and every
     // member carries all of them, so they lead the union too — the card's
@@ -301,38 +362,85 @@ export async function readDashboard(
 
     return {
       ...representative,
+      postedAt: representative.postedAt?.toISOString() ?? null,
+      firstSeenAt: representative.firstSeenAt.toISOString(),
+      expiresAt: representative.expiresAt?.toISOString() ?? null,
       matchedKeywords,
       requiredKeywords: matchedKeywords.filter((keyword) =>
         required.has(keyword),
       ),
-      expired: isExpired(representative),
       unresolvedLocation: hasUnresolvedLocation(
         representative,
         shown.placed,
         radius,
       ),
+      earliestFirstSeenAt: new Date(
+        Math.min(
+          ...members.map((member) => member.posting.firstSeenAt.getTime()),
+        ),
+      ).toISOString(),
+    };
+  });
+}
+
+/**
+ * The half of the Dashboard read that changes with the User's clicks and the
+ * clock: lays the Review State marks over a matched Postings list, decides
+ * Expired, counts, sorts and filters, and returns the `Dashboard` the page
+ * renders.
+ *
+ * Reads Review State live every time — it is small, and it is the thing the
+ * User's own click just changed. Takes the list as a value rather than reading
+ * it, so the list can come from the database or from a store (#155) and the
+ * page cannot tell which.
+ */
+export async function overlayReviewState(
+  matched: readonly MatchedPosting[],
+  userId: string,
+  filter?: DashboardFilter,
+): Promise<Dashboard> {
+  // Review State is read across every member of a group, not just the matched
+  // ones: a listing a User marked can drop out of their Matches (its
+  // description diverged, so a keyword no longer hits) while a twin stays, and
+  // the opening must still read as marked (#13).
+  const marksByKey = await readGroupMarks(
+    getDb(),
+    userId,
+    matched.map((opening) => opening.dedupKey),
+  );
+
+  // An opening is "new today" when every one of its matched listings was first
+  // collected inside the window, and it is not already Expired — the same "not
+  // worth opening the app for" exclusion `unreviewedCount` makes (#33).
+  const newSince = Date.now() - NEW_TODAY_WINDOW_MS;
+  let newTodayCount = 0;
+
+  const all = matched.map((opening): DashboardPosting => {
+    const { earliestFirstSeenAt, ...facts } = opening;
+    const marks = marksByKey.get(opening.dedupKey) ?? [];
+    const effective = latestGroupReview(marks);
+    const revived = {
+      ...facts,
+      postedAt: facts.postedAt === null ? null : new Date(facts.postedAt),
+      firstSeenAt: new Date(facts.firstSeenAt),
+      expiresAt: facts.expiresAt === null ? null : new Date(facts.expiresAt),
+    };
+    const expired = isExpired(revived);
+
+    if (!expired && new Date(earliestFirstSeenAt).getTime() >= newSince) {
+      newTodayCount += 1;
+    }
+
+    return {
+      ...revived,
+      expired,
       status: effective?.status ?? DEFAULT_STATUS,
       appliedAt: effective?.appliedAt ?? null,
       // Viewed is monotonic and not a decision, so it is read as "any listing
       // of this opening has a view", not "the latest mark's view".
-      viewed: (marksByKey.get(representative.dedupKey) ?? []).some(
-        (mark) => mark.viewedAt !== null,
-      ),
+      viewed: marks.some((mark) => mark.viewedAt !== null),
     };
   });
-
-  // An opening is "new today" when every one of its matched listings was first
-  // collected inside the window, and it is not already Expired — the same "not
-  // worth opening the app for" exclusion `unreviewedCount` makes (#33). Counted
-  // here, against `groupMembers[i]`, before `all` is sorted out of that order.
-  const newSince = Date.now() - NEW_TODAY_WINDOW_MS;
-  const newTodayCount = all.filter(
-    (posting, i) =>
-      !posting.expired &&
-      groupMembers[i].every(
-        (member) => member.posting.firstSeenAt.getTime() >= newSince,
-      ),
-  ).length;
 
   all.sort(byPresentedPostedDate);
 
