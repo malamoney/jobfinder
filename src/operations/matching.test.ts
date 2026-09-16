@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { signUp } from "@/auth";
 import {
@@ -14,7 +14,14 @@ import {
   type Board,
 } from "@/operations";
 import { getDb } from "@/db";
-import { criteria, geocodes, postings, user } from "@/db/schema";
+import {
+  criteria,
+  geocodes,
+  matches,
+  postings,
+  user,
+  type CriteriaRow,
+} from "@/db/schema";
 import { normalizeLocation } from "@/postings/location";
 import { boardReturns, greenhouseJob } from "@/test/fixtures/greenhouse";
 import {
@@ -25,6 +32,7 @@ import {
   type Place,
 } from "@/test/fixtures/nominatim";
 import type { CriteriaInput } from "@/criteria/schema";
+import { matchRebuildQuery } from "./matching";
 
 const PASSWORD = "correct-horse-battery-staple";
 
@@ -464,6 +472,146 @@ describe("required keywords", () => {
     expect(postings.map((posting) => posting.title)).toEqual([
       "Staff Engineer",
     ]);
+  });
+});
+
+describe("the matched keywords stored on a Match", () => {
+  /**
+   * #139: the keywords a card shows are computed in SQL by the same `contains`
+   * test the funnel narrows on, so these pin what that test must find — and
+   * the `contains` escaping is now load-bearing on the card as well as in the
+   * funnel.
+   */
+  it("finds a keyword containing %, _ or \\ literally, not as a pattern", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Engineer",
+        content:
+          "&lt;p&gt;Modern C++ on Linux, 100% remote, snake_case throughout, and a \\d regex or two.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      statedCriteria({
+        titles: ["Staff Engineer"],
+        // The last two would hit as patterns — `c__` matches "c++" and `1%`
+        // matches anything containing a 1 — and must not hit as literals.
+        keywords: ["c++", "100%", "snake_case", "\\d", "c__", "1%"],
+      }),
+    );
+
+    const [posting] = (await readDashboard(userId)).postings;
+    expect(posting.matchedKeywords).toEqual([
+      "c++",
+      "100%",
+      "snake_case",
+      "\\d",
+    ]);
+  });
+
+  it("finds a keyword whose case differs from the text", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Engineer, kubernetes",
+        content: "&lt;p&gt;We run POSTGRESQL and TypeScript.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      statedCriteria({
+        titles: ["Staff Engineer"],
+        keywords: ["KUBERNETES", "postgresql", "typescript"],
+      }),
+    );
+
+    const [posting] = (await readDashboard(userId)).postings;
+    expect(posting.matchedKeywords).toEqual([
+      "KUBERNETES",
+      "postgresql",
+      "typescript",
+    ]);
+  });
+
+  it("finds a keyword occurring in the title alone, or the description alone", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Rust Engineer",
+        content: "&lt;p&gt;Postgres underneath.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      statedCriteria({
+        titles: ["Staff"],
+        keywords: ["rust", "postgres", "terraform"],
+      }),
+    );
+
+    const [posting] = (await readDashboard(userId)).postings;
+    expect(posting.matchedKeywords).toEqual(["rust", "postgres"]);
+  });
+
+  it("stores an empty array on every Match for a User who stated no keywords", async () => {
+    await corpusHas([
+      greenhouseJob({ id: 1, title: "Staff Engineer" }),
+      greenhouseJob({ id: 2, title: "Staff Engineer, Platform" }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(userId, statedCriteria({ titles: ["Staff Engineer"] }));
+
+    const stored = await getDb()
+      .select({ matchedKeywords: matches.matchedKeywords })
+      .from(matches)
+      .where(eq(matches.userId, userId));
+    expect(stored).toEqual([{ matchedKeywords: [] }, { matchedKeywords: [] }]);
+  });
+
+  /**
+   * The cost regression for #139: the rebuild must not carry the description
+   * text out of the database. It is 95% of a Posting row, and the only thing
+   * the rebuild ever did with it was a substring test the database had already
+   * made one stage earlier.
+   *
+   * Asserted against the generated SQL, as #138's is: a card test would pass
+   * just as well with the column selected and then searched in Node. The
+   * column may appear only as the left operand of an `ilike` — a comparison
+   * that yields a boolean, never the text.
+   */
+  it("selects no description text in the rebuild", () => {
+    const stated = {
+      keywords: ["postgres"],
+      requiredKeywords: ["typescript"],
+    } satisfies Pick<CriteriaRow, "keywords" | "requiredKeywords">;
+
+    const { sql: text } = matchRebuildQuery(getDb(), stated, sql`true`).toSQL();
+
+    const withoutComparisons = text.replace(
+      /"postings"\."description" ilike \$\d+/gi,
+      "",
+    );
+    expect(withoutComparisons).not.toMatch(/description/i);
+  });
+
+  it("selects no other Posting column either, once no keyword names one", () => {
+    const stated = {
+      keywords: [],
+      requiredKeywords: [],
+    } satisfies Pick<CriteriaRow, "keywords" | "requiredKeywords">;
+
+    const { sql: text } = matchRebuildQuery(getDb(), stated, sql`true`).toSQL();
+
+    expect(text.toLowerCase()).not.toContain('"postings"."title"');
+    expect(text.toLowerCase()).not.toContain('"postings"."company"');
   });
 });
 
