@@ -116,7 +116,28 @@ describe("re-reading the locations the Corpus already holds", () => {
 
     expect(await renormalizeLocations(getDb())).toBe(2);
     expect(await placesOf(id)).toEqual([]);
-    expect(await placesOf(list)).toEqual(["new jersey", "boston", "new york"]);
+    // `new jersey` sat in this list until a state under a remote label read
+    // as remote rather than as a place (#146).
+    expect(await placesOf(list)).toEqual(["boston", "new york"]);
+  });
+
+  it("moves a Posting off a state it was held on", async () => {
+    // The key the geocoder answers with the state's centroid (#146) — a point
+    // in Worcester County that the radius measured a Boston User against.
+    const remote = await storedRole("1", "Remote - Massachusetts", [
+      "massachusetts",
+    ]);
+    const bare = await storedRole("2", "Louisiana; Texas", ["louisiana", "texas"]);
+    const list = await storedRole(
+      "3",
+      "Dallas, Texas; Houston, Texas; Remote - Texas",
+      ["dallas, texas", "houston, texas", "texas"],
+    );
+
+    expect(await renormalizeLocations(getDb())).toBe(3);
+    expect(await placesOf(remote)).toEqual([]);
+    expect(await placesOf(bare)).toEqual([]);
+    expect(await placesOf(list)).toEqual(["dallas, texas", "houston, texas"]);
   });
 
   it("leaves a Posting already holding the right places alone", async () => {

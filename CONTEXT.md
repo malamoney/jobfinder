@@ -97,8 +97,11 @@ _Avoid_: Office, site, city, location string
 A country or continent named where a Place would be — `United States`, `Remote - US`, `Canada`,
 `North America`. Names no Place: a country is not a commute, and the geocoder answers `united states`
 with a field in Kansas, a point nobody meant (#124, ADR 0016). Read as remote at the scale of a
-nation, so a Posting naming only one is never unresolved (#123).
-_Avoid_: Country key, country location, centroid
+nation, so a Posting naming only one is never unresolved (#123). A state named as the whole of a
+Place — `Remote - Massachusetts`, `Texas (Remote)`, `Remote - MA` — is the same thing at the scale
+of a state when the text offers remote; bare, `Texas` is a placeholder for an office the employer
+did not name (#146). `New York` and `Washington` are cities and stay Places.
+_Avoid_: Country key, country location, centroid, state centroid
 
 **Geocode Cache**:
 Normalized location strings paired with the coordinate each resolves to, keyed by the string rather
@@ -120,9 +123,10 @@ onsite. That last holds only where the text names a Place: a location naming rem
 else — `Remote`, `Remote (United States)`, `Remote - US` — is never unresolved, for any User, because
 there was no Place to find and nothing was missed (#123). A country named as the location is a
 nationwide marker and reads as remote, not as a Place: `United States` geocodes to a field in Kansas,
-and a centroid nobody meant is worse than no place (#124, ADR 0016). A placeholder — `Multiple
-locations`, `TBD` — still is unresolved, since it stands where a Place the employer did not name
-should be.
+and a centroid nobody meant is worse than no place (#124, ADR 0016); a state under a remote label —
+`Remote - Massachusetts` — reads the same way (#146). A placeholder — `Multiple locations`, `TBD`, a
+bare `Texas` — still is unresolved, since it stands where a Place the employer did not name should
+be.
 _Avoid_: Ungeocoded, bad location, missing location
 
 ### Slug discovery

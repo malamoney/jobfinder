@@ -180,7 +180,8 @@ The decisions the rule had to make, recorded so the next person meets them rathe
   exactly the same shape of wrongness at a smaller scale. Out of scope here and recorded as its own
   ticket (#146): a state is at least in the right part of the country, so the census that decides
   whether "no place" or "the state" is the better reading for a User 30 miles from its centroid has
-  not been taken, and this rule is evidence-driven by design.
+  not been taken, and this rule is evidence-driven by design. Taken since, and the section below has
+  the rule.
 - **The tested behaviour that changed.** `location.test.ts` asserted `normalizeLocation("Remote -
   US")` was `"us"`, deliberately, and `namesOnlyRemote("Remote - US")` was false for the same reason.
   Both are the other way now, and the cases say why rather than disappearing.
@@ -199,6 +200,98 @@ deliberately not "does any Posting still name it": a home stated before #100 and
 still reads its point from this cache (ADR 0014), and no Posting need name `franklin, ma` for that
 row to be somebody's home. The Corpus itself is brought up to date by `renormalizeLocations`, in the
 nightly sweep and in the same script, without a re-Fetch.
+
+## A state named as the location, and what the label in front of it says (#146)
+
+`Remote - Massachusetts` normalized to `massachusetts`, and the geocoder answers that key with the
+state's centroid — a point in Worcester County. The radius then measured the Posting against it:
+dropped for a User in Boston, 45 miles from a spot nobody named, and quoted a drive time to that spot
+for anyone inside the radius of it. #124's defect at a smaller scale, and #124 left it out on purpose
+because the answer was less obvious: a state centroid is at least in the right part of the country,
+and "the state" might be a better reading than "no place" for a User 30 miles from it.
+
+**The census.** The dev database was over its transfer quota when this was decided (2026-09-16), so
+the census was taken against the live Sources instead of the Corpus: every ATS Board in the
+registries (`scripts/data/`) and the Himalayas feed, read through the adapters the nightly sweep
+uses — 549 of 555 Boards answered, 21,929 jobs, 13,057 of them `us` by the classifier. Of those,
+398 held at least one state-name key; 242 of the state-keyed *places* were `new york` and the texts
+behind them are the city (`New York` ×75, `Hybrid - New York` ×27, and `New York` beside San
+Francisco, Los Angeles and Boston in Ashby lists), and `washington` is the same ambiguity eight
+times over. The 273 places left, across 50 distinct keys — `georgia` 33, `texas` 32, `florida` 24,
+`new jersey` 20, `pennsylvania` 18, `california` 16, `utah` 15, a long tail of one each — split three
+ways by shape:
+
+- **Under a remote label, 199 of the 273 places (73%).** `Remote - Texas`, `Remote-Texas`, `Remote,
+  Pennsylvania`, `Texas (Remote)`, `California - Remote`, `Arizona Remote (NavVis Inc.)`, and Ashby
+  lists whose leading `Remote -` covers every part: `Remote - Canada / Utah / New York / Georgia /
+  Ohio / Virginia`. One employer writes every state it will hire in as its own labelled part —
+  `Remote-Texas / Remote-Florida / Remote-North Carolina / Remote-Georgia` — which is the shape the
+  ticket was opened on.
+- **Bare, the whole of the text: 34 Postings.** `Georgia` ×19 (four Boards: two US employers, and
+  Xometry Europe, for whom it is the country — the classifier calls it `us` either way),
+  `Pennsylvania` ×4, `Louisiana; Texas` ×3, `Colorado`, `Indiana`, `Ohio`, `New Jersey`, `Maryland`,
+  `Wisconsin`, `Onsite - Hawaii`.
+- **In a hybrid or onsite list beside cities, the rest of the 74 places not under a remote label.**
+  `Hybrid - Cambridge / Utah / Washington / Georgia / Rhode Island / Florida / Texas / Pennsylvania /
+  Boston / New Jersey`, eight Postings from one employer, accounts for most of them.
+
+State codes as the whole of a part barely exist: `Remote, DC` once, and `MA / Austin TX / MD`, which
+the classifier calls `unknown` and the prune removes before the radius sees it. `Remote - MA` and
+`Remote, TX` were not found. The rule takes them anyway, because the ticket asked for the pair to
+read alike and the table already existed.
+
+**The rule.** What a state means depends on the label in front of it, in a way a country does not,
+so a state is its own table (`STATE_MARKERS`, `src/postings/location.ts`) rather than a row in the
+nationwide one:
+
+- **Under a remote label, a state is remote-within-a-state and names no Place.** The role can be done
+  from anywhere in the state, which is remote at the scale of a state, and a state is not a commute.
+  `Remote - Massachusetts`, `Massachusetts (Remote)`, `Remote-MA` read as remote — kept for every User
+  who accepts remote, dropped for one who does not (ADR 0013), and wearing no **Location unresolved**
+  pill (`namesOnlyRemote`, #123): nothing was missed. The label is read off the whole text, not the
+  part, because the adapters prefix the Posting's arrangement to the whole ` / `-joined list
+  (`placeWithArrangement`): `Remote - Canada / Utah / Georgia` says remote in Utah and remote in
+  Georgia, not one remote role and two offices. The aside is read the same way, since the split
+  strips it before any part can see its own.
+- **Bare, a state is a placeholder.** `Texas`, `Louisiana; Texas`, `Onsite - Hawaii`, and the states
+  in a hybrid list name an office somewhere in the state that the employer did not name — the same
+  thing `Multiple locations` says, and read the same way: kept, and flagged. That is the "no place"
+  side of the question #124 left open, chosen over the centroid because the centroid is *measured*,
+  silently, and a User in Philadelphia with a 40-mile radius lost `Pennsylvania` to a forest in Centre
+  County 100 miles away. Flagged is the direction to be wrong in. The bare `Georgia` texts settle it
+  from the other side: nineteen Postings on a key that is a US state for two employers and a country
+  for a third, and a placeholder is the only reading that is not wrong for one of them.
+- **A code reads exactly as its name does**, so `Remote - MA` and `Remote - Massachusetts` are one
+  reading. A whole part that is two letters is matched whatever its case, unlike a code after a comma
+  (#120): there is no prose reading of a location text that is only `ma`.
+- **Two states are also cities and stay Places under either spelling.** `New York` is the city in
+  almost every text the census found, and `Washington` cannot be told from the capital without a
+  gazetteer; `New York`, `Hybrid - New York`, `Washington`, `Washington (Remote)` and `New York, NY`
+  resolve as they did. Their codes follow their names — `Remote - NY` is still `ny` — so the pair
+  reads alike for every state, and a text the rule does not take behaves as it did before this
+  existed. Wrong for a `Remote - New York` that meant the state, in the direction of the old reading.
+- **DC is a state here.** Its centroid is the city, which is a real place, and `Remote, DC` was a
+  fair measurement; but one text is not a reason for an exception, and remote-in-DC is remote.
+
+**What it moved.** Against the same census, 177 of the 13,057 US Postings read differently under the
+rule: 99 now name only remote, 34 are a flagged placeholder, and 44 lost a state out of a list and
+are measured on the cities they still name. Nothing is measured on a state centroid any more, and
+the 50 centroid keys go from the Geocode Cache on the next `pnpm warm-geocodes`
+(`forgetStaleGeocodes`, #124) — owed against the dev Corpus, with the count of Postings that moved,
+once the database is reachable again.
+
+**Where the rule is wrong, and how.** A User who accepts remote now sees `Remote - Massachusetts`
+from California, the way they already see `Remote`; the state is a hiring restriction the text
+states and the funnel does not read, which is a smaller wrong than dropping it for the Boston User it
+was written for. `Texas or CST` reads as a placeholder and a scrap, as before. And the census was of
+the Sources on one day rather than of the Corpus, which also holds Expired Postings; the shape is not
+expected to differ, and the rule is a reading of text, not of a count.
+
+**The tested behaviour that changed.** `normalizeLocations("Remote - United States / New Jersey /
+Boston / New York")` was `["new jersey", "boston", "new york"]` — the example this ADR's country
+section used — and is `["boston", "new york"]` now, `New Jersey` under a remote label being remote.
+The `or`-splitting case that used `Massachusetts OR Maryland OR Greater Austin, TX` as its fixture
+now uses cities; the split is the same, and the state text is tested with the rule.
 
 ## Why the closest place
 

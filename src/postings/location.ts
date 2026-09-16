@@ -1,4 +1,8 @@
-import { US_STATE_CODE_ALTERNATION } from "./us-states";
+import {
+  US_STATE_CODE_ALTERNATION,
+  US_STATE_CODES,
+  US_STATE_NAMES,
+} from "./us-states";
 
 /**
  * Location normalization: turning a Posting's free-text location into a stable
@@ -16,7 +20,9 @@ import { US_STATE_CODE_ALTERNATION } from "./us-states";
  * geocoder is never called on a string that would only fail. A country named as
  * the location (`United States`, `Remote - US`) is null too, for the opposite
  * reason: the geocoder does not fail on it, it answers with the centre of the
- * country, and a point nobody meant is worse than none (#124).
+ * country, and a point nobody meant is worse than none (#124). A state named
+ * as the whole of a place — `Remote - Massachusetts`, `Texas` — is null for
+ * the same reason at a smaller scale (#146).
  *
  * The null flattens two facts the **Location unresolved** flag has to tell
  * apart: a text that named a remote role, where there was never a Place to
@@ -103,9 +109,9 @@ const REMOTE_MARKERS = new Set([
  * Saskatchewan was riding along with the real ones. Only the countries the
  * census found are listed; one it did not still reads as a place, which is
  * what it did before this existed. A state — `Massachusetts`, `Texas` — has the
- * same shape of wrongness at a smaller scale and is deliberately not here: a
- * state centroid is a decision for the ticket that measures it (#146,
- * ADR 0016).
+ * same shape of wrongness at a smaller scale and its own table below
+ * (`STATE_MARKERS`), because what it means depends on the label in front of
+ * it in a way a country does not (#146).
  */
 const NATIONWIDE_MARKERS = new Set([
   "united states",
@@ -125,6 +131,54 @@ const NATIONWIDE_MARKERS = new Set([
 function isRemoteOrNationwideMarker(value: string): boolean {
   return REMOTE_MARKERS.has(value) || NATIONWIDE_MARKERS.has(value);
 }
+
+/**
+ * A US state named as the whole of a place — `Massachusetts`, `MA`, `Texas`,
+ * `TX` — which the geocoder answers with the state's centroid: a point in
+ * Worcester County for Massachusetts, a forest in Centre County for
+ * Pennsylvania. #124's defect at a smaller scale (#146): a Posting on a
+ * centroid is measured, silently, and dropped for a User in Boston 45 miles
+ * from a spot nobody named.
+ *
+ * What a state means depends on the label in front of it, which is why it is
+ * not simply a nationwide marker. Under a remote label — `Remote -
+ * Massachusetts`, `Texas (Remote)`, `Remote-Texas` — it is remote-within-a-
+ * state: the role can be done from anywhere in the state, which is remote at
+ * the scale of a state, and names no Place. That was 73% of the state-keyed
+ * places the census found (ADR 0016). Bare — `Texas`, `Louisiana; Texas`,
+ * `Onsite - Hawaii`, the states in a hybrid list — it is a placeholder: there
+ * is an office somewhere in the state, and the employer did not say where.
+ * `readPart` makes that split; this table only says what a state is.
+ *
+ * The names and codes come from the shared table (`us-states.ts`), and a code
+ * reads exactly as its name does, so `Remote - MA` and `Remote -
+ * Massachusetts` are one reading. A whole part that is two letters is matched
+ * whatever its case, unlike a code after a comma: there is no prose reading of
+ * a location text that is only `ma`.
+ *
+ * Two states are also cities, and stay Places under either spelling: `New
+ * York` is the city in almost every text the census found (`New York`, `Hybrid
+ * - New York`, and beside San Francisco and Boston in a list), and `Washington`
+ * cannot be told from the capital without a gazetteer. Whatever this rule is,
+ * it must not make `New York` name no place. Their codes follow their names,
+ * so `Remote - NY` still resolves too — a text the rule does not take behaves
+ * as it did before, which is the direction to be wrong in.
+ */
+const STATES_THAT_ARE_ALSO_CITIES = new Set(["new york", "ny", "washington", "wa"]);
+
+const STATE_MARKERS = new Set(
+  [...US_STATE_NAMES, ...US_STATE_CODES.map((code) => code.toLowerCase())].filter(
+    (state) => !STATES_THAT_ARE_ALSO_CITIES.has(state),
+  ),
+);
+
+/**
+ * A remote aside on a place — `Texas (Remote)`, `Georgia (Fully remote)` —
+ * which the parenthetical strip takes off the whole text before it is split,
+ * so no part can see its own. Read off the whole text instead, beside the
+ * leading label and the trailing alternative.
+ */
+const REMOTE_ASIDE_RE = /\(\s*(?:fully\s+)?remote\s*\)/i;
 
 /**
  * Strings an employer writes where a Place should be, that name none: a
@@ -273,16 +327,37 @@ export function placesNamed(raw: string | null | undefined): NamedPlace[] {
 function readParts(raw: string): [part: string, reading: Reading][] {
   const readings: [string, Reading][] = [];
 
+  const textOffersRemote = offersRemote(raw);
   const parts = raw.replace(PARENTHETICAL_RE, "").split(PLACE_SEPARATOR_RE);
   for (const [index, part] of parts.entries()) {
     // A stranded conjunction only ever follows a separator, so the first part
     // keeps its opening word: it is part of the place's name, not a join.
     const place = index === 0 ? part : part.replace(LEADING_CONJUNCTION_RE, "");
-    const reading = readPart(place);
+    const reading = readPart(place, textOffersRemote);
     if (reading) readings.push([place, reading]);
   }
 
   return readings;
+}
+
+/**
+ * Whether a location text, taken whole, says the role can be done remotely:
+ * a remote label in front of it, a remote alternative at the end of it, or a
+ * remote aside anywhere in it.
+ *
+ * Read off the whole text rather than a part because the label is the
+ * Posting's, not the first place's: an adapter prefixes it to the whole list
+ * (`placeWithArrangement`), so `Remote - Canada / Utah / Georgia` says remote
+ * in Utah and remote in Georgia rather than one remote role and two offices.
+ * Only a state consults this (#146); a city under a remote label is still a
+ * Place, and a placeholder is still a placeholder.
+ */
+function offersRemote(raw: string): boolean {
+  return (
+    raw.match(LEADING_ARRANGEMENT_RE)?.[1]?.toLowerCase() === "remote" ||
+    TRAILING_REMOTE_RE.test(raw) ||
+    REMOTE_ASIDE_RE.test(raw)
+  );
 }
 
 /**
@@ -385,8 +460,17 @@ export function normalizeLocation(raw: string | null | undefined): string | null
  * whatever follows the label: `Hybrid - Anywhere` and `Hybrid - United States`
  * are a commute to somewhere unstated. A placeholder after a remote label,
  * `Remote - TBD`, is a placeholder.
+ *
+ * A state is the one reading that turns on remote being offered (#146):
+ * `Remote - Texas` is remote and `Texas` is a placeholder, where `Remote - US`
+ * and `US` are both remote. `textOffersRemote` is that fact read off the whole
+ * text by `readParts`, for the label a list carries in front of all its parts
+ * and the aside the split took off before the part could see it.
  */
-function readPart(raw: string | null | undefined): Reading | null {
+function readPart(
+  raw: string | null | undefined,
+  textOffersRemote = false,
+): Reading | null {
   if (!raw) return null;
 
   const bare = raw.replace(PARENTHETICAL_RE, "");
@@ -407,6 +491,13 @@ function readPart(raw: string | null | undefined): Reading | null {
   value = value.replace(/\s*,\s*(?=,|$)/g, "").trim();
 
   if (PLACEHOLDERS.has(value)) return { names: "nothing" };
+  if (STATE_MARKERS.has(value)) {
+    // Remote-within-a-state names no Place; a bare state, or one under an
+    // onsite or hybrid label, is an office the employer did not name.
+    const remote =
+      label === undefined ? offersRemote || textOffersRemote : label === "remote";
+    return remote ? { names: "remote" } : { names: "nothing" };
+  }
   if (value && !isRemoteOrNationwideMarker(value)) return { names: "place", key: value };
   // Named no Place. An onsite or hybrid label names one it did not disclose.
   if (label != null && label !== "remote") return { names: "nothing" };
