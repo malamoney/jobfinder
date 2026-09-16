@@ -169,6 +169,7 @@ describe("what a User's Criteria surface", () => {
 
     const [posting] = (await readDashboard(userId)).postings;
     expect(posting.matchedKeywords).toEqual([]);
+    expect(posting.requiredKeywords).toEqual([]);
   });
 
   it("shows a Posting's title, company, location, and posted date", async () => {
@@ -390,6 +391,53 @@ describe("required keywords", () => {
 
     const [posting] = (await readDashboard(userId)).postings;
     expect(posting.matchedKeywords).toEqual(["typescript", "postgres"]);
+  });
+
+  it("tells the Dashboard which matched keywords were required, so the card can mark them", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Engineer",
+        content: "&lt;p&gt;TypeScript and Postgres. No Kubernetes here.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      statedCriteria({
+        titles: ["Staff Engineer"],
+        keywords: ["postgres", "terraform"],
+        requiredKeywords: ["typescript"],
+      }),
+    );
+
+    const [posting] = (await readDashboard(userId)).postings;
+    expect(posting.requiredKeywords).toEqual(["typescript"]);
+    expect(posting.matchedKeywords).toEqual(["typescript", "postgres"]);
+  });
+
+  it("marks nothing required when every keyword only widens", async () => {
+    await corpusHas([
+      greenhouseJob({
+        id: 1,
+        title: "Staff Engineer",
+        content: "&lt;p&gt;TypeScript and Postgres.&lt;/p&gt;",
+      }),
+    ]);
+    const userId = await givenAUser();
+
+    await saveCriteria(
+      userId,
+      statedCriteria({
+        titles: ["Staff Engineer"],
+        keywords: ["postgres", "typescript"],
+      }),
+    );
+
+    const [posting] = (await readDashboard(userId)).postings;
+    expect(posting.requiredKeywords).toEqual([]);
+    expect(posting.matchedKeywords).toEqual(["postgres", "typescript"]);
   });
 
   it("matches a required keyword literally, with LIKE wildcards escaped", async () => {

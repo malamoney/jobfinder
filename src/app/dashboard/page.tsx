@@ -328,6 +328,12 @@ function StatStrip({
  * (`applied` / `not_interested`) replaces the Save toggle with its own pill so
  * the card is never ambiguous about where the Posting sits.
  *
+ * Among the Keywords, a required one (#137) wears the accent as an outline
+ * and a wash — the look its chip has on the Criteria page (#136), and the
+ * Nocturne rule for "marked" — where a widening one keeps the neutral `--tag`
+ * pill, so a User can tell a guaranteed hit from a bonus one. They lead the
+ * row (`readDashboard`), so the marks sit together at its head.
+ *
  * A row of cards is uneven otherwise (#75): a short card's Apply button sits
  * high, a long one's low, and the effect got worse as the redesign added rows
  * (salary, location, keywords) a plain fact list didn't have. Two rules fix
@@ -407,18 +413,34 @@ function PostingCard({
 
       {posting.matchedKeywords.length > 0 && (
         <ul className="flex flex-wrap gap-1.5">
-          {posting.matchedKeywords.slice(0, MAX_CARD_KEYWORDS).map((keyword) => (
-            <li
-              key={keyword}
-              className="rounded-full bg-tag px-2.5 py-[3px] font-mono text-[11px] text-text-body"
-            >
-              {keyword}
-            </li>
-          ))}
+          {posting.matchedKeywords.slice(0, MAX_CARD_KEYWORDS).map((keyword) => {
+            const required = posting.requiredKeywords.includes(keyword);
+            return (
+              <li
+                key={keyword}
+                title={
+                  required
+                    ? "Required — only postings that mention this are shown"
+                    : undefined
+                }
+                // Both tones carry a border so the two pills stand the same
+                // height; the widening one's is just invisible.
+                className={`rounded-full border px-2.5 py-[3px] font-mono text-[11px] ${
+                  required
+                    ? "border-accent-edge bg-accent-wash text-accent-text"
+                    : "border-transparent bg-tag text-text-body"
+                }`}
+              >
+                {keyword}
+              </li>
+            );
+          })}
           {posting.matchedKeywords.length > MAX_CARD_KEYWORDS && (
             <li
               title={posting.matchedKeywords.join(", ")}
-              className="rounded-full bg-tag px-2.5 py-[3px] font-mono text-[11px] text-label"
+              // The same invisible border as a widening pill, for the same
+              // reason: one height across the row.
+              className="rounded-full border border-transparent bg-tag px-2.5 py-[3px] font-mono text-[11px] text-label"
             >
               +{posting.matchedKeywords.length - MAX_CARD_KEYWORDS}
             </li>

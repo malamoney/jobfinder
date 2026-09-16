@@ -67,6 +67,15 @@ export type DashboardPosting = DashboardPostingFacts & {
    * a title alone (#35).
    */
   matchedKeywords: string[];
+  /**
+   * Those of `matchedKeywords` the User marked required (#137) — the
+   * guaranteed hits, which the card marks apart from the widening ones. Every
+   * required keyword is here whenever the User stated any: a Posting is only a
+   * Match when it contains all of them (ADR 0017), and so is every member of
+   * a Dedup Key group, so the cross-Source union adds nothing to this list.
+   * Empty when the User required nothing.
+   */
+  requiredKeywords: string[];
   /** Whether the Board has stopped returning this Posting (#7). */
   expired: boolean;
   /**
@@ -227,7 +236,8 @@ export function dashboardMatchQuery(db: Database, userId: string) {
  * (`chooseRepresentative`), and the openings are ordered by that presented
  * listing's posted date. The group's Status, applied date, and matched keywords
  * are drawn from across the group's members so nothing a User did to one
- * listing is lost.
+ * listing is lost. Which of those keywords were required is read off the
+ * User's Criteria (#137), not the Match — the same row the radius is read from.
  */
 export async function readDashboard(
   userId: string,
@@ -242,6 +252,10 @@ export async function readDashboard(
     .from(criteria)
     .where(eq(criteria.userId, userId));
   const radius = await radiusInEffect(db, stated);
+  // Which of a Match's keywords were required is not stored on the Match — a
+  // keyword is a string, and its mode lives on the Criteria (#135). Read
+  // alongside, the way the radius is: the row Matching last ran against.
+  const required = new Set(stated?.requiredKeywords ?? []);
 
   const rows = await dashboardMatchQuery(db, userId);
 
@@ -278,11 +292,19 @@ export async function readDashboard(
       marksByKey.get(representative.dedupKey) ?? [],
     );
 
+    // Required keywords lead each member's list (`keywordsFoundIn`), and every
+    // member carries all of them, so they lead the union too — the card's
+    // marked tags come first without a sort here.
+    const matchedKeywords = [
+      ...new Set(ordered.flatMap((member) => member.matchedKeywords)),
+    ];
+
     return {
       ...representative,
-      matchedKeywords: [
-        ...new Set(ordered.flatMap((member) => member.matchedKeywords)),
-      ],
+      matchedKeywords,
+      requiredKeywords: matchedKeywords.filter((keyword) =>
+        required.has(keyword),
+      ),
       expired: isExpired(representative),
       unresolvedLocation: hasUnresolvedLocation(
         representative,
