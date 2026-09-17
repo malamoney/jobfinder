@@ -247,7 +247,9 @@ _Avoid_: Route, trip, lookup
 **Match**:
 The verdict that a Posting satisfies a User's Criteria, carrying the Keywords that hit — every
 required keyword, by construction, and whichever widening ones its text contains. Derived, and
-discarded and recomputed when Criteria change.
+discarded and recomputed when Criteria change. The Dashboard's read of a User's Matches is cached
+between the events that change them — a Criteria save and the nightly sweep's rebuild, and nothing
+else — rather than re-read on every render; the Review State laid over them is not (ADR 0018).
 _Avoid_: Result, hit, recommendation
 
 **Arrangement**:
