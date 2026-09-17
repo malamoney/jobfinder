@@ -23,10 +23,13 @@ export { readCommute } from "./commute";
 export { DRIVE_MAX_AGE_DAYS } from "./drive-times";
 export { readCriteria, readCriteriaSavedAt, saveCriteria } from "./criteria";
 export {
+  overlayReviewState,
   readDashboard,
+  readMatchedPostings,
   type Dashboard,
   type DashboardFilter,
   type DashboardPosting,
+  type MatchedPosting,
 } from "./dashboard";
 export {
   boardTimeoutFor,
