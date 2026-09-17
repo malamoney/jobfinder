@@ -4,8 +4,8 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/auth";
 import {
+  overlayReviewState,
   readCriteria,
-  readDashboard,
   readLatestFetchRun,
   type DashboardFilter,
   type DashboardPosting,
@@ -19,6 +19,7 @@ import { PostingTags } from "../posting-tags";
 import { readTheme } from "../theme-server";
 import type { Theme } from "../theme";
 import { DashboardControls } from "./dashboard-controls";
+import { readMatchedPostingsCached } from "./matched-postings-cache";
 import { RefreshMatches } from "./refresh-matches";
 import { SavedToggle } from "./saved-toggle";
 
@@ -75,7 +76,11 @@ export default async function DashboardPage({
 
   const stated = await readCriteria(signedIn.id);
   const { postings, matchedCount, unreviewedCount, newTodayCount } = stated
-    ? await readDashboard(signedIn.id, filter)
+    ? await overlayReviewState(
+        await readMatchedPostingsCached(signedIn.id),
+        signedIn.id,
+        filter,
+      )
     : { postings: [], matchedCount: 0, unreviewedCount: 0, newTodayCount: 0 };
 
   const lastFetch = await readLatestFetchRun();
